@@ -16,3 +16,7 @@ worlds/_materialized/
 .env
 .env.*
 !.env.example
+
+# DSH 运行时（进程外依赖，⛔ 不进仓库）
+node_modules/
+package-lock.json

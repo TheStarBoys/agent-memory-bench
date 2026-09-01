@@ -290,12 +290,12 @@ python -m amb.cli --json out/r.json  # 附带机读结果
 | `core` `world` `adapters` `suites` `scoring` `report` `runner` `cli` | ✅ 已通 |
 | 五阶段端到端 · 哈希守卫 · 五条对照组 · 地板线与 Δ | ✅ 已通 |
 | **N1 两种模式**（有提示 / 无提示） · N2 · 检索档 · **`answer()` 端到端** | ✅ 已通 |
-| ⚠️ **`agent`（DSH 宿主）** | **未实现——最大的空缺** |
+| **`agent`（DSH 宿主）** | ⭐ **最小闭环已通**：真起 DSH，世界挂成 `cwd`，agent 自己去读并答对 |
 | ⚠️ `suites/public`（公开题库接入） | 未实现 |
 | N4 删除四步探针 · N1 第三种探针（拿旧记忆作答） | 🔜 机制缺口 |
 
-⛔ **`agent/` 一天不实现，「装进 agent 跑」就只是设计**——
-现在跑的全是[「直接调库」那一档](docs/adapters/README.md)。
+⚠️ **agent 档目前只有宿主，还没有记忆插件**——五条对照组仍是「直接调库」那一档。
+下一步是把 `host_default` 变成它真正的定义：**裸 DSH，不挂任何记忆插件**。
 
 ⭐ 第一次跑就抓到三个设计问题，都已修：
 

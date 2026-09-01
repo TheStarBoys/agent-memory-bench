@@ -9,6 +9,23 @@
 装进去之后 **agent 成为受控变量**：同一个循环、同一套工具、同一个 backbone，
 只换记忆插件。⭐ **这才是「统一宿主内比较」的意思。**
 
+## 怎么起来的（实测通过）
+
+```python
+spec = spec_from_env()                      # ⛔ 全局唯一的 backbone
+with Host(spec, world_root, dsh_home) as h:  # 世界 → cwd，home 隔离
+    turn = h.ask("……")                       # AgentTurn(text, finish_reason, events)
+```
+
+⚠️ 两个坑，都踩过了：
+
+| | |
+|---|---|
+| `provider="deepseek-official"` 只认 DeepSeek 自己的端点 | 自定义 provider 要写进 `$DSH_HOME/settings.yaml`，`api: openai-completions` + `baseURL` |
+| ⛔ `dsh` 拒绝隐式使用 `~/.dsh` | 必须显式给 `dsh_home`，我们每次跑用一个隔离的临时目录 |
+
+⛔ `settings.yaml` 只写 `apiKeyEnv`（变量名），**绝不写 key 本身**，有测试盯着。
+
 ## 钉死什么，提供什么
 
 DSH 是 Cordis 插件树，「every part of the product is a plugin，
