@@ -27,7 +27,9 @@ def test_five_phases_complete(arm: str, tmp_path: Path) -> None:
     result, world_digest = run_one(arm, build(arm), plan(), tmp_path / arm,
                                    is_control=True)
     assert world_digest.startswith("sha256:")
-    assert set(result.scores) == {"retrieval", "n2_provenance", "n1_reality"}
+    assert set(result.scores) == {
+        "retrieval", "n2_provenance", "n1_prompted", "n1_spontaneous",
+    }
     assert result.cost, "⚠️ 墙钟必须记账（原则⑥）"
 
 
@@ -39,7 +41,7 @@ def test_unsupported_is_not_zero(arm: str, tmp_path: Path) -> None:
     adapter = build(arm)
     declares_reality = Capability.REALITY in adapter.capabilities()
     result, _ = run_one(arm, adapter, plan(), tmp_path / arm, is_control=True)
-    n1 = result.scores["n1_reality"]
+    n1 = result.scores["n1_prompted"]
     if declares_reality:
         assert n1.status == "scored"
         return
@@ -134,11 +136,63 @@ def test_memory_is_required_to_detect_modification(tmp_path: Path) -> None:
     without, _ = run_one("host_default", build("host_default"), plan(),
                          tmp_path / "h", is_control=True)
 
-    m = with_memory.scores["n1_reality"].metrics
-    n = without.scores["n1_reality"].metrics
+    m = with_memory.scores["n1_prompted"].metrics
+    n = without.scores["n1_prompted"].metrics
 
     assert m["检出率"] > n["检出率"], "有快照的应当检得更全"
     assert n["broken→unknown"] > 0, "无记忆的应当在改值上弃权"
     assert n["broken→holds"] == 0, "⛔ 判不了就报 unknown，不许猜成 holds"
     # 两边都不许误报——把什么都标 broken 就能刷检出率
     assert m["误报率"] == 0.0 and n["误报率"] == 0.0
+
+
+def test_two_modes_are_reported_separately(tmp_path: Path) -> None:
+    """⛔ 有提示与无提示分开报，永不合并成一个 N1 分数。"""
+    r, _ = run_one("bm25", build("bm25"), plan(), tmp_path / "b", is_control=True)
+    assert "n1_prompted" in r.scores and "n1_spontaneous" in r.scores
+    assert "n1_reality" not in r.scores, "⛔ 不许有一个合并后的 N1 分数"
+
+
+def test_spontaneous_mode_distinguishes_a_prompt_only_system(tmp_path: Path) -> None:
+    """⭐ 两种模式存在的唯一理由：区分「被问了才查」与「自己就发现」。
+
+    造一个只在 audit() 里认真、search() 从不表态的适配器。
+    它应当在有提示上拿满分，在无提示上垫底——⛔ 如果两种模式给出同一个数，
+    这一档就白设了。
+    """
+    from amb.adapters.impl.bm25 import BM25Adapter
+    from amb.core import Entry
+
+    class PromptOnly(BM25Adapter):
+        """被问了才查；平时检索绝口不提自己可能过期了。"""
+
+        def search(self, query: str, k: int, *, principal: str | None = None):
+            hits = super().search(query, k, principal=principal)
+            for h in hits:
+                h.state = None          # ⛔ 不表态
+            return hits
+
+    r, _ = run_one("prompt_only", PromptOnly(), plan(), tmp_path / "p",
+                   is_control=False)
+    prompted = r.scores["n1_prompted"]
+    spontaneous = r.scores["n1_spontaneous"]
+
+    assert prompted.metrics["检出率"] == 1.0, "被问了它是查得出来的"
+    assert spontaneous.metrics["检出率"] == 0.0, "没人问它就不吭声"
+    assert spontaneous.metrics["弃权率"] == 1.0
+    # ⭐ 这个差就是「主动」这一维的量度
+    assert prompted.metrics["检出率"] > spontaneous.metrics["检出率"]
+
+
+def test_cannot_reconcile_is_unsupported_not_zero(tmp_path: Path) -> None:
+    """⛔ 对不上账 → 不支持，不是 0 分。
+
+    host_default 声明了 REALITY，但 search 不返回条目，
+    评测器无从把条目对回被破坏的事实——那不是它答错了。
+    """
+    r, _ = run_one("host_default", build("host_default"), plan(),
+                   tmp_path / "h", is_control=True)
+    sp = r.scores["n1_spontaneous"]
+    assert sp.status == "unsupported"
+    assert "无从对账" in (sp.reason or "")
+    assert sp.metrics == {}, "⛔ 不支持不产生任何指标，0 也是指标"

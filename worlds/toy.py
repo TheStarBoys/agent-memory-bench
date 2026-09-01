@@ -7,7 +7,10 @@
 from __future__ import annotations
 
 from amb.core import Claim, Document
-from amb.suites.native.n1_reality import RealitySuite
+from amb.suites.native.n1_reality import (
+    PromptedRealitySuite,
+    SpontaneousRealitySuite,
+)
 from amb.suites.native.n2_provenance import ProvenanceSuite, SpanProbe
 from amb.suites.native.retrieval import Query, RetrievalSuite
 from amb.world import Change, ChangeKind, FileSpec, WorldManifest
@@ -76,5 +79,6 @@ def suites() -> list:
     return [
         RetrievalSuite(QUERIES),
         ProvenanceSuite(SPAN_PROBES, CORPUS),
-        RealitySuite(CLAIMS, TRUTH),
+        PromptedRealitySuite(CLAIMS, TRUTH),
+        SpontaneousRealitySuite(CLAIMS, TRUTH),
     ]

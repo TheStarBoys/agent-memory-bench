@@ -17,8 +17,10 @@ from amb.core import Observation, SuiteRun
 from amb.world import WorldState
 
 
-class RealitySuite:
-    name: ClassVar[str] = "n1_reality"
+class PromptedRealitySuite:
+    """有提示：把命题交过去，看你查得准不准。"""
+
+    name: ClassVar[str] = "n1_prompted"
     requires: ClassVar[frozenset[Capability]] = frozenset({Capability.REALITY})
 
     def __init__(self, claims: list[Claim], truth: dict[str, str]) -> None:
@@ -50,4 +52,55 @@ class RealitySuite:
                     },
                 )
             )
+        return run
+
+
+class SpontaneousRealitySuite:
+    """无提示：什么都不给，只发 search，看 `Entry.state`。
+
+    ⛔ 与有提示分开报，永不合并——一个是「给了机会你查得准不准」，
+    一个是「没人提醒你自己发现了吗」，合并之后两者都读不出来。
+
+    绝大多数系统在这一档上会全军覆没。**那是这一档的意义，不是它的缺陷。**
+    """
+
+    name: ClassVar[str] = "n1_spontaneous"
+    requires: ClassVar[frozenset[Capability]] = frozenset({Capability.REALITY})
+
+    def __init__(self, claims: list[Claim], truth: dict[str, str]) -> None:
+        self._claims = claims
+        self._truth = truth
+
+    def probe(self, adapter: Adapter, world: WorldState) -> SuiteRun:
+        run = SuiteRun(self.name, "scored")
+        reconciled = 0
+        for claim in self._claims:
+            # ⚠️ 只发普通检索——⛔ 不调 audit，不给任何提示
+            hits = adapter.search(claim.text, 5)
+            # 靠 doc_ids 把条目对回这条命题；⛔ 对不上就不是「答错」
+            matched = [
+                h for h in hits
+                if h.doc_ids and set(h.doc_ids) & set(claim.doc_ids)
+            ]
+            reconciled += bool(matched)
+            states = {h.state for h in matched if h.state is not None}
+            if not states:
+                reported = "unknown"      # 没表态 = 没发现
+            elif "broken" in states:
+                reported = "broken"       # 任一条目说坏了，就是发现了
+            else:
+                reported = "holds"
+            run.observations.append(
+                Observation(claim.claim_id, {
+                    "truth": self._truth[claim.claim_id],
+                    "reported": reported,
+                    "grounds": sorted({d for h in matched for d in h.doc_ids}),
+                })
+            )
+
+        if reconciled == 0:
+            # ⛔ 一条都对不上账 → 不支持，不是 0 分。
+            # 不是它答错了，是评测器无从把条目对回被破坏的事实。
+            return SuiteRun(self.name, "unsupported",
+                            reason="search 未返回带 doc_ids 的条目，无从对账")
         return run

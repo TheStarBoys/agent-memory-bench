@@ -128,7 +128,9 @@ def score_reality(run: SuiteRun) -> Score:
 SCORERS: dict[str, Any] = {
     "retrieval": score_retrieval,
     "n2_provenance": score_provenance,
-    "n1_reality": score_reality,
+    # ⛔ 两种模式各判各的，永不合并成一个 N1 分数
+    "n1_prompted": score_reality,
+    "n1_spontaneous": score_reality,
 }
 
 

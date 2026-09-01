@@ -9,7 +9,8 @@ from amb.report.schema import Report
 HEADLINE = {
     "retrieval": "top1",
     "n2_provenance": "精确匹配率",
-    "n1_reality": "检出率",
+    "n1_prompted": "检出率",
+    "n1_spontaneous": "检出率",
 }
 
 

@@ -289,10 +289,10 @@ python -m amb.cli --json out/r.json  # 附带机读结果
 |---|---|
 | `core` `world` `adapters` `suites` `scoring` `report` `runner` `cli` | ✅ 已通 |
 | 五阶段端到端 · 哈希守卫 · 五条对照组 · 地板线与 Δ | ✅ 已通 |
-| N1 有提示 · N2 · 检索档 | ✅ 已通 |
+| **N1 两种模式**（有提示 / 无提示） · N2 · 检索档 | ✅ 已通 |
 | ⚠️ **`agent`（DSH 宿主）** | **未实现——最大的空缺** |
 | ⚠️ `suites/public`（公开题库接入） | 未实现 |
-| N1 无提示 · `answer()` 端到端 · N4 删除四步探针 | 🔜 机制缺口 |
+| `answer()` 端到端（backbone 配好了，没调过） · N4 删除四步探针 | 🔜 机制缺口 |
 
 ⛔ **`agent/` 一天不实现，「装进 agent 跑」就只是设计**——
 现在跑的全是[「直接调库」那一档](docs/adapters/README.md)。

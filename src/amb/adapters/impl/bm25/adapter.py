@@ -92,6 +92,9 @@ class BM25Adapter(AdapterBase):
             ((self._score(q, i), i) for i in range(len(self._chunks))),
             key=lambda p: -p[0],
         )
+        # ⭐ 无提示那一档的出口：没人问，也顺带说一句这条还成不成立。
+        # ⚠️ 代价是每次检索都要重读来源——N1 的成绩必须与成本并排读。
+        cache: dict[str, str] = {}
         out: list[Entry] = []
         for score, i in ranked[:k]:
             if score <= 0.0:
@@ -105,12 +108,31 @@ class BM25Adapter(AdapterBase):
                     doc_ids=[c.doc_id],
                     spans=[c.to_span()],   # ⭐ 切块边界即真实区间，N2 可判
                     principal=self._principals[i],
+                    state=(self._staleness(c.doc_id, cache)
+                           if self._reader is not None else None),
                 )
             )
         return out
 
     def count(self) -> int:
         return len(self._chunks)
+
+    def _staleness(self, ref: str, cache: dict[str, str]) -> str:
+        """这条来源相对摄入时变了没有。⚠️ 带 per-call 缓存，同一次调用不重读。"""
+        if ref in cache:
+            return cache[ref]
+        assert self._reader is not None
+        r = self._reader.file(ref) if "/" in ref else self._reader.fact(ref)
+        if not r.exists:
+            state = "broken"                                   # 消失
+        elif ref not in self._snapshot:
+            state = "unknown"                                  # ⛔ 没摄入过，不许猜
+        elif r.text != self._snapshot[ref]:
+            state = "broken"                                   # ⭐ 改值
+        else:
+            state = "holds"
+        cache[ref] = state
+        return state
 
     def audit(self, claims: list[Claim]) -> list[Verdict] | Failed:
         """把摄入时的副本与当前世界比对。
@@ -121,20 +143,18 @@ class BM25Adapter(AdapterBase):
         if self._reader is None:
             return Failed("setup() 未调用，拿不到世界句柄")
 
+        cache: dict[str, str] = {}
         out: list[Verdict] = []
         for c in claims:
             grounds: list[str] = []
             state = "holds"
             for ref in c.doc_ids:
-                r = self._reader.file(ref) if "/" in ref else self._reader.fact(ref)
-                grounds.append(r.ground)
-                if not r.exists:
-                    state = "broken"          # 消失
-                elif ref in self._snapshot and r.text != self._snapshot[ref]:
+                grounds.append(f"file:{ref}" if "/" in ref else f"fact:{ref}")
+                got = self._staleness(ref, cache)
+                if got == "broken":
                     state = "broken"          # ⭐ 改值——host_default 判不出这一类
-                elif ref not in self._snapshot:
-                    # 没摄入过这个来源，判不了；⛔ 不许猜成 holds
-                    state = "unknown"
+                elif got == "unknown" and state != "broken":
+                    state = "unknown"         # ⛔ 判不了就报 unknown，不许猜
             if not grounds:
                 # ⛔ 空 grounds 判 Failed，不是 unknown——「没说为什么」不是一种判定
                 out.append(Verdict(c.claim_id, "unknown", ["claim:no-source"],
