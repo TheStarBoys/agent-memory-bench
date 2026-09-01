@@ -28,7 +28,7 @@ def test_five_phases_complete(arm: str, tmp_path: Path) -> None:
                                    is_control=True)
     assert world_digest.startswith("sha256:")
     assert set(result.scores) == {
-        "retrieval", "n2_provenance", "n1_prompted", "n1_spontaneous",
+        "retrieval", "n2_provenance", "n1_prompted", "n1_spontaneous", "qa",
     }
     assert result.cost, "⚠️ 墙钟必须记账（原则⑥）"
 
@@ -196,3 +196,63 @@ def test_cannot_reconcile_is_unsupported_not_zero(tmp_path: Path) -> None:
     assert sp.status == "unsupported"
     assert "无从对账" in (sp.reason or "")
     assert sp.metrics == {}, "⛔ 不支持不产生任何指标，0 也是指标"
+
+
+# ── answer 档：用假 backbone，⛔ 测试不依赖网络 ──────────────────
+class _FakeLLM:
+    """按题面给定答案。⚠️ 只用于验判分逻辑，不验模型质量。"""
+
+    def __init__(self, reply: str) -> None:
+        self._reply = reply
+        from amb.adapters.llm import Meter
+
+        self.meter = Meter()
+
+    def complete(self, system: str, user: str) -> str:
+        self.meter.add({"prompt_tokens": 10, "completion_tokens": 3})
+        return self._reply
+
+
+def _arm_with_fake_llm(name: str, reply: str):
+    arm = build(name)
+    arm._llm = _FakeLLM(reply)   # noqa: SLF001 —— 测试替身
+    return arm
+
+
+def test_qa_is_unsupported_without_a_backbone(tmp_path: Path) -> None:
+    """⛔ 没配 backbone = 压根没这能力，不是这次没做成。"""
+    r, _ = run_one("bm25", build("bm25"), plan(), tmp_path / "b", is_control=True)
+    qa = r.scores["qa"]
+    assert qa.status == "unsupported"
+    assert qa.metrics == {}
+
+
+def test_abstention_is_not_counted_as_wrong(tmp_path: Path) -> None:
+    """⭐ 拒答不是加分项，也不该被记成答错——单列。"""
+    arm = _arm_with_fake_llm("bm25", "资料未提及")
+    r, _ = run_one("always_abstain", arm, plan(), tmp_path / "a", is_control=False)
+    m = r.scores["qa"].metrics
+    assert m["正确弃权率"] == 1.0, "该弃权的题它弃权了"
+    assert m["编造率"] == 0.0
+    assert m["该答却弃权"] == 1.0, "该答的题也弃权了——单列，⛔ 不混进准确率"
+    assert m["准确率"] == 0.0
+
+
+def test_fabrication_is_reported_alongside_accuracy(tmp_path: Path) -> None:
+    """⛔ 只报准确率的话，见题就编的系统会比诚实弃权的好看。"""
+    liar = _arm_with_fake_llm("bm25", "新皮层")   # 什么都答「新皮层」
+    r, _ = run_one("liar", liar, plan(), tmp_path / "l", is_control=False)
+    m = r.scores["qa"].metrics
+    assert m["准确率"] > 0.0, "蒙对了一部分"
+    assert m["编造率"] == 1.0, "⭐ 该弃权的题它编了——必须与准确率同屏"
+
+
+def test_answer_reports_token_usage(tmp_path: Path) -> None:
+    """原则⑥：token 只有适配器报得出来。"""
+    from amb.core import Usage
+
+    arm = _arm_with_fake_llm("bm25", "新皮层")
+    run_one("u", arm, plan(), tmp_path / "u", is_control=False)
+    usage = arm.usage()
+    assert isinstance(usage, list) and isinstance(usage[0], Usage)
+    assert usage[0].tokens_in > 0 and usage[0].llm_calls > 0

@@ -9,6 +9,7 @@ from amb.report.schema import Report
 HEADLINE = {
     "retrieval": "top1",
     "n2_provenance": "精确匹配率",
+    "qa": "准确率",
     "n1_prompted": "检出率",
     "n1_spontaneous": "检出率",
 }
@@ -27,8 +28,11 @@ def render(report: Report) -> str:
     for suite in suites:
         metric = HEADLINE.get(suite, "")
         floor = best_floor(report.arms, suite, metric)
+        # ⚠️ answer 档含生成器，署名必须写成「<系统> + <backbone>」
+        signed = (f"  ——署名 `<系统> + {report.backbone.get('model', '?')}`"
+                  if suite == "qa" else "")
         out += [
-            f"## {suite}  （主指标 {metric}）",
+            f"## {suite}  （主指标 {metric}）{signed}",
             "",
             f"地板线 **{floor.arm} = {floor.value:.3f}**" if floor
             else "⚠️ 无地板线——对照组在这一档全部不支持",

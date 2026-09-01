@@ -15,13 +15,14 @@
 from __future__ import annotations
 
 from amb.adapters.worldcheck import WorldReader
+from amb.adapters.answerable import Answerable
 from amb.core import (
     BASELINE, AdapterBase, Capability, Claim, Document, Entry, Failed, Verdict,
     WorldHandle,
 )
 
 
-class HostDefaultAdapter(AdapterBase):
+class HostDefaultAdapter(Answerable, AdapterBase):
     name = "host_default"
 
     def __init__(self) -> None:
@@ -31,7 +32,7 @@ class HostDefaultAdapter(AdapterBase):
     def capabilities(self) -> set[Capability]:
         # ⭐ 声明 REALITY：它没有记忆，所以每次都去重读世界。
         # baselines.md 预测这条线在 N1 上会反直觉地高——正确但昂贵。
-        return set(BASELINE) | {Capability.REALITY}
+        return set(BASELINE) | self._answer_caps() | {Capability.REALITY}
 
     def setup(self, world: WorldHandle) -> None:
         super().setup(world)

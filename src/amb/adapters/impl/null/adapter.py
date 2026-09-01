@@ -9,11 +9,15 @@
 
 from __future__ import annotations
 
-from amb.core import AdapterBase, Document, Entry
+from amb.adapters.answerable import Answerable
+from amb.core import BASELINE, AdapterBase, Capability, Document, Entry
 
 
-class NullAdapter(AdapterBase):
+class NullAdapter(Answerable, AdapterBase):
     name = "null"
+
+    def capabilities(self) -> set[Capability]:
+        return set(BASELINE) | self._answer_caps()
 
     def ingest(self, doc: Document) -> None:
         """⛔ 刻意丢弃。"""

@@ -12,6 +12,7 @@ from amb.suites.native.n1_reality import (
     SpontaneousRealitySuite,
 )
 from amb.suites.native.n2_provenance import ProvenanceSuite, SpanProbe
+from amb.suites.native.qa import QAItem, QASuite
 from amb.suites.native.retrieval import Query, RetrievalSuite
 from amb.world import Change, ChangeKind, FileSpec, WorldManifest
 
@@ -75,10 +76,23 @@ CLAIMS = [
 TRUTH = {"c1": "broken", "c2": "broken", "c3": "holds"}
 
 
+#: 端到端答题。⛔ 短事实题——判分要确定性，不能用评委。
+#: ⚠️ 答案都取自变更**之后**的世界，与 N1 的真值一致。
+QA_ITEMS = [
+    QAItem("a1", "哪个脑结构学得慢，靠反复暴露抽取规律？", ("新皮层",)),
+    QAItem("a2", "哪个脑结构一次暴露就能记住？", ("海马",)),
+    # ⭐ 该弃权的题：语料里**从来没提过**这件事。
+    # ⚠️ 刻意不用「被删掉的那份笔记」——那考的是记忆过时，是 N1 的活。
+    # 混进来会让「编造率」同时含两种成因，读不出是哪一种。
+    QAItem("a3", "海马体是哪一年被命名的？", (), unanswerable=True),
+]
+
+
 def suites() -> list:
     return [
         RetrievalSuite(QUERIES),
         ProvenanceSuite(SPAN_PROBES, CORPUS),
         PromptedRealitySuite(CLAIMS, TRUTH),
         SpontaneousRealitySuite(CLAIMS, TRUTH),
+        QASuite(QA_ITEMS),
     ]

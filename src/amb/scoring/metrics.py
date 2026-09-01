@@ -125,7 +125,59 @@ def score_reality(run: SuiteRun) -> Score:
     return _finish(s, run)
 
 
+#: 弃权的标准说法。⚠️ 与 adapters/answering.py 的提示对齐——
+#: 提示改了这里也要改，否则弃权会被判成答错。
+ABSTAIN = "资料未提及"
+
+
+def _normalize(text: str) -> str:
+    """⛔ 只做最保守的归一：去空白与常见标点。
+
+    做得再多就成了「我们的判分与别人不同」——
+    宁可漏判成错，也不要靠判分的宽松度刷分。
+    """
+    drop = " \t\n\r。，、；：！？「」『』（）《》.,;:!?\"'()"
+    return "".join(c for c in text.strip().lower() if c not in drop)
+
+
+def score_qa(run: SuiteRun) -> Score:
+    """⛔ 确定性：逐字比对，不用评委。
+
+    ⭐ 弃权单独一列：拒答不是加分项，也不该被记成答错——
+    一个说「资料未提及」的系统，比一个编造答案的系统更有用。
+    """
+    s = Score(run.suite, run.status, run.reason)
+    if run.status != "scored":
+        return s
+
+    correct = abstained_right = abstained_wrong = fabricated = 0
+    for obs in run.observations:
+        text = _normalize(obs.payload["text"])
+        said_abstain = _normalize(ABSTAIN) in text
+        if obs.payload["unanswerable"]:
+            # 该弃权的题
+            abstained_right += said_abstain
+            fabricated += not said_abstain      # ⛔ 编造
+        elif said_abstain:
+            abstained_wrong += 1                # 该答却弃权——不算错，单列
+        else:
+            correct += any(_normalize(g) in text for g in obs.payload["gold"])
+
+    answerable = sum(1 for o in run.observations if not o.payload["unanswerable"]) or 1
+    unanswerable = sum(1 for o in run.observations if o.payload["unanswerable"]) or 1
+    s.metrics = {
+        "准确率": correct / answerable,
+        "该答却弃权": abstained_wrong / answerable,
+        # ⭐ 这两个必须与准确率同屏：只报准确率的话，
+        #    一个见题就编的系统会比一个诚实弃权的系统好看。
+        "正确弃权率": abstained_right / unanswerable,
+        "编造率": fabricated / unanswerable,
+    }
+    return _finish(s, run)
+
+
 SCORERS: dict[str, Any] = {
+    "qa": score_qa,
     "retrieval": score_retrieval,
     "n2_provenance": score_provenance,
     # ⛔ 两种模式各判各的，永不合并成一个 N1 分数

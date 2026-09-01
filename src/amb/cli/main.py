@@ -15,7 +15,9 @@ from pathlib import Path
 
 from amb.core import load_dotenv
 from amb.report import Report, render
-from amb.runner import Plan, build, control_arms, now_rfc3339, run_one
+from amb.runner import (
+    Plan, backbone, build, control_arms, now_rfc3339, run_one,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -25,6 +27,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="逗号分隔；默认跑全部五条对照组")
     ap.add_argument("--budget", type=int, default=24000, help="full_context 的上下文预算")
     ap.add_argument("--json", type=Path, help="同时写一份 JSON")
+    ap.add_argument("--no-answer", action="store_true",
+                    help="不挂 backbone，只跑检索档（省钱、离线可跑）")
     args = ap.parse_args(argv)
 
     from worlds import toy  # 玩具世界；⚠️ 正式跑应由清单文件指定
@@ -32,11 +36,15 @@ def main(argv: list[str] | None = None) -> int:
     plan = Plan(manifest=toy.MANIFEST, documents=toy.DOCUMENTS,
                 changes=toy.CHANGES, suites=toy.suites())
 
+    # ⛔ 全局唯一的 backbone——所有臂必须同一个，否则 answer 档不可比
+    llm = None if args.no_answer else backbone()
+
     report = Report(
         run_id=f"toy-{now_rfc3339()}",
         at=now_rfc3339(),
         world={"name": toy.MANIFEST.name, "seed": toy.MANIFEST.seed, "digest": ""},
-        backbone={"model": "—（本次只跑检索档，未用生成器）"},
+        backbone={"model": llm.model if llm else "—（未跑 answer 档）",
+                  "temperature": llm.temperature if llm else None},
     )
 
     with tempfile.TemporaryDirectory(prefix="amb-world-") as tmp:
@@ -44,7 +52,7 @@ def main(argv: list[str] | None = None) -> int:
             root = Path(tmp) / name
             try:
                 result, world_digest = run_one(
-                    name, build(name, context_budget=args.budget), plan, root,
+                    name, build(name, context_budget=args.budget, llm=llm), plan, root,
                     is_control=name in control_arms(),
                 )
             except Exception as exc:  # noqa: BLE001

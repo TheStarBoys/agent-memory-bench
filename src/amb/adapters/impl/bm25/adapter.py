@@ -13,6 +13,7 @@ from collections import Counter
 
 from amb.adapters.chunking import Chunk, chunk
 from amb.adapters.worldcheck import WorldReader
+from amb.adapters.answerable import Answerable
 from amb.core import (
     BASELINE, AdapterBase, Capability, Claim, Document, Entry, Failed, Verdict,
     WorldHandle,
@@ -28,14 +29,14 @@ def tokenize(text: str) -> list[str]:
     return _TOKEN.findall(text.lower())
 
 
-class BM25Adapter(AdapterBase):
+class BM25Adapter(Answerable, AdapterBase):
     name = "bm25"
 
     def capabilities(self) -> set[Capability]:
         # ⭐ 切块边界就是真实的原文区间，不用猜——所以 N2 如实声明。
         # ⭐ 摄入时留了原文副本，所以既判得了「还在不在」也判得了「变没变」——
         #    这正是它比 host_default 强的地方。
-        return set(BASELINE) | {Capability.PROVENANCE, Capability.REALITY}
+        return set(BASELINE) | self._answer_caps() | {Capability.PROVENANCE, Capability.REALITY}
 
     def setup(self, world: WorldHandle) -> None:
         super().setup(world)

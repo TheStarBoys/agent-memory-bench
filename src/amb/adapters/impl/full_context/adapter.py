@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+from amb.adapters.answerable import Answerable
 from amb.core import BASELINE, AdapterBase, Capability, Document, Entry, Span
 
 
@@ -16,12 +17,12 @@ class ContextOverflow(RuntimeError):
     """语料超出预算——⛔ 该档记 N/A，不是 0 分。"""
 
 
-class FullContextAdapter(AdapterBase):
+class FullContextAdapter(Answerable, AdapterBase):
     name = "full_context"
 
     def capabilities(self) -> set[Capability]:
         # ⭐ 切块边界就是真实的原文区间，不用猜——所以 N2 如实声明。
-        return set(BASELINE) | {Capability.PROVENANCE}
+        return set(BASELINE) | self._answer_caps() | {Capability.PROVENANCE}
 
     def __init__(self, budget_chars: int) -> None:
         """budget_chars：上下文预算，按码点算。⚠️ 由 backbone 的窗口决定。"""
