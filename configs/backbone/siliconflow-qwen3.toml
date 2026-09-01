@@ -1,0 +1,26 @@
+# 默认 backbone。⛔ 跑 answer 档时所有系统必须用同一个，否则分数不可比。
+#
+# ⛔ 这里存的是**环境变量名**，不是 key 本身。key 从环境读，永不进仓库。
+#    本地用 .env（已 gitignore）或 shell 导出，见 configs/README.md
+#
+# ⚠️ 与 MemoryData 的对照配置同款（Qwen3-8B + Qwen3-Embedding-4B），
+#    这样两边的地板线可以互相印证。
+
+[llm]
+provider    = "openai"                      # OpenAI 兼容
+model       = "Qwen/Qwen3-8B"
+base_url    = "https://api.siliconflow.com/v1"
+api_key_env = "SILICONFLOW_API_KEY"
+temperature = 0.0                           # ⛔ 判分要可复现，不采样
+timeout_s   = 1200                          # 20min：长语料的抽取会很慢
+
+[embedding]
+model       = "Qwen/Qwen3-Embedding-4B"
+base_url    = "https://api.siliconflow.com/v1"
+api_key_env = "SILICONFLOW_API_KEY"
+timeout_s   = 120
+
+# ⚠️ 上下文预算，full_context 对照组用它判断是否 N/A。
+# 按码点算，留出提示与回答的余量。
+[context]
+budget_chars = 24000

@@ -11,3 +11,8 @@ build/
 # 运行产物：⛔ 不进版本库
 out/
 worlds/_materialized/
+
+# ⛔ 密钥永不进仓库
+.env
+.env.*
+!.env.example
