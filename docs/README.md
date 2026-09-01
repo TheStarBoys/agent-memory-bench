@@ -6,6 +6,7 @@
 | [`benchmarks.md`](benchmarks.md) | **别人的题**：15 个公开题库，怎么获取，什么题型 |
 | [`harnesses.md`](harnesses.md) | **现成框架**：有哪些，为什么一个都不 fork |
 | [`suites/README.md`](suites/README.md) | **我们的题**：四类，以及为什么只有四类 |
+| [`adapters/README.md`](adapters/README.md) | **接入协议**：为什么要新接口，六条原则 |
 
 ## 自研套件
 
@@ -22,3 +23,11 @@
 自己重写一份只会引入「我们的判分与别人不同」这个不可比性。
 
 自研题只补它们**结构上测不到**的那四类。
+
+## 接入协议
+
+| | |
+|---|---|
+| [`adapters/README.md`](adapters/README.md) | 为什么现成接口不够用；**六条原则**，其中②机制中立是防主场优势的唯一手段 |
+| [`adapters/protocol.md`](adapters/protocol.md) | 接口定义：三态返回、能力自述、五个阶段 |
+| [`adapters/world.md`](adapters/world.md) | 有状态的世界——N1 的地基 |
