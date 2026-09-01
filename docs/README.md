@@ -10,6 +10,10 @@
 | [`adapters/README.md`](adapters/README.md) | **接入协议**：为什么要新接口，六条原则 |
 | [`report.md`](report.md) | **报告格式**：三态怎么落到表上，利益关系怎么标 |
 
+**实现的架构不在 docs/**，在仓库根的 [`ARCHITECTURE.md`](../ARCHITECTURE.md)——
+模块划分、依赖法则，以及它们各自对着 MemoryData 上的哪个实测失效模式。
+依赖边由 `tests/test_architecture.py` 强制执行，不是文档。
+
 ## 自研套件
 
 | | 考什么 |

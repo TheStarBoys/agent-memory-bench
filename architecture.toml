@@ -1,0 +1,29 @@
+# 层依赖法则的唯一权威。⛔ 改这里之前先改 ARCHITECTURE.md。
+# tests/test_architecture.py 读这个文件并强制执行，不是文档，是断言。
+
+[layers]
+# 顺序即层级。下层不得知道上层的存在。
+order = ["core", "world", "adapters", "suites", "scoring", "report", "runner", "cli"]
+
+[deps]
+# 每层允许 import 的其他层。⛔ 没列出的一律禁止，包括同级兄弟。
+core     = []
+world    = ["core"]
+adapters = ["core"]
+suites   = ["core", "world"]
+scoring  = ["core"]
+report   = ["core", "scoring"]
+runner   = ["core", "world", "adapters", "suites", "scoring", "report"]
+cli      = ["core", "runner", "report"]
+
+[workload]
+# world/workload 的外部后端：⛔ 钉版本、进程外调用，源码不进本仓库。
+dsh_repo = "deepseek-ai/deepseek-harness"
+dsh_pin  = ""            # 待定稿时钉死 commit
+dsh_mode = "out-of-process-cli"
+
+[adapters]
+# 适配器只准薄。⛔ 上游代码不进本仓库（原则④）。
+max_python_files = 10
+max_total_lines  = 1000
+forbidden_files  = ["pyproject.toml", "setup.py", "setup.cfg", "requirements.txt"]

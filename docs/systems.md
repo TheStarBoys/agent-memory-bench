@@ -40,6 +40,24 @@
 | [MemoryLLM](https://github.com/wangyu-ustc/MemoryLLM) | 322 | MIT | 2025-07-28 | **参数化记忆**，把记忆塞进权重而非外部库 |
 | [MemoChat](https://github.com/LuJunru/MemoChat) | 30 | MIT | 2024-04-18 | 早期对话记忆分片检索 |
 
+## Agent 宿主生态（新增，核实 2026-09-01）
+
+[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（★207k · MIT）
+生态里的记忆实现。它们与上面两类的差别是**长在 agent 运行时里**，
+看得到工具调用与会话上下文，而不是被当作库调用。
+
+| 系统 | ★ | 许可 | 最后推送 | 解决什么 |
+|---|---:|---|---|---|
+| [Autonomous-Long-Term-Memory-System](https://github.com/cuiyuestar/Autonomous-Long-Term-Memory-System) | 92 | Apache-2.0 | 08-31 | DSH 的自主长期记忆系统 |
+| [dsh-memory](https://github.com/FuRongJun-1999/dsh-memory) | 89 | MIT | 08-31 | **白箱 AGI 架构探索**：元认知 · 知识飞轮 · 语义时空图 · **零 LLM 白箱管线** |
+| Engram | — | — | — | ⚠️ **未核实**。DSH 以 MCP 方式接入（`engram mcp`，存储与项目选择由它自己拥有） |
+| Memorix | — | — | — | ⚠️ **未核实**。同上，走 MCP |
+
+⚠️ **DSH 生态里没有通往上面两类系统的插件**——逐个搜过 16 个系统，零命中；
+DSH 也没有 `packages/memory`，记忆一律走 MCP。
+所以它对本项目的价值是**两条**：这里的新被测对象，以及
+[作为负载后端](../ARCHITECTURE.md)产生真实 agent 轨迹。⛔ **它不是接入层。**
+
 ## ⚠️ 已停更（超过 8 个月无推送）
 
 判据：最后推送早于 **2026-01-01**（核实基准日 2026-09-01 往前 8 个月）。
