@@ -27,7 +27,7 @@
 
 ```
 core      协议与类型，零依赖
- ├── world      世界：清单 · 物化 · 哈希 · 时钟 · 事实表 · 事件流 · 负载后端
+ ├── world      世界：清单 · 物化 · 哈希 · 时钟 · 事实表 · 事件流
  └── adapters   接入：注册表 · 能力自述 · impl/ 每系统一个薄包
       ├── suites    出题：native/ N1–N8 · public/ 调上游
       └── scoring   判分：确定性，⛔ 无评委
@@ -72,29 +72,41 @@ core      协议与类型，零依赖
 | `test_adapter_stays_thin` | 文件数 / 行数上限 + 拒收上游构建文件，挡 vendoring |
 | `test_scoring_is_free_of_judges` | `scoring/` 里出现 LLM 依赖即红，守住[约束①](docs/suites/README.md) |
 
-## DeepSeek Harness 放在哪
+## ⛔ 为什么没有「agent 宿主」这一层
 
-[DSH](https://github.com/deepseek-ai/deepseek-harness)（★207k，MIT，TypeScript）
-是 **`world/workload/` 下的一个可选负载后端**，用来产生真实的
-工具调用 / 文件编辑 / 会话轨迹——这正是 N1 的世界与 N4 的 principal 想要的东西。
+一度想把 [DSH](https://github.com/deepseek-ai/deepseek-harness) 放进 `world/` 当负载后端。
+**那是错的**，因为它把三样东西混成了一样：
 
-⛔ **它不是 adapters 层，也不做 submodule。** 三条理由：
+| | 是什么 | 谁拥有 |
+|---|---|---|
+| **世界** | 外部现实：文件树 · 时钟 · 事实表 | harness 拥有，被测系统**只读** |
+| **语料** | 被 `ingest()` 进去的文档 | 由世界的生成过程派生 |
+| **agent 宿主** | 一个**会动手**的东西 | —— |
 
-1. ⚠️ **核实于 2026-09-01：DSH 生态里没有通往被测系统的插件。**
-   14k★ 的 `awesome-dsh-plugin` 精选列表里记忆类只有 2 条，
-   逐个搜我们的 16 个系统**零命中**；DSH 也没有 `packages/memory`，
-   它的记忆是走 MCP 接的（`apps/cli/config/examples/mcp-memory/`：engram · memorix · mcp-reference-memory）。
-   **所以拿它当接入层，22 个适配器一个都省不掉。**
-2. 我们需要的是 DSH **跑起来**，不是它的源码。钉版本 + 进程外调用
-   比 submodule 更符合[原则④](docs/adapters/README.md#p4)，
-   也不用把一个 pnpm monorepo 拖进仓库。
-3. ⛔ **适配器协议不得跑在 DSH 的插件模型里。**
-   那等于把机制中立的裁判权交给上游，DSH 的形状会变成我们的形状——
-   而那正是我们不 fork 现成 harness 的理由。
+**一个在世界里动手的东西，不可能是世界的一部分。**
+DSH 是 agent，它写文件、跑工具；而世界是
+[只读挂载 + 每个阶段边界校验哈希](docs/adapters/world.md#归属与只读)的。
+把它放进去，要么被只读挂载挡住，要么把哈希校验搞崩、判本次跑作废。
 
-⭐ 顺带一个净收获：DSH 生态里那些**自研的**记忆插件
-（`Autonomous-Long-Term-Memory-System` ★92 Apache-2.0 · `dsh-memory` · engram · memorix）
-本身就是 agent memory 系统，属于**被测对象**，见 [`docs/systems.md`](docs/systems.md)。
+而且录下来的轨迹**没有 ground truth**——N1 要知道哪条命题已失效，
+N5 要需求概率，N8 要种下的规律与例外，真实轨迹一样都没有。
+所以它服务不了那四类。
+
+⭐ **它真正的位置文档里早就写了**：拟合经验需求概率曲线需要真实语料
+（[world.md](docs/adapters/world.md#need-probability)：真实的 agent 会话日志 / 工单流 / 提交历史）。
+DSH 是产生这种语料的一个办法。
+
+**结论：DSH 不是模块，是数据来源。**
+离线跑（[`tools/`](tools/README.md)），产出到 [`corpora/`](corpora/README.md)，
+⛔ 不进运行时依赖图。
+
+⚠️ 核实于 2026-09-01：DSH 生态里**没有**通往被测系统的插件——
+14k★ 精选列表记忆类仅 2 条，逐个搜我们的 16 个系统零命中，
+DSH 也没有 `packages/memory`（记忆走 MCP）。**它省不掉任何一个适配器。**
+
+⭐ 净收获：DSH 生态里那些**自研的**记忆实现
+（`Autonomous-Long-Term-Memory-System` ★92 · `dsh-memory` ★89 · Engram · Memorix）
+本身是 agent memory 系统，属于**被测对象**，已进 [`docs/systems.md`](docs/systems.md)。
 
 ## 仓库布局
 
@@ -105,7 +117,9 @@ docs/                设计（先于实现，且是实现的依据）
 src/amb/             实现，八层
 tests/               含架构守卫
 worlds/              世界清单（数据）
+corpora/             真实语料（数据）——只用于拟合需求概率曲线与真实性对照
 configs/             运行配置，按维度组合
+tools/               离线工具，⛔ 不被 src/amb 依赖
 out/                 运行产物，gitignore
 ```
 
