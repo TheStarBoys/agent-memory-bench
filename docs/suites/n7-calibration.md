@@ -77,7 +77,7 @@ BEAM 有专门的 Abstention 能力。但**它们全都是二元的**：
 [「人的记忆不是标准答案」](../cognition.md)在判分上的一次具体落地：
 像人不是加分项。
 
-## 评测器 需要能做什么
+## 评测器需要能做什么
 
 - 拿到每个回答的 `confidence`（`Answer.confidence` / `Entry.confidence`）
 - 世界能标记事件显著性，且**显著性与频率、间隔正交**

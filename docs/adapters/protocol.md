@@ -53,23 +53,23 @@ class Capability(StrEnum):
     PROVENANCE = "provenance"  # N2
     REASONING  = "reasoning"   # N3
     GOVERNANCE = "governance"  # N4
-    RETENTION  = "retention"   # N5 自述档（观察档不需要声明）
+    RETENTION  = "retention"   # N5 系统自报（外部观察不需要声明）
     CONFIDENCE = "confidence"  # N7
-    INDUCTION  = "induction"   # N8 推导链档（三探针不需要声明）
+    INDUCTION  = "induction"   # N8 推导链一档（三个问题不需要声明）
     ACCOUNTING = "accounting"  # 成本计量（原则⑥）
 ```
 
 ⚠️ **三个套件不在这张表里，因为它们不需要声明任何能力**：
-[N5 观察档](../suites/n5-consolidation.md)与
+[N5 外部观察](../suites/n5-consolidation.md)与
 [N6 关联结构](../suites/n6-structure.md)只用 `search`，
-[N8 三探针](../suites/n8-induction.md)只用 `answer`。
+[N8 三个问题](../suites/n8-induction.md)只用 `answer`。
 **能从外部观察到的东西，不要求系统配合**——这是[原则②](README.md#p2)的直接后果，
-也让这三档能全员参赛。
+也让这三种能全员参赛。
 
-`capabilities()` 返回的集合决定 评测器 跑哪些套件。**未声明的不跑，记不支持。**
+`capabilities()` 返回的集合决定评测器跑哪些套件。**未声明的不跑，记不支持。**
 
-⚠️ **声明有代价，不声明也有代价。** 报告并列给出**分数**与**参与面**
-（声明了几项 / 实际参与了几题），少声明会在参与面上直接可见。
+⚠️ **声明有代价，不声明也有代价。** 报告并列给出**分数**与**声明与参与**
+（声明了几项 / 实际参与了几题），少声明会在声明与参与上直接可见。
 没有这一列的话，「不支持不计 0 分」就变成了鼓励少声明——见
 [原则①](README.md#p1) 与 [`../report.md`](../report.md)。
 
@@ -82,7 +82,7 @@ class Capability(StrEnum):
 @dataclass(frozen=True)
 class WorldHandle:
     root: str          # 只读文件树的绝对路径
-    clock_url: str     # GET → {"now": "<RFC3339>"}，评测器 可随时拨动
+    clock_url: str     # GET → {"now": "<RFC3339>"}，评测器可随时拨动
     facts_url: str     # GET {facts_url}/{key} → {"key":…, "value":…} | 404
 ```
 
@@ -97,7 +97,7 @@ class WorldHandle:
 ```python
 @dataclass
 class Document:
-    """摄入单元。doc_id 与字符偏移由 评测器 分配并永久稳定——N2 靠它对账。"""
+    """摄入单元。doc_id 与字符偏移由评测器分配并永久稳定——N2 靠它对账。"""
     doc_id: str
     text: str                      # 已做 NFC 规范化
     timestamp: str | None          # RFC3339
@@ -114,7 +114,7 @@ class Span:
 ```
 
 ⛔ **偏移单位是 Unicode 码点，不是字节，也不是 token。**
-中文语料下字节口径会让所有区间偏三倍。评测器 在 `ingest` 之前把每份
+中文语料下字节口径会让所有区间偏三倍。评测器在 `ingest` 之前把每份
 `Document.text` 做 NFC 规范化，此后偏移永久固定。
 
 ```python
@@ -127,7 +127,7 @@ class Entry:
     doc_ids: list[str]             # 源自哪些 Document。给不出就空列表（见下）
     spans: list[Span]              # N2 精确区间；不支持就空列表
     principal: str | None          # N4
-    state: Literal["holds", "broken", "unknown"] | None   # N1 自发档；不表态就 None
+    state: Literal["holds", "broken", "unknown"] | None   # N1 无提示；不表态就 None
     confidence: float | None       # N7：这条记忆正确的概率 [0,1]。⛔ 不是 score
     supersedes: list[str]          # 这条归并/取代了哪些旧 Entry.id
 ```
@@ -139,13 +139,13 @@ class Entry:
 
 ⚠️ `doc_ids` 比 `spans` 弱得多——只说「来自哪份文档」，不说哪一段。
 多数系统给得出（它们通常记了来源会话）。但**给不出就意味着
-[N1 自发档](../suites/n1-reality.md#两档)无法对账**，该系统在自发档记不支持：
-评测器 无从知道被标 `broken` 的那条对应哪个被破坏的事实。
+[N1 无提示](../suites/n1-reality.md#两种)无法对账**，该系统在无提示的情况下记不支持：
+评测器无从知道被标 `broken` 的那条对应哪个被破坏的事实。
 
 ```python
 @dataclass
 class Claim:
-    """N1：评测器 出的一条待检命题。
+    """N1：评测器出的一条待检命题。
     ⛔ 不问系统内部存了什么，只问这句话对当前世界还成不成立。"""
     claim_id: str
     text: str
@@ -164,7 +164,7 @@ class Verdict:
 ⛔ **`grounds` 不得为空，`unknown` 尤其不得为空**——它要列出「没能核到的是哪些东西」。
 空 `grounds` 判为 `Failed`，不是 `unknown`。
 
-这样「说清为什么」才是可确定性判分的：评测器 只检查 `grounds` 非空、
+这样「说清为什么」才是可确定性判分的：评测器只检查 `grounds` 非空、
 且每一项都解析得到（路径存在于世界清单 / 键存在于事实表 / id 存在于该系统），
 **从不读 `note` 里的散文**。散文没法确定性判分，所以它不参与判分。
 
@@ -199,7 +199,7 @@ class Answer:
     text: str
     derivation: list[Step]         # N3；不支持就空列表
     used: list[str]                # 用到的 Entry.id
-    missing: list[str]             # 未决时缺哪些前提，引用 评测器 的 claim_id
+    missing: list[str]             # 未决时缺哪些前提，引用评测器的 claim_id
     confidence: float | None       # N7：这个回答正确的概率 [0,1]
 ```
 
@@ -214,8 +214,8 @@ class Answer:
 ```python
 @dataclass
 class RecallVerdict:
-    """N5 自述档：一条命题现在还留着吗、多强。
-    ⛔ 与 Verdict 一样由 评测器 出命题——不问系统内部存了什么。"""
+    """N5 系统自报：一条命题现在还留着吗、多强。
+    ⛔ 与 Verdict 一样由评测器出命题——不问系统内部存了什么。"""
     claim_id: str
     state: Literal["retained", "dropped", "unknown"]
     strength: float | None         # 保留强度 [0,1]，给不出就 None
@@ -230,7 +230,7 @@ class DefeasibleRule(StrEnum):
 
 @dataclass
 class Regularity:
-    """N8 推导链档（可选）：系统归纳到的一条规律。"""
+    """N8 推导链一档（可选）：系统归纳到的一条规律。"""
     claim: str                     # 规范化三元组，同 Step.claim
     kind: DefeasibleRule
     strength: float | None         # 系统认为这条规律的成立率
@@ -255,7 +255,7 @@ class AuditEvent:
 
 @dataclass
 class Usage:
-    """原则⑥。⚠️ 墙钟 评测器 自己能测，token 只有适配器报得出来。"""
+    """原则⑥。⚠️ 墙钟评测器自己能测，token 只有适配器报得出来。"""
     phase: Literal["ingest", "probe"]
     tokens_in: int
     tokens_out: int
@@ -308,27 +308,29 @@ class Adapter(Protocol):
                principal: str | None = None) -> Answer | Unsupported | Failed: ...
 
     # ── N1 REALITY ────────────────────────────────────────────
-    # 评测器 改完世界之后调用，并**把命题交给系统**——不问它内部存了什么。
-    # 自发档不调这个方法，只看 search() 顺带返回的 Entry.state。
+    # 评测器改完世界之后调用，并**把命题交给系统**——不问它内部存了什么。
+    # 无提示不调这个方法，只看 search() 顺带返回的 Entry.state。
     def audit(self, claims: list[Claim]) -> list[Verdict] | Unsupported | Failed: ...
 
     # ── N4 GOVERNANCE ─────────────────────────────────────────
     def delete(self, entry_ids: list[str]) -> DeleteResult | Unsupported | Failed: ...
     def audit_log(self) -> list[AuditEvent] | Unsupported | Failed: ...
-    # 供 评测器 做带外只读取证，区分「过滤」与「真删」（原则④的唯一例外）
+    # 供评测器做带外只读取证，区分「过滤」与「真删」（原则④的唯一例外）
     def storage_locations(self) -> list[str] | Unsupported: ...
 
-    # ── N5 RETENTION（自述档；观察档只用 search，无需此方法）──
+    # ── N5 RETENTION（系统自报；外部观察只用 search，无需此方法）──
     def recall(self, claims: list[Claim]) -> list[RecallVerdict] | Unsupported | Failed: ...
 
-    # ── N8 INDUCTION（推导链档；三探针只用 answer）─────────────
+    # ── N8 INDUCTION（推导链一档；三个问题只用 answer）─────────────
     def regularities(self) -> list[Regularity] | Unsupported | Failed: ...
 
     # ── ACCOUNTING（原则⑥）────────────────────────────────────
     def usage(self) -> list[Usage] | Unsupported: ...
 ```
 
-### 为什么 `audit()` 由 评测器 出命题
+<a id="why-evaluator-issues-claims"></a>
+
+### 为什么 `audit()` 由评测器出命题
 
 一个看起来更自然的设计是让 `audit()` 不带参数，由系统返回
 「我的哪些记忆不再成立」。⛔ **那个设计是错的**，因为它预设了
@@ -337,20 +339,20 @@ MemoryLLM（参数化记忆）、raptor（递归摘要树）根本没有这种�
 **这就是[原则②](README.md#p2)要挡的形状偏心**：接口挑实现，
 而落选的理由是形状不合，不是能力不够。
 
-评测器 出命题之后，系统只需回答「这句话现在还成不成立」，
+评测器出命题之后，系统只需回答「这句话现在还成不成立」，
 内部怎么存不影响它能不能参赛。
 
-**「主动发现」这一维没有丢，它由[两档](world.md#两档)承载**：
-触发档给命题，自发档什么都不给、只看 `search()` 顺带返回的 `Entry.state`。
+**「主动发现」这一维没有丢，它由[两种](world.md#两种)承载**：
+有提示给命题，无提示什么都不给、只看 `search()` 顺带返回的 `Entry.state`。
 
 ## 阶段
 
-评测器 固定按这个顺序驱动，**适配器不得跨阶段留后门**：
+评测器固定按这个顺序驱动，**适配器不得跨阶段留后门**：
 
 ```
 setup     建世界 → reset() → setup(world)
 ingest    逐条 ingest(doc) → finalize()
-mutate    ⚠️ 只有 评测器 动世界。适配器不参与，也不被通知
+mutate    ⚠️ 只有评测器动世界。适配器不参与，也不被通知
 probe     search / answer / audit / audit_log / storage_locations
 score     确定性判分
 ```
@@ -367,18 +369,18 @@ score     确定性判分
 | 套件 | 必需能力 | 判分读什么 |
 |---|---|---|
 | 公开基准 | `INGEST` `SEARCH`（+ `ANSWER` 跑端到端档） | 交给上游评测框架 的判分代码 |
-| N1 触发档 | `REALITY` | `Verdict.state` 三态 + `grounds` 可解析性 |
-| N1 自发档 | `REALITY` + `Entry.doc_ids` 非空 | `Entry.state` 对 ground truth 的 3×2 混淆矩阵 |
+| N1 有提示 | `REALITY` | `Verdict.state` 三态 + `grounds` 可解析性 |
+| N1 无提示 | `REALITY` + `Entry.doc_ids` 非空 | `Entry.state` 对 ground truth 的 3×2 混淆矩阵 |
 | N2 原文回链 | `PROVENANCE` | `Entry.spans` 对 ground-truth 区间 |
 | N3 推理链 | `REASONING` | `Answer.derivation` 逐步校验 + `missing` |
 | N4 治理 | `GOVERNANCE` | 跨 principal 的 `search`、`delete`、`audit_log`、带外取证 |
-| N5 观察档 | **无** | 多个时间点的 `search` 结果对需求概率 |
-| N5 自述档 | `RETENTION` | `RecallVerdict.state` + `strength` |
+| N5 外部观察 | **无** | 多个时间点的 `search` 结果对需求概率 |
+| N5 系统自报 | `RETENTION` | `RecallVerdict.state` + `strength` |
 | N6 关联结构 | **无** | 可达性与精确检索两条曲线（都来自 `search`） |
 | N7 校准 | `CONFIDENCE` | `Answer.confidence` / `Entry.confidence` 的 ECE · Brier · 可靠性图 |
-| N8 三探针 | **无**（需 `ANSWER`） | 泛化 / 例外 / 规律存活三问的行为 |
-| N8 推导链档 | `INDUCTION` | `Regularity` 的 `kind` 与 `strength` |
-| 成本与延迟 | `ACCOUNTING` | `Usage` 逐阶段（墙钟 评测器 另行独立测一份） |
+| N8 三个问题 | **无**（需 `ANSWER`） | 泛化 / 例外 / 规律存活三问的行为 |
+| N8 推导链一档 | `INDUCTION` | `Regularity` 的 `kind` 与 `strength` |
+| 成本与延迟 | `ACCOUNTING` | `Usage` 逐阶段（墙钟评测器另行独立测一份） |
 
 ## 两个钩子分开报，不许合并
 

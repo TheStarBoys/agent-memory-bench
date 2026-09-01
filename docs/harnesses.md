@@ -8,7 +8,7 @@
 |---|---:|---|---|---|
 | [MemoryData](https://github.com/OpenDataBox/MemoryData) | 143 | ❌ **无** | 2026-07-05 | 22 个方法 × 4 个基准族（MemoryAgentBench · LoCoMo · LongBench · MemBench） |
 | [memorybench](https://github.com/supermemoryai/memorybench) | 312 | MIT | 2026-08-24 | 对话记忆 + RAG 多数据集 |
-| [awesome-agent-memory](https://github.com/OpenDataBox/awesome-agent-memory) | 56 | ❌无 | 2026-07-22 | 清单，不是 评测器 |
+| [awesome-agent-memory](https://github.com/OpenDataBox/awesome-agent-memory) | 56 | ❌无 | 2026-07-22 | 清单，不是评测器 |
 
 ## MemoryData：可以用，不能 fork
 
