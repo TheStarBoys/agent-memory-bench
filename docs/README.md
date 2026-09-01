@@ -8,6 +8,7 @@
 | [`harnesses.md`](harnesses.md) | **现成框架**：有哪些，为什么一个都不 fork，上游判分坏了怎么办 |
 | [`suites/README.md`](suites/README.md) | **我们的题**：四类，以及为什么只有四类 |
 | [`adapters/README.md`](adapters/README.md) | **接入协议**：为什么要新接口，六条原则 |
+| [`baselines.md`](baselines.md) | **对照组**：不装记忆系统是多少分——⛔ 没有它，所有分数都读不出意义 |
 | [`report.md`](report.md) | **报告格式**：三态怎么落到表上，利益关系怎么标 |
 
 **实现的架构不在 docs/**，在仓库根的 [`ARCHITECTURE.md`](../ARCHITECTURE.md)——

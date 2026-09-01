@@ -183,6 +183,14 @@ ask(question) -> str            retrieve_entries(question)   memory_count()
 
 细节见 [ARCHITECTURE.md](../../ARCHITECTURE.md)。
 
+## 对照组也是适配器
+
+[五条对照组](../baselines.md)（无记忆 · 裸宿主 · 朴素 RAG · BM25 · 全上下文）
+实现的是**同一个协议**，住在同一个 `impl/` 目录里。
+
+⛔ **对照组不得走另一条代码路径。** 一旦它用了单独的实现，
+「差别只来自记忆层」这个前提就没了，Δ 也就不可信了。
+
 ## 接一个新系统要做什么
 
 1. 声明能力（原则①）——**少声明会在声明与参与上可见**
