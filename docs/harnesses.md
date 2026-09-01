@@ -40,6 +40,28 @@ ask(question) -> str            retrieve_entries(question)   memory_count()
 - `benchmark/longbench/loader.py` 反过来 import `benchmark.memoryagentbench.hf_datasets`。
   MemoryAgentBench 不是并列的基准之一，是别人都依赖的地基——加平级的新基准要先绕开这层耦合。
 
+## 上游判分坏了怎么办
+
+纪律说「公开题库一律用它们的判分代码」，而上面刚指出 MemoryData 的 `judge` 字段
+不是 LLM 评委、公开表的 J 分复现不出来。**这两句话摆在一起就是个矛盾**，
+必须有明文裁决，否则每接一个题库都要重吵一遍。
+
+裁决：**可比性优先，但不假装上游是对的。**
+
+| 情形 | 做法 |
+|---|---|
+| 上游判分可用 | 直接调，**钉死 commit** |
+| 上游判分有已知缺陷 | **照旧调**，同时在报告的 `upstream_notes` 里逐条写明缺陷与影响 |
+| 缺陷严重到结果无意义 | 以 **patch 形式**随报告发布改动，并**同时报修改前后两个数** |
+| 上游根本跑不起来 | 该题库记「未接入」，⛔ 不自己重写一份顶替 |
+
+⛔ **绝不静默修改上游判分。** 悄悄修好了，我们的数就和所有引用上游成绩的论文
+对不上，而读者不知道差在哪——那正是「同一把尺子」要避免的事。
+把缺陷写在报告里，读者自己决定信哪个。
+
+已知的第一条 `upstream_notes`：MemoryData 的 `judge` 字段不是 LLM 评委
+（`utils/eval_other_utils.py:1068`），比 f1 还严，其 J 分不可与公开表对照。
+
 ## 本项目的定位
 
 ```

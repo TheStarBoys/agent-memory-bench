@@ -3,8 +3,12 @@
 > 核实 **2026-09-01**。这里只写**别人的题**；我们自己出的题在
 > [`suites/README.md`](suites/README.md)。
 >
+> **日期约定**：不带年份的（`08-31`）一律指 **2026 年**；跨年的写全（`2025-01-15`）。
+>
 > 纪律：公开题库覆盖到的能力，**一律调用它们、用它们的判分代码**，不自己重写一份。
 > 重写只会引入「我们的判分与别人不同」这个不可比性。
+> 上游判分本身有缺陷时怎么办，见
+> [`harnesses.md`](harnesses.md#上游判分坏了怎么办)——**照旧调，但在报告里写明**。
 
 ## 怎么获取
 
@@ -24,9 +28,9 @@
 | [LongMemEval](https://github.com/xiaowu0162/LongMemEval) | 1.0k | MIT | 05-11 | 500 题 | 抽取 · 多会话推理 · 时间 · **知识更新** · **弃权**。V2 面向 agent 轨迹 |
 | [MemoryAgentBench](https://github.com/HUST-AI-HYZ/MemoryAgentBench) | 444 | MIT | 08-20 | 2071 题 / 103K–1.44M token | 四能力，见下 |
 | [InfiniteBench](https://github.com/OpenBMB/InfiniteBench) | 391 | MIT | 2024-09-25 | 平均 100K+ token | 12 个超长上下文任务 |
-| [memorybench](https://github.com/supermemoryai/memorybench) | 312 | MIT | 08-24 | 多数据集 | 对话记忆 + RAG 混合 |
-| [HaluMem](https://github.com/MemTensor/HaluMem) | 159 | NOASSERTION | 08-28 | — | **记忆幻觉**：抽取 / 更新 / 问答三处各自的幻觉率 |
-| [BEAM](https://github.com/mohammadtavakoli78/BEAM) | 135 | MIT | 08-31 | 100 对话 / 2000 题 / **128K–10M token** | **十项能力**，见下。**唯一同时报 token 消耗与延迟** |
+| [memorybench](https://github.com/supermemoryai/memorybench) ⚑ | 312 | MIT | 08-24 | 多数据集 | 对话记忆 + RAG 混合。**⚑ 由 supermemory 维护，而 supermemory 是被测系统**——见下 |
+| [HaluMem](https://github.com/MemTensor/HaluMem) | 159 | NOASSERTION | 08-28 | ~15k 记忆点 / 3.5k 题 | **记忆幻觉**：抽取 / 更新 / 问答三处各自的幻觉率。六种题型，见下。arXiv 2511.03506 |
+| [BEAM](https://github.com/mohammadtavakoli78/BEAM) | 135 | MIT | 08-31 | 100 对话 / 2000 题 / **128K–10M token** | **十项能力**，见下。ICLR 2026，arXiv 2510.27246 |
 | [LifelongAgentBench](https://github.com/caixd-220529/LifelongAgentBench) | 98 | ❌无 | 2025-05-30 | — | 终身学习：跨任务技能累积 |
 | [stream-bench](https://github.com/stream-bench/stream-bench) | 85 | Apache-2.0 | 2024-10-28 | — | 流式持续学习，从反馈中改进 |
 | [MemBench](https://github.com/import-myself/Membench) | 59 | ❌无 | 2025-11-27 | — | 简单 / 高级 / **知识更新** / **噪声** / 多会话推荐 |
@@ -65,9 +69,65 @@
 ### BEAM —— 十项能力
 
 抽取 · 多跳 · 知识更新 · 时间 · **弃权** · **矛盾消解** · 事件排序 · 指令遵循 ·
-偏好遵循 · 摘要。**同时报 token 消耗与延迟**，是唯一把成本当一等指标的。
+偏好遵循 · 摘要。其中后三项（指令遵循 · 事件排序 · 矛盾消解）是它新提的，
+其余七项取自更早的基准。
+
+⚠️ **BEAM 只报准确率，不报成本与延迟**（核对论文全文 arXiv 2510.27246 与项目页，
+核实 2026-09-01）。论文里出现的 "cost" 全部是作者自己生成数据集时的开销
+（用 LLaMA-3.3 70B 出题以省钱），不是被测系统的成本指标。
+
+⛔ **没有任何公开题库把成本当一等指标。**
+[原则⑥](adapters/README.md#p6)因此是本项目独有的要求，没有现成的可照抄。
+
+⚠️ **BEAM 的判分是 LLM 评委**：把参考答案拆成原子 nugget，
+再由 LLM judge 逐条判系统回答是否覆盖。这正是
+[⑤ 确定性判分](adapters/README.md#p5)警告的那类判分——
+接入时照用它的判分代码（纪律如此），但**它的分数带评委漂移，
+不可与自研套件的确定性分数并列比较**。
+
+⚠️ **弃权是二元的**（"withholds answers when evidence is missing"），
+不含置信度分级，也没有 ECE / Brier 之类的校准指标。
 
 ⚠️ 10M token 档的摄入成本对任何走 LLM 抽取的系统都不可接受，分档接入。
+
+⚠️ 论文的配套方法 **LIGHT** 是认知驱动的（情节记忆 + 工作记忆 + scratchpad）——
+见 [`cognition.md`](cognition.md)。**方法有认知学依据，而它用来验证的题库测不了那些依据**，
+这个错位本身是个信号。
+
+### HaluMem —— 六种题型
+
+按论文附录 A.2 的原文定义：
+
+| 题型 | 考什么 |
+|---|---|
+| Basic Fact Recall | 对话里明确出现过的单个事实或偏好 |
+| Multi-hop Inference | 需要综合多个片段，靠逻辑或时间推理才能得出 |
+| Dynamic Update | 追踪信息随时间的变化，识别最新状态 |
+| **Memory Boundary** | **问输入里没提过的细节，看系统会不会编** |
+| Generalization & Application | 基于已知偏好，在新场景下给出合理建议 |
+| Memory Conflict | 题面故意含与已知记忆矛盾的错误前提，看能否纠正 |
+
+⚠️ **`Memory Boundary` 比预想的更接近「虚构」这一维**——
+它已经在测「没说过的东西你会不会编」。这直接影响自研套件的取舍，
+见 [`cognition.md`](cognition.md#gaps)。
+
+⚠️ HaluMem **不测置信度校准**，判分是二元对错。
+
+## ⚑ 利益关系
+
+**`memorybench` 由 [supermemory](systems.md) 维护，而 supermemory 是被测系统之一。**
+
+这不是排除它的理由——它确实是一个覆盖面不错的题库，纪律说该用就用。
+但「用别人的判分代码」这条纪律在这里会让**一个被测方出的题**进入公开档，
+而这正是[原则②](adapters/README.md#p2)
+要防的主场优势。
+
+做法：**照用，但标注。** supermemory 在 memorybench 上的成绩在报告里标
+`⚑ 利益关系`，读者自己判断。同一条规则适用于「适配器由被测方自己提交」
+和「被测系统是本项目作者的」——细则见 [`report.md`](report.md#利益关系必须标注)。
+
+标注不是指控。一个不标注利益关系的评测框架，和一个伸手进自己人内部的评测框架，
+失去公信力的方式是同一种。
 
 ## ❌ 无 LICENSE 的
 

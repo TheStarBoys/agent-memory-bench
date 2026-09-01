@@ -2,8 +2,11 @@
 
 > 核实 **2026-09-01**，stars 与推送日期取自 GitHub API 当日快照。数字会变，本文允许整节重写。
 >
+> **日期约定**：不带年份的（`08-31`）一律指 **2026 年**；跨年的写全（`2025-12-12`）。
+> `—` 表示**本次未核实**，不表示"没有"。
+>
 > 「解决什么」写的是**它把哪件事当主要问题**，不是功能罗列。接入状态见
-> [`../adapters/README.md`](../adapters/README.md)。
+> [`adapters/README.md`](adapters/README.md)。
 
 ## 通用记忆层
 
@@ -23,7 +26,7 @@
 | [langmem](https://github.com/langchain-ai/langmem) | 1.6k | MIT | 08-11 | **按更新语义分类**：语义→替换（Profiles 幂等折叠）· 情节→追加（Collections 只增不减）· 程序→人工审核 |
 | [MemoryOS](https://github.com/BAI-LAB/MemoryOS) | 1.6k | Apache-2.0 | 07-07 | **分页调度**，短期/中期/长期三级，仿 OS 换页 |
 | [A-mem](https://github.com/agiresearch/A-mem) | 1.2k | MIT | 2025-12-12 | **Zettelkasten 式自组织**，记忆间自动生成链接并演化 |
-| [MemoryScope](https://github.com/modelscope/MemoryScope) | — | Apache-2.0 | — | 阿里系，长期记忆 + 反思巩固 |
+| [MemoryScope](https://github.com/modelscope/MemoryScope) ⚠️未核实 | — | Apache-2.0 | — | 阿里系，长期记忆 + 反思巩固。**stars 与推送日期本次未取到，接入前须补核** |
 
 ## 检索 / 压缩类（对照基线）
 
@@ -39,6 +42,18 @@
 
 ## ⚠️ 已停更（超过 8 个月无推送）
 
-`A-mem` · `raptor` · `self-rag` · `MemoRAG` · `MemoChat`
+判据：最后推送早于 **2026-01-01**（核实基准日 2026-09-01 往前 8 个月）。
+
+| 系统 | 最后推送 | 距今 |
+|---|---|---:|
+| `MemoChat` | 2024-04-18 | ~28 个月 |
+| `self-rag` | 2024-05-25 | ~27 个月 |
+| `raptor` | 2024-09-03 | ~24 个月 |
+| **`MemoryLLM`** | 2025-07-28 | ~13 个月 |
+| `MemoRAG` | 2025-09-11 | ~12 个月 |
+| `A-mem` | 2025-12-12 | ~9 个月 |
 
 按**冻结的参照实现**对待：可以接、可以跑，别期待上游修 bug。接入时钉死版本号。
+
+⚠️ `MemoryLLM` 是照判据补上的——它满足 8 个月阈值却不在原先的清单里。
+清单改成表格就是为了让判据和结果并排，下次核实时对不上一眼看得见。
