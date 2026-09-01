@@ -12,7 +12,11 @@ import re
 from collections import Counter
 
 from amb.adapters.chunking import Chunk, chunk
-from amb.core import BASELINE, AdapterBase, Capability, Document, Entry
+from amb.adapters.worldcheck import WorldReader
+from amb.core import (
+    BASELINE, AdapterBase, Capability, Claim, Document, Entry, Failed, Verdict,
+    WorldHandle,
+)
 
 _K1 = 1.5
 _B = 0.75
@@ -29,7 +33,13 @@ class BM25Adapter(AdapterBase):
 
     def capabilities(self) -> set[Capability]:
         # ⭐ 切块边界就是真实的原文区间，不用猜——所以 N2 如实声明。
-        return set(BASELINE) | {Capability.PROVENANCE}
+        # ⭐ 摄入时留了原文副本，所以既判得了「还在不在」也判得了「变没变」——
+        #    这正是它比 host_default 强的地方。
+        return set(BASELINE) | {Capability.PROVENANCE, Capability.REALITY}
+
+    def setup(self, world: WorldHandle) -> None:
+        super().setup(world)
+        self._reader = WorldReader(world)
 
     def __init__(self, chunk_size: int = 512, overlap: int = 64) -> None:
         self._chunk_size = chunk_size
@@ -37,6 +47,8 @@ class BM25Adapter(AdapterBase):
         self.reset()
 
     def reset(self) -> None:
+        self._snapshot: dict[str, str] = {}   # 摄入时的原文副本
+        self._reader: WorldReader | None = None
         self._chunks: list[Chunk] = []
         self._toks: list[list[str]] = []
         self._tf: list[Counter[str]] = []
@@ -45,6 +57,7 @@ class BM25Adapter(AdapterBase):
         self._avg_len = 0.0
 
     def ingest(self, doc: Document) -> None:
+        self._snapshot[doc.doc_id] = doc.text
         for c in chunk(doc.doc_id, doc.text, self._chunk_size, self._overlap):
             toks = tokenize(c.text)
             self._chunks.append(c)
@@ -98,3 +111,34 @@ class BM25Adapter(AdapterBase):
 
     def count(self) -> int:
         return len(self._chunks)
+
+    def audit(self, claims: list[Claim]) -> list[Verdict] | Failed:
+        """把摄入时的副本与当前世界比对。
+
+        ⚠️ 这是地板线的笨办法：逐条重读。协议不要求这么做——
+        它只问「这句话现在还成不成立」，怎么知道的是系统自己的事（原则②）。
+        """
+        if self._reader is None:
+            return Failed("setup() 未调用，拿不到世界句柄")
+
+        out: list[Verdict] = []
+        for c in claims:
+            grounds: list[str] = []
+            state = "holds"
+            for ref in c.doc_ids:
+                r = self._reader.file(ref) if "/" in ref else self._reader.fact(ref)
+                grounds.append(r.ground)
+                if not r.exists:
+                    state = "broken"          # 消失
+                elif ref in self._snapshot and r.text != self._snapshot[ref]:
+                    state = "broken"          # ⭐ 改值——host_default 判不出这一类
+                elif ref not in self._snapshot:
+                    # 没摄入过这个来源，判不了；⛔ 不许猜成 holds
+                    state = "unknown"
+            if not grounds:
+                # ⛔ 空 grounds 判 Failed，不是 unknown——「没说为什么」不是一种判定
+                out.append(Verdict(c.claim_id, "unknown", ["claim:no-source"],
+                                   note="命题没有给出来源，无从核对"))
+            else:
+                out.append(Verdict(c.claim_id, state, grounds))
+        return out

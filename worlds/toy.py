@@ -50,10 +50,16 @@ SPAN_PROBES = [
 ]
 
 #: mutate 阶段的变更。⛔ 必须含一条「无关变更」当反方向。
+#:
+#: ⚠️ 配置文件与事实表代表同一个值，所以必须一起改——
+#: 只改一边会让世界自相矛盾，命题就没有确定的真值了。
+#: （第一次跑就是这么错的：只改了事实表，而命题引的是文件。）
 CHANGES = [
-    Change(ChangeKind.VANISH, "notes/cat.md"),                       # 猫那条不再成立
-    Change(ChangeKind.REVALUE, "retention_days", "7"),               # 事实表改值
-    Change(ChangeKind.IRRELEVANT, "notes/unrelated.md", "无关内容"),  # ⛔ 反方向
+    Change(ChangeKind.VANISH, "notes/cat.md"),                        # 消失
+    Change(ChangeKind.REVALUE, "retention_days", "7"),                # 改值：事实表
+    Change(ChangeKind.REVALUE, "config/retention.txt",
+           "retention_days=7"),                                       # 改值：文件，同上
+    Change(ChangeKind.IRRELEVANT, "notes/unrelated.md", "无关内容"),   # ⛔ 反方向
 ]
 
 CLAIMS = [

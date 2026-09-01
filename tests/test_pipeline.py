@@ -33,9 +33,16 @@ def test_five_phases_complete(arm: str, tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("arm", OFFLINE)
 def test_unsupported_is_not_zero(arm: str, tmp_path: Path) -> None:
-    """⛔ 没声明的能力记不支持，不计分母，不记 0。"""
-    result, _ = run_one(arm, build(arm), plan(), tmp_path / arm, is_control=True)
+    """⛔ 没声明的能力记不支持：不计分母，不记 0，不产生任何指标。"""
+    from amb.core import Capability
+
+    adapter = build(arm)
+    declares_reality = Capability.REALITY in adapter.capabilities()
+    result, _ = run_one(arm, adapter, plan(), tmp_path / arm, is_control=True)
     n1 = result.scores["n1_reality"]
+    if declares_reality:
+        assert n1.status == "scored"
+        return
     assert n1.status == "unsupported"
     assert n1.metrics == {}, "不支持不该产生任何指标——⛔ 0 也是指标"
     assert n1.denominator == 0, "⛔ 不支持不进分母"
@@ -113,3 +120,25 @@ def test_report_shows_unsupported_as_dash_not_zero(tmp_path: Path) -> None:
     n1_row = next(li for li in text.splitlines()
                   if li.startswith("| null") and "unsupported" in li)
     assert "0.000" not in n1_row, "⛔ 不支持在表里是 —，不是 0"
+
+
+def test_memory_is_required_to_detect_modification(tmp_path: Path) -> None:
+    """⭐ 没有记忆，就检测不了记忆的腐化。
+
+    重读世界告诉你「现在是什么」，不告诉你「你记的东西过期了没有」。
+    host_default 判得出「消失」，判不出「改值」——它诚实地报 unknown，
+    ⛔ 而不是猜成 holds。这条固化实测发现，防止有人「优化」掉那份诚实。
+    """
+    with_memory, _ = run_one("bm25", build("bm25"), plan(), tmp_path / "b",
+                             is_control=True)
+    without, _ = run_one("host_default", build("host_default"), plan(),
+                         tmp_path / "h", is_control=True)
+
+    m = with_memory.scores["n1_reality"].metrics
+    n = without.scores["n1_reality"].metrics
+
+    assert m["检出率"] > n["检出率"], "有快照的应当检得更全"
+    assert n["broken→unknown"] > 0, "无记忆的应当在改值上弃权"
+    assert n["broken→holds"] == 0, "⛔ 判不了就报 unknown，不许猜成 holds"
+    # 两边都不许误报——把什么都标 broken 就能刷检出率
+    assert m["误报率"] == 0.0 and n["误报率"] == 0.0

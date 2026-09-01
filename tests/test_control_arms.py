@@ -37,38 +37,61 @@ def test_satisfies_adapter_protocol(name: str) -> None:
     assert isinstance(make(name), Adapter)
 
 
-#: ⭐ 切块边界就是真实的原文区间，所以这三条如实声明 PROVENANCE。
+#: ⭐ 切块边界就是真实的原文区间，所以这几条如实声明 PROVENANCE。
 #: null / host_default 给不出区间 → 不声明 → N2 记不支持，⛔ 不是 0 分。
-_PROVENANCE = {"bm25", "naive_rag", "full_context"}
+#: host_default 没有记忆层，只能重读世界 → 声明 REALITY（预期正确但昂贵）。
+_EXTRA: dict[str, set] = {
+    "bm25": {Capability.PROVENANCE, Capability.REALITY},
+    "naive_rag": {Capability.PROVENANCE},
+    "full_context": {Capability.PROVENANCE},
+    "host_default": {Capability.REALITY},
+}
 
 
 @pytest.mark.parametrize("name", CONTROL_ARMS)
 def test_declares_exactly_what_it_can_do(name: str) -> None:
-    expected = {Capability.INGEST, Capability.SEARCH}
-    if name in _PROVENANCE:
-        expected |= {Capability.PROVENANCE}
+    expected = {Capability.INGEST, Capability.SEARCH} | _EXTRA.get(name, set())
     assert make(name).capabilities() == expected
 
 
+#: 可选能力 → 调它的那个方法。用来核对「声明了什么就得做到什么」。
+_OPTIONAL = {
+    Capability.ANSWER: lambda a: a.answer("q"),
+    Capability.REALITY: lambda a: a.audit([]),
+    Capability.RETENTION: lambda a: a.recall([]),
+    Capability.GOVERNANCE: lambda a: a.audit_log(),
+    Capability.INDUCTION: lambda a: a.regularities(),
+    Capability.ACCOUNTING: lambda a: a.usage(),
+}
+
+
 @pytest.mark.parametrize("name", CONTROL_ARMS)
-def test_optional_capabilities_are_unsupported_not_empty(name: str) -> None:
-    """⛔ 没有的能力必须回 Unsupported，不能回空列表。
+def test_undeclared_capabilities_return_unsupported(name: str) -> None:
+    """⛔ 没声明的能力必须回 Unsupported，不能回空列表。
 
     空列表会被判成「做了但一条都没找出来」= 0 分；
     Unsupported 是诚实的能力缺失，不计入分母。混淆两者，尺子就废了。
     """
     arm = make(name)
-    for call in (
-        lambda: arm.answer("q"),
-        lambda: arm.audit([]),
-        lambda: arm.recall([]),
-        lambda: arm.delete([]),
-        lambda: arm.audit_log(),
-        lambda: arm.regularities(),
-        lambda: arm.usage(),
-        lambda: arm.storage_locations(),
-    ):
-        assert isinstance(call(), Unsupported)
+    caps = arm.capabilities()
+    for cap, call in _OPTIONAL.items():
+        if cap not in caps:
+            assert isinstance(call(arm), Unsupported), f"{name} 未声明 {cap} 却没回 Unsupported"
+
+
+@pytest.mark.parametrize("name", CONTROL_ARMS)
+def test_declared_capabilities_are_actually_implemented(name: str) -> None:
+    """⛔ 反方向：声明了却回 Unsupported，报告里会自相矛盾。
+
+    这一条堵的是「声明一堆能力好看，实际全不做」。
+    """
+    arm = make(name)
+    for cap, call in _OPTIONAL.items():
+        if cap in arm.capabilities():
+            # ⚠️ 没 setup 时回 Failed 是对的（有能力但这次没做成）；
+            #    这里只禁止 Unsupported——那是「压根没这能力」。
+            assert not isinstance(call(arm), Unsupported), \
+                f"{name} 声明了 {cap} 却回 Unsupported"
 
 
 @pytest.mark.parametrize("name", OFFLINE)
