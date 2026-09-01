@@ -203,6 +203,28 @@ tools/               离线工具，⛔ 不被 src/amb 依赖
 out/                 运行产物，gitignore
 ```
 
+## 端到端已经通了
+
+```sh
+python -m amb.cli                    # 五条对照组，跑完出报告
+python -m amb.cli --arms bm25        # 只跑一条
+python -m amb.cli --json out/r.json  # 附带机读结果
+```
+
+⚠️ 目前跑的是 `worlds/toy.py`——**它不是够格的题库**，题量太小，
+统计上说明不了任何事。它存在的唯一目的是让五阶段先通起来，
+好尽早发现协议哪里不好用。
+
+⭐ 第一次跑就抓到三个设计问题，都已修：
+
+| 跑出来才发现的 | 修法 |
+|---|---|
+| `scoring` import 了 `suites` —— 判分反过来依赖出题 | `Observation`/`SuiteRun` 移进 `core`，它们是两边的共享词汇 |
+| `cli` import 了 `adapters` —— 入口认识了具体系统 | 构造挪进 `runner/build.py`，cli 只传名字 |
+| `null` 在 N2 上得 **0 分**而不是不支持 | N2 要求 `PROVENANCE`；⭐ 而 bm25/naive_rag 切块边界就是真区间，如实声明 |
+
+第三条正是这个项目要防的那个错，**被自己的流水线抓了个正着**。
+
 ## 改架构的流程
 
 1. 先改 [`docs/`](docs/)——设计是依据，不是事后补的说明

@@ -12,7 +12,7 @@ import re
 from collections import Counter
 
 from amb.adapters.chunking import Chunk, chunk
-from amb.core import AdapterBase, Document, Entry
+from amb.core import BASELINE, AdapterBase, Capability, Document, Entry
 
 _K1 = 1.5
 _B = 0.75
@@ -26,6 +26,10 @@ def tokenize(text: str) -> list[str]:
 
 class BM25Adapter(AdapterBase):
     name = "bm25"
+
+    def capabilities(self) -> set[Capability]:
+        # ⭐ 切块边界就是真实的原文区间，不用猜——所以 N2 如实声明。
+        return set(BASELINE) | {Capability.PROVENANCE}
 
     def __init__(self, chunk_size: int = 512, overlap: int = 64) -> None:
         self._chunk_size = chunk_size

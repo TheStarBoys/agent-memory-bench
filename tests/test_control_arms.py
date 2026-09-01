@@ -37,10 +37,17 @@ def test_satisfies_adapter_protocol(name: str) -> None:
     assert isinstance(make(name), Adapter)
 
 
+#: ⭐ 切块边界就是真实的原文区间，所以这三条如实声明 PROVENANCE。
+#: null / host_default 给不出区间 → 不声明 → N2 记不支持，⛔ 不是 0 分。
+_PROVENANCE = {"bm25", "naive_rag", "full_context"}
+
+
 @pytest.mark.parametrize("name", CONTROL_ARMS)
-def test_declares_only_baseline(name: str) -> None:
-    # 对照组不声明任何可选能力——它们是地板线，不是参赛选手。
-    assert make(name).capabilities() == {Capability.INGEST, Capability.SEARCH}
+def test_declares_exactly_what_it_can_do(name: str) -> None:
+    expected = {Capability.INGEST, Capability.SEARCH}
+    if name in _PROVENANCE:
+        expected |= {Capability.PROVENANCE}
+    assert make(name).capabilities() == expected
 
 
 @pytest.mark.parametrize("name", CONTROL_ARMS)

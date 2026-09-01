@@ -10,11 +10,15 @@ from __future__ import annotations
 
 from amb.adapters.chunking import Chunk, chunk
 from amb.adapters.embedding import EmbeddingClient, EmbeddingConfig, cosine
-from amb.core import AdapterBase, Document, Entry
+from amb.core import BASELINE, AdapterBase, Capability, Document, Entry
 
 
 class NaiveRagAdapter(AdapterBase):
     name = "naive_rag"
+
+    def capabilities(self) -> set[Capability]:
+        # ⭐ 切块边界就是真实的原文区间，不用猜——所以 N2 如实声明。
+        return set(BASELINE) | {Capability.PROVENANCE}
 
     def __init__(
         self,

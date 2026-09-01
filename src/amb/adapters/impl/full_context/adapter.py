@@ -9,7 +9,7 @@
 
 from __future__ import annotations
 
-from amb.core import AdapterBase, Document, Entry, Span
+from amb.core import BASELINE, AdapterBase, Capability, Document, Entry, Span
 
 
 class ContextOverflow(RuntimeError):
@@ -18,6 +18,10 @@ class ContextOverflow(RuntimeError):
 
 class FullContextAdapter(AdapterBase):
     name = "full_context"
+
+    def capabilities(self) -> set[Capability]:
+        # ⭐ 切块边界就是真实的原文区间，不用猜——所以 N2 如实声明。
+        return set(BASELINE) | {Capability.PROVENANCE}
 
     def __init__(self, budget_chars: int) -> None:
         """budget_chars：上下文预算，按码点算。⚠️ 由 backbone 的窗口决定。"""

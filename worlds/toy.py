@@ -1,0 +1,74 @@
+"""玩具世界：给流水线用的最小可跑清单。
+
+⚠️ 它**不是**一个够格的题库——题量太小，统计上说明不了任何事。
+它存在的唯一目的是让五阶段先通起来，好尽早发现协议哪里不好用。
+"""
+
+from __future__ import annotations
+
+from amb.core import Claim, Document
+from amb.suites.native.n1_reality import RealitySuite
+from amb.suites.native.n2_provenance import ProvenanceSuite, SpanProbe
+from amb.suites.native.retrieval import Query, RetrievalSuite
+from amb.world import Change, ChangeKind, FileSpec, WorldManifest
+
+CLOCK_START = "2026-01-01T00:00:00Z"
+
+_FILES = {
+    "notes/hippocampus.md": "海马体负责情节记忆的快速编码，一次暴露就能记住具体事件。",
+    "notes/neocortex.md": "新皮层学得慢，靠反复暴露抽取跨情节的统计规律。",
+    "notes/cat.md": "橘猫喜欢在窗台上晒太阳，一睡就是一下午。",
+    "config/retention.txt": "retention_days=30",
+}
+
+MANIFEST = WorldManifest(
+    name="toy",
+    seed=42,
+    clock_start=CLOCK_START,
+    files=tuple(FileSpec(p, t) for p, t in _FILES.items()),
+    facts={"retention_days": "30", "region": "cn-north"},
+)
+
+DOCUMENTS = [
+    Document(doc_id=path, text=text, timestamp=CLOCK_START, principal="alice",
+             kind="document")
+    for path, text in _FILES.items()
+]
+
+CORPUS = dict(_FILES)
+
+QUERIES = [
+    Query("q1", "哪个结构学得慢？", frozenset({"notes/neocortex.md"})),
+    Query("q2", "什么动物喜欢晒太阳？", frozenset({"notes/cat.md"})),
+    Query("q3", "一次就能记住靠什么？", frozenset({"notes/hippocampus.md"})),
+    Query("q4", "保留多少天？", frozenset({"config/retention.txt"})),
+]
+
+SPAN_PROBES = [
+    SpanProbe("s1", "新皮层", "notes/neocortex.md", 0, len(_FILES["notes/neocortex.md"])),
+    SpanProbe("s2", "橘猫", "notes/cat.md", 0, len(_FILES["notes/cat.md"])),
+]
+
+#: mutate 阶段的变更。⛔ 必须含一条「无关变更」当反方向。
+CHANGES = [
+    Change(ChangeKind.VANISH, "notes/cat.md"),                       # 猫那条不再成立
+    Change(ChangeKind.REVALUE, "retention_days", "7"),               # 事实表改值
+    Change(ChangeKind.IRRELEVANT, "notes/unrelated.md", "无关内容"),  # ⛔ 反方向
+]
+
+CLAIMS = [
+    Claim("c1", "橘猫的笔记存在", ["notes/cat.md"]),
+    Claim("c2", "保留天数是 30", ["config/retention.txt"]),
+    Claim("c3", "新皮层学得慢", ["notes/neocortex.md"]),
+]
+
+#: 变更之后每条命题的真值。⚠️ c3 仍成立——它是「无关变更」那一侧的对照。
+TRUTH = {"c1": "broken", "c2": "broken", "c3": "holds"}
+
+
+def suites() -> list:
+    return [
+        RetrievalSuite(QUERIES),
+        ProvenanceSuite(SPAN_PROBES, CORPUS),
+        RealitySuite(CLAIMS, TRUTH),
+    ]
