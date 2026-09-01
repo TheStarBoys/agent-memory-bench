@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import json
 import math
-import os
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+
+from amb.core import load_dotenv, require
 
 
 class EmbeddingError(RuntimeError):
@@ -26,13 +27,11 @@ class EmbeddingConfig:
     timeout_s: float = 120.0
 
     def api_key(self) -> str:
-        key = os.environ.get(self.api_key_env, "").strip()
-        if not key:
-            raise EmbeddingError(
-                f"环境变量 {self.api_key_env} 未设置。"
-                f"⛔ key 不进仓库——用 .env 或 shell 导出，见 configs/README.md"
-            )
-        return key
+        load_dotenv()  # 幂等；已存在的环境变量不覆盖
+        try:
+            return require(self.api_key_env)
+        except KeyError as exc:
+            raise EmbeddingError(str(exc)) from None
 
 
 class EmbeddingClient:
