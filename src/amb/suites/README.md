@@ -5,4 +5,4 @@
 ⛔ **这一层不判分。** 判分在 [`scoring/`](../scoring/)。
 出题与判分同处一个模块，是「改题面顺手改判分」的温床。
 
-[`native/`](native/) N1–N8 · [`public/`](public/) 调上游 harness
+[`native/`](native/) N1–N8 · [`public/`](public/) 调上游评测框架

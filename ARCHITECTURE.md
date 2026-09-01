@@ -6,7 +6,7 @@
 
 ## 从 MemoryData 学到的
 
-[MemoryData](docs/harnesses.md) 是覆盖面最广的现成 harness，我们**调用它但不 fork**。
+[MemoryData](docs/harnesses.md) 是覆盖面最广的现成评测框架，我们**调用它但不 fork**。
 下面每一条都在本地 clone 上实测过，它们直接决定了本项目的模块边界——
 **这套架构主要是照着这些失效模式反着设计的。**
 
@@ -27,21 +27,22 @@
 
 ```
 core      协议与类型，零依赖
- ├── world      世界：清单 · 物化 · 哈希 · 时钟 · 事实表 · 事件流
- └── adapters   接入：注册表 · 能力自述 · impl/ 每系统一个薄包
+ ├── world      世界：清单 · 物化 · 时钟 · 事实表 · 事件流
+ │    └── agent     DSH 宿主：钉死 seam · 把世界挂到 ctx.fs · 驱动会话
+ └── adapters   被测系统 = DSH 记忆插件（双面，见下）
       ├── suites    出题：native/ N1–N8 · public/ 调上游
       └── scoring   判分：确定性，⛔ 无评委
            └── report    报告：schema · 序列化 · 渲染
-                └── runner    编排五阶段 · 世界哈希校验 · 成本记账
+                └── runner    编排五阶段 · 装配插件 · 成本记账
                      └── cli       入口，薄
 ```
 
 | 层 | 只干一件事 | 允许依赖 |
 |---|---|---|
 | `core` | 定义协议里的类型与契约 | ⛔ **无** |
-| `world` | 造一个 harness 拥有、系统只读、可复现的世界 | `core` |
+| `world` | 造一个 评测器 拥有、系统只读、可复现的世界 | `core` |
 | `adapters` | 把被测系统包装成 `Adapter` 协议 | `core` |
-| `suites` | 决定在哪个阶段问什么，产出观测记录 | `core` `world` |
+| `suites` | 决定在哪个阶段问什么，产出观测记录 | `core` `world` `agent` |
 | `scoring` | 观测 + ground truth → 指标 | `core` |
 | `report` | 指标 → 报告结构与渲染 | `core` `scoring` |
 | `runner` | 驱动五阶段 | 以上全部 |
@@ -49,9 +50,9 @@ core      协议与类型，零依赖
 
 ### 三条边值得单独解释
 
-**`adapters` 不依赖 `world`。** 适配器**收到**的是 `core` 里的 `WorldHandle`
-（路径 + 两个只读端点），它不需要知道世界怎么造出来的。
-这条边一旦连上，被测系统就离「能写世界」只差一步。
+**`adapters` 不依赖 `world`，也不依赖 `agent`。** 插件契约在 `core`，
+装配由 `runner` 做。⛔ 适配器一旦能 import `agent`，
+它就能改宿主配置——而宿主是受控变量，改了分数就不可比。
 
 **`suites` 不依赖 `adapters`。** 出题只面向 `core.Adapter` 协议，
 永远不认识任何具体系统。⛔ **一旦某个套件 import 了某家的适配器，
@@ -72,41 +73,76 @@ core      协议与类型，零依赖
 | `test_adapter_stays_thin` | 文件数 / 行数上限 + 拒收上游构建文件，挡 vendoring |
 | `test_scoring_is_free_of_judges` | `scoring/` 里出现 LLM 依赖即红，守住[约束①](docs/suites/README.md) |
 
-## ⛔ 为什么没有「agent 宿主」这一层
+## agent 层：DSH 是被测对象的宿主
 
-一度想把 [DSH](https://github.com/deepseek-ai/deepseek-harness) 放进 `world/` 当负载后端。
-**那是错的**，因为它把三样东西混成了一样：
+**不装进 agent，我们测的就只是记忆库**——喂文档、检索、答题。那不是 agent memory。
 
-| | 是什么 | 谁拥有 |
+装进去之后 **agent 成为受控变量**：同一个循环、同一套工具、同一个 backbone，
+只换记忆插件。⭐ 这才是「统一宿主内比较」。
+
+[DSH](https://github.com/deepseek-ai/deepseek-harness)（★207k · MIT）适合当这个宿主，
+因为它是 Cordis 插件树——按其架构文档的原话：
+
+> Every part of the product is a plugin, including the model adapter, the tool registry,
+> the session log, and the agent loop itself, so each is replaceable from configuration.
+> **There is no privileged core to patch.**
+
+于是「钉死什么」和「替换什么」都能从配置做到：
+
+| | seam | 为什么 |
 |---|---|---|
-| **世界** | 外部现实：文件树 · 时钟 · 事实表 | harness 拥有，被测系统**只读** |
-| **语料** | 被 `ingest()` 进去的文档 | 由世界的生成过程派生 |
-| **agent 宿主** | 一个**会动手**的东西 | —— |
+| **钉死** | `ctx.llm` | ⛔ 所有系统同一 backbone——我们本来就要求，DSH 让它可执行 |
+| | `ctx.agentLoop` `ctx.tools` `ctx.systemPrompt` | 循环、工具、提示装配不能是变量 |
+| **我们提供** | ⭐ `ctx.fs` | 世界经由这个 seam 交付 |
+| | `ctx.tokenMeter` `ctx.sessionTelemetry` | [原则⑥](docs/adapters/README.md#p6)——**没有任何公开题库做这件事，DSH 自带** |
+| **可复现** | `llm-replay` 包 | 重放，服务确定性 |
+| **观测** | `agent/*` 事件 · `session/event` 日志 | 每一步都看得到，**不需要被测系统配合** |
 
-**一个在世界里动手的东西，不可能是世界的一部分。**
-DSH 是 agent，它写文件、跑工具；而世界是
-[只读挂载 + 每个阶段边界校验哈希](docs/adapters/world.md#归属与只读)的。
-把它放进去，要么被只读挂载挡住，要么把哈希校验搞崩、判本次跑作废。
+⚠️ DSH 有第一方 Python SDK（`dsh --profile sdk`），跨语言成本可控。
 
-而且录下来的轨迹**没有 ground truth**——N1 要知道哪条命题已失效，
-N5 要需求概率，N8 要种下的规律与例外，真实轨迹一样都没有。
-所以它服务不了那四类。
+### 适配器是双面的
 
-⭐ **它真正的位置文档里早就写了**：拟合经验需求概率曲线需要真实语料
-（[world.md](docs/adapters/world.md#need-probability)：真实的 agent 会话日志 / 工单流 / 提交历史）。
-DSH 是产生这种语料的一个办法。
+被测系统接进来的形态是**一个 DSH 记忆插件**，但它同时对评测器暴露我们的协议：
 
-**结论：DSH 不是模块，是数据来源。**
-离线跑（[`tools/`](tools/README.md)），产出到 [`corpora/`](corpora/README.md)，
-⛔ 不进运行时依赖图。
+| 面向 | 形态 |
+|---|---|
+| **DSH** | 贡献 `ctx.systemPrompt`（注入检索到的记忆）· 订阅 `session/event`（摄入）· 可选接管 `ctx.compaction` |
+| **评测器** | [协议](docs/adapters/protocol.md)：`Span` `principal` `confidence` `Verdict` … |
 
-⚠️ 核实于 2026-09-01：DSH 生态里**没有**通往被测系统的插件——
-14k★ 精选列表记忆类仅 2 条，逐个搜我们的 16 个系统零命中，
-DSH 也没有 `packages/memory`（记忆走 MCP）。**它省不掉任何一个适配器。**
+⭐ **DSH 当宿主并不约束我们的协议**——DSH 不需要知道 span 是什么。
+[机制中立](docs/adapters/README.md#p2)因此不受影响：宿主固定的是**agent**，
+不是记忆系统的内部形状。
+
+### 两种运行模式
+
+| 模式 | 用于 | 为什么需要 |
+|---|---|---|
+| **独立档** | 公开题库 | LoCoMo 这些是**对话日志，不是 agent 会话**，直接走协议 |
+| **在体档** | 自研八类 | 测真实的 agent memory，世界与主体都是真的 |
+
+⛔ 两档分开报。独立档的数与在体档的数不可互比。
+
+### ⭐ `ctx.fs` 可替换，世界的归属反而更强
+
+早先我以为「agent 会写文件」和「世界只读挂载 + 哈希校验」冲突，
+因此把 DSH 排除在运行时之外。**那是错的**：`ctx.fs` 是个 seam，
+世界不必放在 DSH 外面——**我们实现 `ctx.fs`，agent 的每次写都经过我们**。
+
+于是能做到原来做不到的事：**区分「评测器改的」与「agent 改的」**。
+[N1](docs/suites/n1-reality.md) 因此更准确，世界变化可归因，
+而不是只能整体哈希对比。
+
+### ⛔ 宿主是受控变量
+
+- 宿主**钉死版本**，源码不进本仓库（[原则④](docs/adapters/README.md#p4)）
+- ⛔ 换 DSH 版本等于换尺子，**要重跑全部基线**；版本号进[报告](docs/report.md)
+- ⚠️ 核实 2026-09-01：DSH 生态里**没有**现成的被测系统插件
+  （逐个搜 16 个系统零命中，记忆走 MCP）。**插件要我们自己写**——
+  但那本来就是适配器的工作量，不是额外的。
 
 ⭐ 净收获：DSH 生态里那些**自研的**记忆实现
 （`Autonomous-Long-Term-Memory-System` ★92 · `dsh-memory` ★89 · Engram · Memorix）
-本身是 agent memory 系统，属于**被测对象**，已进 [`docs/systems.md`](docs/systems.md)。
+本身是被测对象，已进 [`docs/systems.md`](docs/systems.md)。
 
 ## 仓库布局
 

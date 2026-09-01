@@ -8,7 +8,7 @@
 |---|---:|---|---|---|
 | [MemoryData](https://github.com/OpenDataBox/MemoryData) | 143 | ❌ **无** | 2026-07-05 | 22 个方法 × 4 个基准族（MemoryAgentBench · LoCoMo · LongBench · MemBench） |
 | [memorybench](https://github.com/supermemoryai/memorybench) | 312 | MIT | 2026-08-24 | 对话记忆 + RAG 多数据集 |
-| [awesome-agent-memory](https://github.com/OpenDataBox/awesome-agent-memory) | 56 | ❌无 | 2026-07-22 | 清单，不是 harness |
+| [awesome-agent-memory](https://github.com/OpenDataBox/awesome-agent-memory) | 56 | ❌无 | 2026-07-22 | 清单，不是 评测器 |
 
 ## MemoryData：可以用，不能 fork
 
@@ -36,7 +36,7 @@ ask(question) -> str            retrieve_entries(question)   memory_count()
 ### 另外两个已知质量问题
 
 - `utils/eval_other_utils.py:1068` —— `"judge": bool(metrics["exact_match"])`。
-  这个字段叫 judge 但**不是 LLM 评委**，比 f1 还严。**公开表里的 J 分在这套 harness 里复现不出来。**
+  这个字段叫 judge 但**不是 LLM 评委**，比 f1 还严。**公开表里的 J 分在这套评测框架 里复现不出来。**
 - `benchmark/longbench/loader.py` 反过来 import `benchmark.memoryagentbench.hf_datasets`。
   MemoryAgentBench 不是并列的基准之一，是别人都依赖的地基——加平级的新基准要先绕开这层耦合。
 

@@ -8,7 +8,7 @@
 
 ## 为什么公开题库测不了
 
-现有 harness 的 `retrieve_entries()` 返回条目列表，**没有"出自原文哪一段"这一维**。
+现有评测框架 的 `retrieve_entries()` 返回条目列表，**没有"出自原文哪一段"这一维**。
 LoCoMo 的 `evidence` 字段最接近——它标了 ground-truth 的轮次 ID——
 但它用来判**检索对不对**，不是判**系统自己声称的来源对不对**。
 
@@ -22,7 +22,7 @@ LoCoMo 的 `evidence` 字段最接近——它标了 ground-truth 的轮次 ID�
 ⚠️ 这一条要写死在两处（协议与本文），因为「字符」在中文语境下是个含糊词——
 UTF-8 一个汉字三字节，口径一旦分岔，**所有区间会整体偏三倍，N2 全线判错**。
 
-harness 在 `ingest` 之前把每份 `Document.text` 做 **NFC 规范化**，此后偏移永久固定
+评测器 在 `ingest` 之前把每份 `Document.text` 做 **NFC 规范化**，此后偏移永久固定
 （[`Span`](../adapters/protocol.md#数据类型)）。不规范化的话，同一个字的
 组合形式与预组合形式长度不同，偏移会随上游语料的编码习惯漂。
 
@@ -69,7 +69,7 @@ N2 问的正是它：记住了内容，记错了来源。
 
 依据见 [`../cognition.md`](../cognition.md#source-monitoring)。
 
-## harness 需要能做什么
+## 评测器 需要能做什么
 
 - 拿到系统对每条记忆自报的来源指针（`Entry.spans`）
 - 按指针取回**原文码点区间**，与 ground-truth 区间比对

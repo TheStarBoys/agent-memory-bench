@@ -22,18 +22,18 @@ STALE 顺带命名了这个现象，值得抄在这里：
 
 ## 两档
 
-harness 改完世界之后**不通知任何人**（[world.md](../adapters/world.md#变更不通知)）。
+评测器 改完世界之后**不通知任何人**（[world.md](../adapters/world.md#变更不通知)）。
 从这里分出两档，**分开报，永不合并**：
 
-| 档 | harness 行为 | 系统从哪表态 | 量的是 |
+| 档 | 评测器 行为 | 系统从哪表态 | 量的是 |
 |---|---|---|---|
 | **触发档** | 调 `audit(claims)`，把命题交过去 | `Verdict.state` | 给了机会，你查得准不准 |
 | **自发档** | 不调 `audit`，只发 `search` | `Entry.state` + `Entry.doc_ids` | 没人提醒，你自己发现了吗 |
 
-⚠️ **触发档由 harness 出命题，不是让系统列举「我的哪些记忆坏了」。**
+⚠️ **触发档由 评测器 出命题，不是让系统列举「我的哪些记忆坏了」。**
 后者预设系统持有可枚举的离散条目集合，是对参数化记忆（MemoryLLM）、
 摘要树（raptor）的形状歧视——理由见
-[protocol.md · 为什么 audit() 由 harness 出命题](../adapters/protocol.md#为什么-audit-由-harness-出命题)。
+[protocol.md · 为什么 audit() 由 评测器 出命题](../adapters/protocol.md#为什么-audit-由-评测器-出命题)。
 「主动」这一维由自发档承载，没有丢。
 
 ## 判分
@@ -88,13 +88,13 @@ harness 改完世界之后**不通知任何人**（[world.md](../adapters/world.
 - `grounds: list[str]` —— 结构化依据：世界内路径 / 事实表键 / `Entry.id`。**判分读这个。**
 - `note: str | None` —— 散文。**判分不读。**
 
-harness 只做两件事：`grounds` 非空，且每一项都解析得到。
+评测器 只做两件事：`grounds` 非空，且每一项都解析得到。
 ⛔ 空 `grounds` 判为 `Failed`，不是 `unknown`。
 
 这样「必须说清为什么」就是可确定性判分的。让判分去读散文，
 就等于把 LLM 评委请回来了，而[约束①](README.md)不允许。
 
-## harness 需要能做什么
+## 评测器 需要能做什么
 
 - 在两次询问之间**改变外部世界**——文件树、事实表、时钟三样
   （[`WorldHandle`](../adapters/protocol.md#世界句柄)）
@@ -107,4 +107,4 @@ harness 只做两件事：`grounds` 非空，且每一项都解析得到。
 见 [三条设计约束②](README.md)。
 
 ⚠️ 自发档另有一条独立的不支持判据：`Entry.doc_ids` 为空的系统在自发档记**不支持**——
-不是它答错了，是 harness 无从把它标 `broken` 的条目对回被破坏的那个事实。
+不是它答错了，是 评测器 无从把它标 `broken` 的条目对回被破坏的那个事实。

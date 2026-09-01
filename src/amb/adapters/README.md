@@ -1,6 +1,10 @@
 # `adapters` —— 被测系统的接入
 
-**只干一件事**：把一个被测系统包装成 `core` 里的 `Adapter` 协议。
+**只干一件事**：把一个被测系统包装成**双面**的东西——
+对 agent 宿主是记忆插件，对评测器是 `core` 里的 `Adapter` 协议。
+
+⛔ **不依赖 `agent` 层。** 插件契约在 `core`，装配由 `runner` 做。
+适配器一旦能 import `agent`，它就能改宿主配置——而宿主是受控变量。
 
 `registry.py` 精确名注册 · `manifest.py` 能力自述与版本钉死 · [`impl/`](impl/) 每系统一个薄包
 

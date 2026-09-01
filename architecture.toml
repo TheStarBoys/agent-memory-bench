@@ -3,21 +3,29 @@
 
 [layers]
 # 顺序即层级。下层不得知道上层的存在。
-order = ["core", "world", "adapters", "suites", "scoring", "report", "runner", "cli"]
+order = ["core", "world", "agent", "adapters", "suites", "scoring", "report", "runner", "cli"]
 
 [deps]
 # 每层允许 import 的其他层。⛔ 没列出的一律禁止，包括同级兄弟。
 core     = []
 world    = ["core"]
-adapters = ["core"]
-suites   = ["core", "world"]
+agent    = ["core", "world"]      # DSH 宿主：把 world 挂到 ctx.fs 等 seam 上
+adapters = ["core"]               # ⛔ 不依赖 agent：插件契约在 core，由 runner 装配
+suites   = ["core", "world", "agent"]
 scoring  = ["core"]
 report   = ["core", "scoring"]
-runner   = ["core", "world", "adapters", "suites", "scoring", "report"]
+runner   = ["core", "world", "agent", "adapters", "suites", "scoring", "report"]
 cli      = ["core", "runner", "report"]
 
-# ⛔ 没有 workload 层。DSH 等 agent 宿主是**离线数据来源**（见 tools/），
-# 不是运行时组件——一个在世界里动手的东西不可能是世界的一部分。
+[agent]
+# agent 层是被测对象的宿主，⛔ 它本身是受控变量，不是变量。
+host        = "deepseek-ai/deepseek-harness"
+host_pin    = ""                  # 待定稿时钉死
+host_profile = "headless"         # 一次性运行，无常驻服务
+# 必须钉死的 seam：不钉死这些，跨系统的分数就不可比。
+pinned_seams = ["ctx.llm", "ctx.agentLoop", "ctx.tools", "ctx.systemPrompt"]
+# 由评测器提供实现的 seam：世界与计量。
+provided_seams = ["ctx.fs", "ctx.tokenMeter", "ctx.sessionTelemetry"]
 
 [adapters]
 # 适配器只准薄。⛔ 上游代码不进本仓库（原则④）。

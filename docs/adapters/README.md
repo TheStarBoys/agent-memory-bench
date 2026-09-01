@@ -4,7 +4,7 @@
 
 ## 为什么不能用现成的接口
 
-现成 harness 的适配器是五个方法：
+现成评测框架 的适配器是五个方法：
 
 ```python
 add_chunk(content, timestamp)   finalize()
@@ -18,7 +18,7 @@ ask(question) -> str            retrieve_entries(question)   memory_count()
 
 | | 需要什么，而五方法接口没有 |
 |---|---|
-| N1 对现实求值 | 一个 **harness 能改变的外部世界**，以及"哪条命题不再成立"这个出口 |
+| N1 对现实求值 | 一个 **评测器 能改变的外部世界**，以及"哪条命题不再成立"这个出口 |
 | N2 原文回链 | 条目上的**来源区间**（起止），而 `retrieve_entries` 没有这一维 |
 | N3 推理链 | **结构化的推导链**，而 `ask` 只返回字符串 |
 | N4 治理 | **主体**——`ask(question)` 不带"谁在问" |
@@ -31,7 +31,7 @@ ask(question) -> str            retrieve_entries(question)   memory_count()
 
 ### 原则① 能力自述，不靠试错
 
-适配器**预先声明**支持哪些能力，harness 只跑声明过的套件。
+适配器**预先声明**支持哪些能力，评测器 只跑声明过的套件。
 
 没声明的记成 **不支持**，进独立的列，**永远不折进 0 分**。
 把"做不到"和"做了但做错"记成同一个数，这把尺子第一天就废了
@@ -68,7 +68,7 @@ ask(question) -> str            retrieve_entries(question)   memory_count()
 > 这是一个世界。这些对话陈述了关于它的事实。世界随后变了。
 > **下面这些说法，哪些已经不再成立？**
 
-重读文件、调模型、跑断言、什么都行。harness 只看答案。
+重读文件、调模型、跑断言、什么都行。评测器 只看答案。
 
 #### ⚠️ 这一条最容易在自己手里破掉
 
@@ -79,7 +79,7 @@ ask(question) -> str            retrieve_entries(question)   memory_count()
 拿「不要求提供断言」当反面例子、同时在自己的接口里要求一个可枚举的条目集，
 是同一种形状偏心换了层皮。
 
-所以定稿是 **harness 出命题**：`audit(claims)`。系统只回答"这句话现在还成不成立"，
+所以定稿是 **评测器 出命题**：`audit(claims)`。系统只回答"这句话现在还成不成立"，
 内部怎么存不影响它能不能参赛。**「主动发现」这一维交给
 [自发档](world.md#两档)承载，没有丢。**
 
@@ -87,7 +87,7 @@ ask(question) -> str            retrieve_entries(question)   memory_count()
 
 <a id="p3"></a>
 
-### 原则③ 世界归 harness 所有，适配器只读
+### 原则③ 世界归 评测器 所有，适配器只读
 
 被测系统**不得修改**世界。否则"通过"可以靠改变现实取得。
 世界的构造与变更见 [`world.md`](world.md)。
@@ -120,7 +120,7 @@ ask(question) -> str            retrieve_entries(question)   memory_count()
 黑盒之下「内容有没有被彻底删除」观察不到——你只能看到查询不再返回它，
 而那正是 N4 要批判的「过滤不是删除」。所以开一个受限例外：
 
-适配器**自己申报** `storage_locations()`，harness 在这些位置做**只读子串搜索**，
+适配器**自己申报** `storage_locations()`，评测器 在这些位置做**只读子串搜索**，
 不解析内部结构。⛔ 只在 N4 删除组使用。不申报的记「部分支持」，不记通过。
 细则见 [N4 · 一个必须先解决的矛盾](../suites/n4-governance.md#一个必须先解决的矛盾)。
 
@@ -154,12 +154,34 @@ ask(question) -> str            retrieve_entries(question)   memory_count()
 没有现成的可照抄，接口形状要自己定。
 
 ⚠️ **这条原则必须在接口上有落点，否则它只是一句口号。**
-墙钟 harness 自己测得了，**token 测不了**——那些 LLM 调用发生在适配器内部。
+墙钟 评测器 自己测得了，**token 测不了**——那些 LLM 调用发生在适配器内部。
 所以协议里有 `usage() -> list[Usage]` 与 `Capability.ACCOUNTING`
 （[protocol.md](protocol.md#数据类型)）。
 
-⚠️ 墙钟**两份都要**：harness 从外部独立计时一份，适配器自报一份。
+⚠️ 墙钟**两份都要**：评测器 从外部独立计时一份，适配器自报一份。
 两者差得多本身就是信息（排队、重试、后台补偿）。
+
+## 适配器是双面的
+
+被测系统接进来的形态是**一个 agent 宿主的记忆插件**，
+同时对评测器暴露本文的协议：
+
+| 面向 | 形态 |
+|---|---|
+| **宿主** | 注入检索到的记忆到提示装配 · 订阅会话事件做摄入 · 可选接管上下文压缩 |
+| **评测器** | 本协议：`Span` · `principal` · `confidence` · `Verdict` … |
+
+⭐ **宿主固定的是 agent，不是记忆系统的内部形状**，
+所以[原则②](#p2)不受影响——宿主不需要知道 `Span` 是什么。
+
+⚠️ 两种运行模式，分开报，⛔ 数不可互比：
+
+| 模式 | 用于 | 为什么需要 |
+|---|---|---|
+| **独立档** | [公开题库](../benchmarks.md) | LoCoMo 这些是对话日志，不是 agent 会话 |
+| **在体档** | [自研八类](../suites/README.md) | 测真实的 agent memory |
+
+细节见 [ARCHITECTURE.md](../../ARCHITECTURE.md)。
 
 ## 接一个新系统要做什么
 
