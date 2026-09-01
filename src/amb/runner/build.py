@@ -45,3 +45,10 @@ def control_arms() -> tuple[str, ...]:
 def backbone() -> LLMConfig:
     """⛔ 全局唯一的 backbone。⚠️ 经 runner 转出，cli 不直接依赖 adapters。"""
     return from_env()
+
+
+def host_spec(patches: tuple[str, ...] = ()):
+    """⛔ 全局唯一的 agent 宿主配置。⚠️ 经 runner 转出，cli 不直接依赖 agent。"""
+    from amb.agent import spec_from_env
+
+    return spec_from_env(patches)

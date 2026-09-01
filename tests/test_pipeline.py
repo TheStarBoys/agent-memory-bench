@@ -117,7 +117,7 @@ def test_floor_picks_the_strongest_control(tmp_path: Path) -> None:
 def test_report_shows_unsupported_as_dash_not_zero(tmp_path: Path) -> None:
     r, d = run_one("null", build("null"), plan(), tmp_path / "n", is_control=True)
     report = Report(run_id="t", at="t", world={"name": "toy", "seed": 42, "digest": d},
-                    backbone={"model": "—"}, arms=[r])
+                    backbone={"model": "—"}, lanes={"library": [r]})
     text = render(report)
     n1_row = next(li for li in text.splitlines()
                   if li.startswith("| null") and "unsupported" in li)

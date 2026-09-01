@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from amb.report.floor import best_floor, delta
-from amb.report.schema import Report
+from amb.report.schema import LANE_LABEL, LANES, Report
 
 #: 每个套件在对比表里用哪个指标当主指标（其余仍进 JSON）。
 HEADLINE = {
@@ -16,18 +16,32 @@ HEADLINE = {
 
 
 def render(report: Report) -> str:
-    out: list[str] = [
+    head = [
         f"# {report.run_id}",
         "",
         f"世界 {report.world['name']} · 种子 {report.world['seed']} · {report.world['digest'][:19]}…",
         f"backbone {report.backbone.get('model', '—')}",
-        "",
     ]
-    suites = sorted({s for a in report.arms for s in a.scores})
+    if report.host:
+        head.append(f"宿主 dsh-sdk {report.host.get('version', '?')}")
+    head += ["", "⛔ **两档的数不可互比**——一档喂的是干净语料，"
+             "一档喂的是 agent 自己搅出来的现场。", ""]
+
+    parts = [chr(10).join(head)]
+    for lane in LANES:
+        arms = report.lanes.get(lane) or []
+        if arms:
+            parts.append(_render_lane(lane, arms, report))
+    return "\n".join(parts)
+
+
+def _render_lane(lane: str, arms: list, report: Report) -> str:
+    out: list[str] = [f"# 档：{LANE_LABEL[lane]}", ""]
+    suites = sorted({s for a in arms for s in a.scores})
 
     for suite in suites:
         metric = HEADLINE.get(suite, "")
-        floor = best_floor(report.arms, suite, metric)
+        floor = best_floor(arms, suite, metric)
         # ⚠️ answer 档含生成器，署名必须写成「<系统> + <backbone>」
         signed = (f"  ——署名 `<系统> + {report.backbone.get('model', '?')}`"
                   if suite == "qa" else "")
@@ -40,7 +54,7 @@ def render(report: Report) -> str:
             "| | 分 | Δ vs 地板 | 状态 | 不支持理由 |",
             "|---|---|---|---|---|",
         ]
-        for arm in sorted(report.arms, key=lambda a: (not a.is_control, a.arm)):
+        for arm in sorted(arms, key=lambda a: (not a.is_control, a.arm)):
             sc = arm.scores.get(suite)
             tag = "对照" if arm.is_control else "被测"
             if sc is None:
@@ -65,16 +79,18 @@ def render(report: Report) -> str:
         out.append("")
 
         # 六格/五指标这类配对指标全量附上——⛔ 只报主指标就能刷分
-        for arm in report.arms:
+        for arm in arms:
             sc = arm.scores.get(suite)
             if sc and sc.status == "scored" and len(sc.metrics) > 1:
                 detail = " · ".join(f"{k}={v:.3f}" for k, v in sc.metrics.items())
                 out.append(f"- `{arm.arm}` {detail}")
         out.append("")
 
-    out += ["## 声明与参与", "", "| | 声明 | 参与题数 |", "|---|---|---|"]
-    for arm in report.arms:
-        p = arm.participation
+    out += ["## 声明与参与", "", "| | 声明 | 参与题数 | 成本 |", "|---|---|---|---|"]
+    for arm in arms:
+        p, c = arm.participation, arm.cost
+        cost = " · ".join(f"{k}={v}" for k, v in c.items() if v) or "—"
         out.append(f"| {arm.arm} | {p.get('declared', 0)} / {p.get('total_caps', 0)} "
-                   f"| {p.get('items', 0)} |")
+                   f"| {p.get('items', 0)} | {cost} |")
+    out.append("")
     return "\n".join(out)

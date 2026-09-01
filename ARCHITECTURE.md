@@ -140,10 +140,12 @@ worlds/*.py ──清单+种子──▶ world.materialize
             └────────────────┬───────────────────────┘
                              │ 同一个 core.Adapter 协议
                              │ ⛔ 同一条代码路径
-                             ▼
-       对宿主那一面                    对评测器那一面
-       ctx.systemPrompt 注入记忆        Span / principal
-       session/event 摄入               confidence / Verdict
+                ┌────────────┴────────────┐
+                ▼                         ▼
+        直接调库那一档               装进 agent 那一档
+        评测器主动                   ⭐ MCP stdio server
+        search(query,k)              DSH 暴露成 mcp__amb__*
+                                     ⭐ **agent 自己决定何时调**
 ```
 
 一个目录 `adapters/impl/<系统>/`，实现两面：
@@ -171,6 +173,21 @@ worlds/*.py ──清单+种子──▶ world.materialize
 
 ⛔ **绝对分不单独报**，每个数跟着地板线与 Δ。
 一个跑不赢「让宿主自己压缩上下文」的记忆系统，是在给 agent 添麻烦。
+
+## 两档的结构性差别
+
+⛔ **不是「同一套东西跑两遍」**，探针模型根本不同：
+
+| | 直接调库 | 装进 agent |
+|---|---|---|
+| 谁决定何时检索 | 评测器 | ⭐ **agent 自己** |
+| 评测器能做什么 | `search` / `audit` / `answer` | 只能发一段话、看事件流、读回答 |
+| 记忆怎么接 | 直接调 `Adapter` 方法 | ⭐ MCP stdio，DSH 暴露成 `mcp__amb__*` |
+| `host_default` 是什么 | 一个 `search` 返回空的适配器 | ⭐ **裸 DSH，不挂任何插件** |
+| 多出来的观测面 | — | ⭐ `memory_calls`（它主动查了几次）· `agent_steps` |
+
+⛔ **两档的数不可互比**，报告里分开呈现——
+一档喂的是干净语料，一档喂的是 agent 自己搅出来的现场。
 
 ## 守卫
 
@@ -290,12 +307,13 @@ python -m amb.cli --json out/r.json  # 附带机读结果
 | `core` `world` `adapters` `suites` `scoring` `report` `runner` `cli` | ✅ 已通 |
 | 五阶段端到端 · 哈希守卫 · 五条对照组 · 地板线与 Δ | ✅ 已通 |
 | **N1 两种模式**（有提示 / 无提示） · N2 · 检索档 · **`answer()` 端到端** | ✅ 已通 |
-| **`agent`（DSH 宿主）** | ⭐ **最小闭环已通**：真起 DSH，世界挂成 `cwd`，agent 自己去读并答对 |
+| **`agent`（DSH 宿主）** | ✅ 已通：起 DSH · 世界挂 `cwd` · **MCP 记忆插件** · 事件流解析 |
+| **agent 档五阶段与套件** | ✅ 已通：N1 两种 · QA，⛔ 与直接调库分开报 |
 | ⚠️ `suites/public`（公开题库接入） | 未实现 |
-| N4 删除四步探针 · N1 第三种探针（拿旧记忆作答） | 🔜 机制缺口 |
+| N4 删除四步探针 · N2/N5–N8 的 agent 档探针 | 🔜 机制缺口 |
+| ⚠️ agent 档 `n1_prompted` 的提示合规率太低（实测 Failed 67% → untrusted） | 🔜 探针待改 |
 
-⚠️ **agent 档目前只有宿主，还没有记忆插件**——五条对照组仍是「直接调库」那一档。
-下一步是把 `host_default` 变成它真正的定义：**裸 DSH，不挂任何记忆插件**。
+⭐ **两档都通了**，`host_default` 在 agent 档已是它真正的定义：**裸 DSH，不挂插件**。
 
 ⭐ 第一次跑就抓到三个设计问题，都已修：
 

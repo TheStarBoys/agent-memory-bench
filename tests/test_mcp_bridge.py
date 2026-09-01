@@ -91,3 +91,49 @@ def test_malformed_arguments_do_not_crash_parsing() -> None:
     bad = [{"type": "tool/call", "data": {"name": "mcp__amb__recall",
                                           "arguments": "{不是 json"}}]
     assert tool_calls(bad)[0].arguments == {}
+
+
+# ── agent 档 N1 的判分口径（离线）────────────────────────────────
+def test_unparseable_answer_is_failed_not_abstention() -> None:
+    """⛔ 「没按格式作答」≠「说了我不知道」。
+
+    把前者记成 unknown，会让不听话的系统白拿一个弃权。
+    """
+    from amb.suites.agent_native.n1_reality import read_state
+
+    assert read_state("已经不成立") == "broken"
+    assert read_state("这条仍然成立") == "holds"
+    assert read_state("我无法判断") == "unknown"
+    assert read_state("嗯，我看看啊") is None      # ⛔ 不是 unknown
+
+
+def test_longest_marker_wins_so_negation_is_not_swallowed() -> None:
+    """⚠️ 「不成立」里含「成立」——必须让长的先命中。"""
+    from amb.suites.agent_native.n1_reality import read_state
+
+    assert read_state("这句话不成立") == "broken"
+
+
+def test_ignorance_is_not_detection() -> None:
+    """⛔ 什么都不知道所以没说旧值——那是无知，不是检出。
+
+    实测撞见的：裸 DSH 在无提示档上误报率 100%，
+    因为它什么都答不上来，而当时的判分把「没说旧值」当成了「发现了过期」。
+    """
+    from amb.core import Claim
+    from amb.suites.agent_native import AgentSpontaneousRealitySuite
+
+    class Ignorant:
+        def ask(self, prompt: str):
+            from amb.agent import AgentTurn
+
+            return AgentTurn(text="我不知道。", finish_reason="completed", events=[])
+
+    claims = [Claim("c1", "旧值成立", ["d"])]
+    suite = AgentSpontaneousRealitySuite(
+        claims, {"c1": "broken"}, {"c1": "问个问题"},
+        {"c1": "旧值"}, {"c1": ("新值",)},
+    )
+    run = suite.probe(Ignorant(), None)
+    assert run.observations[0].payload["reported"] == "unknown", \
+        "⛔ 既没说旧值也没说新值 → unknown，不许算检出"

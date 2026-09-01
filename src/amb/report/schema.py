@@ -32,13 +32,30 @@ class ArmResult:
     cost: dict[str, int] = field(default_factory=dict)
 
 
+#: 两档。⛔ 数不可互比——一档喂的是干净语料，一档喂的是 agent 搅出来的现场。
+LANES = ("library", "agent")
+
+LANE_LABEL = {
+    "library": "直接调库（记忆系统当库调）",
+    "agent": "装进 agent（DSH 宿主，agent 自己决定何时检索）",
+}
+
+
 @dataclass(slots=True)
 class Report:
     run_id: str
     at: str
     world: dict[str, Any]
     backbone: dict[str, Any]
-    arms: list[ArmResult] = field(default_factory=list)
+    #: 每档一组臂。⛔ 永不合并成一张表。
+    lanes: dict[str, list[ArmResult]] = field(default_factory=dict)
+    #: ⚠️ 宿主版本进报告：换 DSH 版本等于换尺子，要重跑全部基线。
+    host: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def arms(self) -> list[ArmResult]:
+        """兼容单档读取。⛔ 跨档比较请勿用它。"""
+        return [a for lane in LANES for a in self.lanes.get(lane, [])]
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

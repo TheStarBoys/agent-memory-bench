@@ -96,3 +96,41 @@ def suites() -> list:
         SpontaneousRealitySuite(CLAIMS, TRUTH),
         QASuite(QA_ITEMS),
     ]
+
+
+# ── agent 档 ────────────────────────────────────────────────────
+#: 无提示那一档用的普通问题 + 只有拿旧记忆才会说出来的那个词。
+#: ⚠️ 与 CLAIMS 一一对应。
+SPONTANEOUS_QUESTIONS = {
+    "c1": "橘猫喜欢在哪里睡觉？如果现在查不到这条信息，就说「查不到」。",
+    "c2": "保留天数是多少？",
+    "c3": "哪个脑结构学得慢？",
+}
+
+#: 拿旧记忆作答才会冒出来的标记词。⛔ c3 没有——它本来就仍然成立。
+STALE_MARKERS = {"c1": "窗台", "c2": "30", "c3": ""}
+
+#: 跟上了世界变化才会说出来的词。
+#: ⛔ 必须有：只看「没说旧值」的话，一个什么都不知道的系统会被判成全检出，
+#: 而那是无知不是检出。
+FRESH_MARKERS = {
+    "c1": ("查不到", "没有找到", "不存在", "无法"),   # 笔记被删了
+    "c2": ("7",),                                    # 30 → 7
+    "c3": ("新皮层",),                                # 没变，答对即可
+}
+
+
+def agent_suites() -> list:
+    """agent 档：判分口径与直接调库一致，⛔ 探针完全不同。"""
+    from amb.suites.agent_native import (
+        AgentPromptedRealitySuite,
+        AgentQASuite,
+        AgentSpontaneousRealitySuite,
+    )
+
+    return [
+        AgentPromptedRealitySuite(CLAIMS, TRUTH),
+        AgentSpontaneousRealitySuite(CLAIMS, TRUTH, SPONTANEOUS_QUESTIONS,
+                                     STALE_MARKERS, FRESH_MARKERS),
+        AgentQASuite(QA_ITEMS),
+    ]
