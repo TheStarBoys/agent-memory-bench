@@ -57,10 +57,22 @@ class NeedCurve:
                 "r_squared": self.r_squared, "fitted": self.fitted}
 
 
-#: ⛔ 占位曲线，**只供机制自测**。参数是 Anderson & Schooler 论文里
-#: 报告过的量级，⚠️ 不是我们自己拟合的，所以 source=None。
-#: 拿它跑出来的 N5 分数不得发布。
+#: ⛔ 占位曲线，**只供机制自测**。⚠️ 不是拟合出来的，所以 source=None，
+#: 拿它跑出来的 N5 分数不得发布。真实曲线用 load() 读，
+#: 参数由 tools/fit_need_curve.py 从真实语料产出。
 PLACEHOLDER = NeedCurve(a=1.0, b=0.5, source=None)
+
+#: ⭐ 已拟合的曲线（corpora/）。两份独立语料的实测：
+#:     langgraph  17416 样本  b=0.256  R²=0.651
+#:     agno       25340 样本  b=0.243  R²=0.543
+#: 两者的 b 相差不到 5%——⭐ 独立语料收敛，说明这个量确实存在。
+#: ⚠️ 但 R² 远低于 Anderson & Schooler 报告的 0.93：
+#: 纯幂律在 git 历史上拟合得比在他们的语料上粗糙得多。
+#: ⛔ 这一点要写进报告，⚠️ 不许当成 0.93 用。
+FITTED_R2_CAVEAT = (
+    "git 历史语料上 R²≈0.54–0.65，低于文献报告的 0.93——"
+    "幂律形式在这里是较粗的近似"
+)
 
 
 def fit_from_reuse_intervals(intervals: list[float]) -> NeedCurve:
@@ -93,3 +105,20 @@ def fit_from_reuse_intervals(intervals: list[float]) -> NeedCurve:
     r2 = 1.0 - ss_res / ss_tot if ss_tot else 0.0
 
     return NeedCurve(a=math.exp(intercept), b=-slope, source="fitted", r_squared=r2)
+
+
+def load(path: str | "Path") -> NeedCurve:
+    """读一份拟合好的曲线（tools/fit_need_curve.py 产出）。
+
+    ⚠️ 它的 provenance 必须进结果报告——换语料就是换了一把尺子。
+    """
+    import json
+    from pathlib import Path as _P
+
+    data = json.loads(_P(path).read_text(encoding="utf-8"))
+    if not data.get("source"):
+        raise UnfittedCurve(f"{path} 里没有 source，⛔ 不算拟合过")
+    return NeedCurve(a=float(data["a"]), b=float(data["b"]),
+                     source=str(data["source"]),
+                     r_squared=(float(data["r_squared"])
+                                if data.get("r_squared") is not None else None))

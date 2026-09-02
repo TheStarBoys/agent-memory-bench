@@ -121,3 +121,54 @@ def test_provenance_goes_into_the_report() -> None:
     """⚠️ 换语料就是换了一把尺子——来源必须可追。"""
     p = NeedCurve(a=1.0, b=0.5, source="corpora/x.jsonl", r_squared=0.97).provenance()
     assert p["source"] == "corpora/x.jsonl" and p["fitted"] is True
+
+
+# ── 从真实语料拟合 ──────────────────────────────────────────────
+def test_fitted_curves_from_two_independent_corpora_agree() -> None:
+    """⭐ 两份独立语料收敛，说明这个量确实存在。
+
+    langgraph 17416 样本 b=0.256 · agno 25340 样本 b=0.243，
+    相差不到 5%。
+    """
+    from pathlib import Path
+
+    from amb.world.stream.need import load
+
+    root = Path(__file__).resolve().parents[1] / "corpora"
+    curves = [load(root / f"need-{n}.json") for n in ("langgraph", "agno")]
+    for c in curves:
+        c.require_fitted()          # ⛔ 拟合过的才能用来判分
+        assert c.source.startswith("git:")
+    a, b = (c.b for c in curves)
+    assert abs(a - b) / max(a, b) < 0.10, "两份独立语料的指数应当接近"
+
+
+def test_fitted_r_squared_is_honestly_below_the_literature() -> None:
+    """⚠️ 这是个诚实的负面发现，必须留在测试里防止有人「优化」掉它。
+
+    Anderson & Schooler 报告 R²=0.93；git 历史上只有 0.54–0.65。
+    ⛔ 幂律在这里是较粗的近似，不许当成 0.93 用。
+    """
+    from pathlib import Path
+
+    from amb.world.stream.need import FITTED_R2_CAVEAT, load
+
+    root = Path(__file__).resolve().parents[1] / "corpora"
+    for n in ("langgraph", "agno"):
+        c = load(root / f"need-{n}.json")
+        assert 0.4 < c.r_squared < 0.8, "低于文献值——这是实测，不是 bug"
+    assert "0.93" in FITTED_R2_CAVEAT, "警示语要点明差距"
+
+
+def test_a_curve_without_a_source_is_refused_by_the_loader() -> None:
+    import json
+    import tempfile
+    from pathlib import Path
+
+    from amb.world.stream.need import UnfittedCurve, load
+
+    with tempfile.TemporaryDirectory() as tmp:
+        bad = Path(tmp) / "x.json"
+        bad.write_text(json.dumps({"a": 1.0, "b": 0.5}), encoding="utf-8")
+        with pytest.raises(UnfittedCurve, match="不算拟合过"):
+            load(bad)
