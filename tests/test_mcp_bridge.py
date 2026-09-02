@@ -238,3 +238,84 @@ def test_wrong_source_and_no_source_are_separate() -> None:
 
     assert liar["来源说错率"] == 1.0 and liar["来源说不出率"] == 0.0
     assert silent["来源说不出率"] == 1.0 and silent["来源说错率"] == 0.0
+
+
+def test_prompted_reality_retries_once_when_the_verdict_is_missing(tmp_path) -> None:
+    """⭐ 两轮协议：第一轮忘了提交，第二轮只干一件事。
+
+    ⚠️ 一轮里既要去核实又要记得调工具，实测漏提交率 33%–100%——
+    那测的是指令遵循，而 backbone 对所有臂相同，是噪声不是信号。
+    """
+    from amb.agent import AgentTurn
+    from amb.core import Claim
+    from amb.agent.verdict_server import VerdictServer
+    from amb.suites.agent_native import AgentPromptedRealitySuite
+
+    sink = tmp_path / "v.jsonl"
+    srv = VerdictServer(sink)
+
+    class ForgetsFirstTime:
+        def __init__(self) -> None:
+            self.prompts: list[str] = []
+
+        def ask(self, prompt: str):
+            self.prompts.append(prompt)
+            if "report_verdict" in prompt:      # 被提醒了才提交
+                srv.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                            "params": {"name": "report_verdict",
+                                       "arguments": {"claim_id": "c1",
+                                                     "state": "broken"}}})
+            return AgentTurn(text="看过了。", finish_reason="completed", events=[])
+
+    driver = ForgetsFirstTime()
+    run = AgentPromptedRealitySuite(
+        [Claim("c1", "命题", ["d"])], {"c1": "broken"}, sink).probe(driver, None)
+
+    assert len(driver.prompts) == 2, "第一轮没提交就该有第二轮"
+    assert run.failed == 0, "⛔ 提醒后提交了就不算 Failed"
+    obs = run.observations[0].payload
+    assert obs["reported"] == "broken"
+    assert obs["needed_reminder"] is True, "⚠️ 需要提醒这件事本身要看得见"
+
+
+def test_no_reminder_when_the_verdict_arrives_first_time(tmp_path) -> None:
+    from amb.agent import AgentTurn
+    from amb.core import Claim
+    from amb.agent.verdict_server import VerdictServer
+    from amb.suites.agent_native import AgentPromptedRealitySuite
+
+    sink = tmp_path / "v.jsonl"
+    srv = VerdictServer(sink)
+
+    class Compliant:
+        def __init__(self) -> None:
+            self.turns = 0
+
+        def ask(self, prompt: str):
+            self.turns += 1
+            srv.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                        "params": {"name": "report_verdict",
+                                   "arguments": {"claim_id": "c1", "state": "holds"}}})
+            return AgentTurn(text="仍然成立。", finish_reason="completed", events=[])
+
+    driver = Compliant()
+    run = AgentPromptedRealitySuite(
+        [Claim("c1", "命题", ["d"])], {"c1": "holds"}, sink).probe(driver, None)
+    assert driver.turns == 1, "⛔ 已经提交了就不该再问一轮"
+    assert run.observations[0].payload["needed_reminder"] is False
+
+
+def test_still_failed_if_it_never_submits(tmp_path) -> None:
+    """⛔ 提醒了还是不提交 = 这次没做成，⚠️ 不是弃权。"""
+    from amb.agent import AgentTurn
+    from amb.core import Claim
+    from amb.suites.agent_native import AgentPromptedRealitySuite
+
+    class NeverSubmits:
+        def ask(self, prompt: str):
+            return AgentTurn(text="嗯。", finish_reason="completed", events=[])
+
+    run = AgentPromptedRealitySuite(
+        [Claim("c1", "命题", ["d"])], {"c1": "holds"},
+        tmp_path / "v.jsonl").probe(NeverSubmits(), None)
+    assert run.failed == 1 and not run.observations

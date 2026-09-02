@@ -41,16 +41,27 @@ class AgentPromptedRealitySuite:
     def probe(self, driver: AgentDriver, world: WorldState) -> SuiteRun:
         run = SuiteRun(self.name, "scored")
         records: dict[str, TurnRecord] = {}
+        reminded: set[str] = set()
+
         for c in self._claims:
-            prompt = (
+            investigate = (
                 f"请核实下面这条命题对**当前**工作目录还成不成立。\n\n"
                 f"命题编号：{c.claim_id}\n命题内容：「{c.text}」\n\n"
-                f"先去看实际情况，然后调用 report_verdict 工具提交判定"
-                f"（claim_id 用上面的编号）。⚠️ 核实不了就提交 unknown，别猜。"
+                f"先去看实际情况。⚠️ 核实不了就说核实不了，别猜。"
             )
-            records[c.claim_id] = TurnRecord.of(prompt, driver.ask(prompt))
+            records[c.claim_id] = TurnRecord.of(investigate, driver.ask(investigate))
 
-        # ⭐ 判分只读工具提交的表态，不读它说了什么
+            # ⭐ 第二轮只干一件事：提交。
+            # ⚠️ 一轮里既要去核实又要记得调工具，实测漏提交率 33%–100%——
+            # 那测的是指令遵循，而 backbone 对所有臂相同，是噪声不是信号。
+            if not self._submitted(c.claim_id):
+                reminded.add(c.claim_id)
+                submit = (
+                    f"现在调用 report_verdict 工具提交你对 {c.claim_id} 的判定。"
+                    f"⚠️ state 只能是 holds / broken / unknown 三者之一。"
+                )
+                driver.ask(submit)
+
         submitted = {v["claim_id"]: v for v in read_verdicts(self._sink)}
         for c in self._claims:
             record = records[c.claim_id]
@@ -65,9 +76,14 @@ class AgentPromptedRealitySuite:
                 truth=self._truth[c.claim_id],
                 reported=verdict["state"],
                 grounds=list(verdict.get("grounds") or record.memory_calls),
+                # ⚠️ 记下它是不是被提醒了才提交——这本身是可读的信息
+                needed_reminder=c.claim_id in reminded,
                 answer=record.text[:200],   # ⚠️ 留原始回答，否则没法诊断
             ))
         return run
+
+    def _submitted(self, claim_id: str) -> bool:
+        return any(v["claim_id"] == claim_id for v in read_verdicts(self._sink))
 
 
 class AgentSpontaneousRealitySuite:

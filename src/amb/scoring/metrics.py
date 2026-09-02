@@ -113,6 +113,9 @@ def score_reality(run: SuiteRun) -> Score:
     for obs in run.observations:
         cell[f"{obs.payload['truth']}→{obs.payload['reported']}"] += 1
 
+    # ⚠️ agent 档才有：它是不是被提醒了才提交
+    reminded = [o for o in run.observations if o.payload.get("needed_reminder")]
+
     holds_side = sum(cell[f"holds→{r}"] for r in ("holds", "broken", "unknown")) or 1
     broken_side = sum(cell[f"broken→{r}"] for r in ("holds", "broken", "unknown")) or 1
     total = len(run.observations) or 1
@@ -122,6 +125,9 @@ def score_reality(run: SuiteRun) -> Score:
         "误报率": cell["holds→broken"] / holds_side,
         "弃权率": (cell["holds→unknown"] + cell["broken→unknown"]) / total,
     }
+    if reminded:
+        # ⚠️ 这一格量的是指令遵循，不是记忆能力——⛔ 不进主指标，但要看得见
+        s.metrics["需提醒率"] = len(reminded) / total
     return _finish(s, run)
 
 
@@ -469,7 +475,38 @@ def score_induction(run: SuiteRun) -> Score:
     return _finish(s, run)
 
 
+def score_reasoning(run: SuiteRun) -> Score:
+    """⭐ 蒙对率是这一类存在的理由。
+
+    公开题库只报结论准确率；这里报「结论对但链条有不成立步骤」的比例——
+    ⚠️ 两者的差就是表面共现能贡献多少分。
+    """
+    s = Score(run.suite, run.status, run.reason)
+    if run.status != "scored":
+        return s
+
+    rows = [o.payload for o in run.observations]
+    n = len(rows) or 1
+    right = [r for r in rows if r["conclusion_ok"]]
+    r_n = len(right) or 1
+    with_chain = [r for r in rows if r["gave_chain"]]
+
+    s.metrics = {
+        "结论准确率": len(right) / n,
+        # ⭐ 结论对 **且** 每一步都成立
+        "链条完好率": sum(1 for r in rows
+                          if r["conclusion_ok"] and r["chain_ok"]) / n,
+        # ⭐ 这一个就是表面共现的贡献
+        "蒙对率": sum(1 for r in right if not r["chain_ok"]) / r_n,
+        "给链条率": len(with_chain) / n,
+        # ⚠️ 未决不算错——说「我缺前提 X」比直接答「否」更有用
+        "未决率": sum(1 for r in rows if r["undecided"]) / n,
+    }
+    return _finish(s, run)
+
+
 SCORERS: dict[str, Any] = {
+    "n3_reasoning": score_reasoning,
     "n4_governance": score_governance,
     "n8_induction": score_induction,
     "n7_calibration": score_calibration,

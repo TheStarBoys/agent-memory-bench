@@ -11,6 +11,7 @@ HEADLINE = {
     "n2_provenance": "精确匹配率",
     "n2_provenance_agent": "来源正确率",
     "qa": "准确率",
+    "n3_reasoning": "链条完好率",
     "n4_governance": "彻底删除率",
     "n5_observed": "保留追踪度",
     "n6_structure": "扇形退化斜率",
