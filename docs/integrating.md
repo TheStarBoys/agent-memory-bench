@@ -22,13 +22,37 @@
 ```python
 "letta": Dependency(
     name="letta",
-    kind=Kind.PIP,               # PIP 或 GIT
+    kind=Kind.VENV,              # ⛔ 被测系统一律 VENV，见下
     source="letta",              # pip 包名 / git URL
     pin="0.6.4",                 # ⛔ 精确版本；git 用分支名，实际记 commit sha
     verify_import="letta",       # 装完拿它验一下真的在
     note="被测系统。⚠️ 需要 …",
 ),
 ```
+
+<a id="isolation"></a>
+
+### ⛔ 被测系统一律装进**它自己的 venv**
+
+| `kind` | 装到哪 | 给谁用 |
+|---|---|---|
+| `Kind.VENV` | `.external/venvs/<名字>/`，⭐ 走子进程说话 | **所有被测系统** |
+| `Kind.PIP` | 我们的解释器 | 只给**宿主与工具**（如 dsh）——那些我们要在进程内直接 `import` |
+| `Kind.GIT` | clone 到 `.external/` | 题库这类只读数据 |
+
+这不是洁癖，是两次实测：
+
+| 踩到的 | 后果 |
+|---|---|
+| MemoryOS 把 `openai` 从 2.x 降到 1.109 | 我们自己的调用全废，回滚才恢复 |
+| a-mem 依赖 `litellm`，它声明 `openai>=2.20,<3.0` | 会把 3.7 降下来 |
+
+⚠️ 而且跑评测的那台机器上，解释器往往是使用者的**日常环境**。
+往里塞被测对象，等于拿别人的工作环境做实验台。
+
+⭐ 隔离还顺手解决了一件事：**每个系统自己那套依赖的版本也被记进锁文件**。
+a_mem 那条记的是 `openai=2.54.0 chromadb=1.5.9 litellm=1.99.0`——
+⚠️ 这些数字跟被测系统的版本号一样，是结果可复现的一部分。
 
 然后：
 
@@ -58,6 +82,27 @@ python -m amb.cli setup --check      # 只看状态
 
 `src/amb/adapters/impl/<名字>/adapter.py`，从
 [`_template/`](../src/amb/adapters/impl/_template/README.md) 拷。
+
+⛔ 被测系统在**另一个解释器**里，所以适配器不能 `import` 它。
+分两个文件写：
+
+| 文件 | 跑在哪 | 能 import 什么 |
+|---|---|---|
+| `adapter.py` | 我们的进程 | `amb.*`，⛔ **不许** import 被测系统 |
+| `worker.py` | `.external/venvs/<名字>/bin/python` | 标准库 + 被测系统，⛔ **不许** import `amb` |
+
+中间靠 [`bridge`](../src/amb/adapters/bridge.py)：stdout 上一行一个 JSON。
+四个约定，⛔ 别加别的：
+
+1. 一行一个 JSON——多行没法在流上切开
+2. worker 的日志一律走 **stderr**，⛔ stdout 只放协议
+3. 出错回 `{"ok": false, "error": …}`，⛔ 不靠退出码——进程还要接着用
+4. ⛔ 子进程死了**不许重启**：重启会把已摄入的状态悄悄清空，
+   而调用方毫无察觉——那样跑出来的是「半个语料的记忆系统」的分数，
+   ⚠️ 比直接崩掉更有害。抛 `BridgeError`，这条臂记「跑挂了」，**不是 0 分**。
+
+⭐ `llm_cache` 只依赖标准库 + openai，worker 按路径直接加载宿主那一份，
+所以「缓存」和「temperature 钉 0」在隔离环境里**仍然只有一份实现**。
 
 ⛔ **只走公开接口**：包顶层导出的 SDK、HTTP、CLI。
 不 import 内部子模块、不复制它的代码。

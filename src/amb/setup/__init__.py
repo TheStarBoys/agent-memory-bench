@@ -6,6 +6,7 @@ from amb.setup.install import (
     snapshot,
     status,
 )
+from amb.setup.venv import require_venv, venv_python
 from amb.setup.spec import (
     Dependency,
     Installed,
@@ -21,5 +22,6 @@ from amb.setup.spec import (
 __all__ = [
     "Dependency", "Installed", "Kind", "LOCKFILE", "REGISTRY", "SetupError",
     "VersionMismatch", "dependency", "install", "install_all",
-    "require_installed", "snapshot", "status",
+    "require_installed", "require_venv", "snapshot", "status",
+    "venv_python",
 ]

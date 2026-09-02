@@ -1,7 +1,12 @@
 """mem0：第一个真被测系统。
 
-⛔ 只走公开接口（原则④）：`from mem0 import Memory` 是它包顶层的导出，
-⚠️ 不 import 任何内部子模块，不复制它的代码。
+⛔ 它**不在我们的解释器里**跑：被测系统一律隔离在
+`.external/venvs/mem0/`，这个适配器通过 [`bridge`](../../bridge.py)
+起子进程跟它说话，真正干活的是同目录的 `worker.py`。
+（为什么必须隔离，见 [`setup/venv.py`](../../../setup/venv.py) 里那两次实测。）
+
+⛔ 只走公开接口（原则④）：worker 里 `from mem0 import Memory` 是它包顶层的
+导出，⚠️ 不 import 任何内部子模块，不复制它的代码。
 
 ⭐ 它把「事实抽取 + 增量归并」当主要问题：LLM 抽事实，
 与已有比对后 ADD/UPDATE/DELETE。所以：
@@ -22,6 +27,7 @@ from amb.core import (
     DeleteResult,
     Document,
     Entry,
+    Span,
     Unsupported,
 )
 
@@ -58,8 +64,7 @@ class Mem0Adapter(Answerable, AdapterBase):
         }
         self._storage_dir = storage_dir
         self._default = default_principal
-        self._memory: Any = None
-        self._ids: list[str] = []
+        self._bridge: Any = None
         #: ⭐ infer=False 时留一份原文，N2 的区间靠它算
         self._raw: dict[str, str] = {}
 
@@ -77,127 +82,91 @@ class Mem0Adapter(Answerable, AdapterBase):
         return caps
 
     # ── 生命周期 ────────────────────────────────────────────────
-    def _client(self) -> Any:
-        if self._memory is None:
-            import os
-            from pathlib import Path
-
+    def _talk(self) -> Any:
+        if self._bridge is None:
+            from amb.adapters.bridge import Bridge, worker_script
             from amb.core import require
+            from amb.setup import require_venv
 
-            from mem0 import Memory        # ⛔ 只用包顶层导出
-
-            # ⚠️ mem0 内部用 openai SDK，它只认 OPENAI_API_KEY。
-            # ⛔ 不让使用者手动设——适配器自己搭这座桥，
-            # 配置里存的仍然只是**变量名**。
-            os.environ.setdefault("OPENAI_API_KEY", require(self._api_key_env))
-            # ⛔ mem0 有个写死在 ~/.mem0/migrations_qdrant 的迁移库，
-            # 不受 config 控制。两条臂先后跑会撞锁：
-            #   RuntimeError: Storage folder … already accessed by another instance
-            # ⚠️ 给每条臂隔离整个 mem0 home，⛔ 否则第二条必挂。
-            os.environ["MEM0_DIR"] = str(Path(self._storage_dir) / "mem0-home")
-            Path(os.environ["MEM0_DIR"]).mkdir(parents=True, exist_ok=True)
-            self._memory = Memory.from_config(self._cfg)
-            # ⭐ 构造完之后在**实例**上套缓存
-            _wrap_llm_cache(self._memory)
-        return self._memory
+            self._bridge = Bridge(
+                python=require_venv("mem0"),
+                script=worker_script(__package__),
+                # ⛔ key 只在内存里传给子进程，不落配置、不进命令行
+                config={"config": self._cfg, "storage_dir": self._storage_dir,
+                        "api_key": require(self._api_key_env),
+                        "infer": self._infer,
+                        "default_principal": self._default},
+            )
+        return self._bridge
 
     def reset(self) -> None:
-        if self._memory is not None:
-            self._memory.reset()
-        self._ids = []
+        if self._bridge is not None:
+            self._bridge.call("reset")
+        self._raw.clear()
 
     def close(self) -> None:
-        """⛔ 必须真的释放——不释放的话下一条臂会撞 Qdrant 的存储锁。"""
-        if self._memory is None:
+        """⛔ 必须真的释放——不释放的话下一条臂会撞 Qdrant 的存储锁。
+
+        ⭐ 隔离之后这件事简单多了：⚠️ 子进程一退，锁一定没了。
+        """
+        if self._bridge is None:
             return
-        for owner in (self._memory,
-                      getattr(self._memory, "vector_store", None),
-                      getattr(getattr(self._memory, "vector_store", None),
-                              "client", None)):
-            close = getattr(owner, "close", None)
-            if callable(close):
-                try:
-                    close()
-                except Exception:  # noqa: BLE001 —— ⚠️ 关不上也别拖垮整跑
-                    pass
-        self._memory = None
+        try:
+            self._bridge.call("shutdown")
+        except Exception:  # noqa: BLE001 —— 关不上就直接杀进程
+            pass
+        self._bridge.close()
+        self._bridge = None
 
     # ── 基线 ────────────────────────────────────────────────────
     def ingest(self, doc: Document) -> None:
         """⚠️ 这一步会调 LLM 抽事实——摄入成本远高于纯索引。"""
-        got = self._client().add(
-            doc.text,
-            user_id=doc.principal or self._default,
-            metadata={"doc_id": doc.doc_id},
-            infer=self._infer,
-        )
+        self._talk().call("ingest", doc_id=doc.doc_id, text=doc.text,
+                          principal=doc.principal)
         if not self._infer:
             self._raw[doc.doc_id] = doc.text
-        for row in (got or {}).get("results", []):
-            if row.get("id"):
-                self._ids.append(row["id"])
 
     def search(self, query: str, k: int, *,
                principal: str | None = None) -> list[Entry]:
-        got = self._client().search(
-            query, top_k=k,
-            filters={"user_id": principal or self._default},
-        )
-        out: list[Entry] = []
-        for row in (got or {}).get("results", []):
-            meta = row.get("metadata") or {}
-            doc_id = meta.get("doc_id")
-            out.append(Entry(
-                id=str(row.get("id", "")),
-                digest=str(row.get("memory", "")),
+        got = self._talk().call("search", query=query, k=k, principal=principal)
+        return [
+            Entry(
+                id=row["id"],
+                digest=row["memory"],
                 score=row.get("score"),
                 # ⭐ 靠我们塞进 metadata 的 doc_id 对账；
                 # ⚠️ 它归并之后一条记忆可能来自多个文档，这里只拿得到一个
-                doc_ids=[doc_id] if doc_id else [],
+                doc_ids=[row["doc_id"]] if row.get("doc_id") else [],
                 # ⭐ 不抽取时存的就是原文，区间对得上；
                 # ⛔ 抽取模式给不出——所以那时候不声明 PROVENANCE
-                spans=self._span_for(doc_id, row.get("memory", "")),
-                principal=(row.get("user_id") or principal or self._default),
-            ))
-        return out
+                spans=self._span_for(row.get("doc_id"), row["memory"]),
+                principal=row.get("principal"),
+            )
+            for row in got["entries"]
+        ]
 
     def count(self) -> int:
-        got = self._client().get_all(filters={"user_id": self._default}, top_k=1000)
-        return len((got or {}).get("results", []))
+        return int(self._talk().call("count")["count"])
 
     # ── N4 ──────────────────────────────────────────────────────
     def delete(self, entry_ids: list[str]) -> DeleteResult:
-        deleted, refused = [], {}
-        for eid in entry_ids:
-            try:
-                self._client().delete(eid)
-                deleted.append(eid)
-            except Exception as exc:  # noqa: BLE001 —— 逐条记原因，⛔ 不整批失败
-                refused[eid] = f"{type(exc).__name__}: {exc}"[:200]
-        return DeleteResult(deleted=deleted, refused=refused)
+        got = self._talk().call("delete", entry_ids=entry_ids)
+        return DeleteResult(deleted=got["deleted"], refused=got["refused"])
 
     def audit_log(self) -> list[AuditEvent] | Unsupported:
-        """mem0 的 history() 是按条目查的，没有全局日志。
-
-        ⚠️ 我们逐条拼出来——⛔ 但删掉的条目查不到了，
+        """⚠️ 逐条拼出来的——⛔ 删掉的条目查不到了，
         所以这份日志**删除之后不完整**。四步探针会把这一点暴露出来。
         """
-        rows: list[AuditEvent] = []
-        for eid in self._ids:
-            try:
-                history = self._client().history(eid) or []
-            except Exception:  # noqa: BLE001 —— 删掉的查不到，跳过
-                continue
-            for i, h in enumerate(history):
-                rows.append(AuditEvent(
-                    event_id=f"{eid}:{i}",
-                    action=str(h.get("event", "update")).lower()[:6] or "update",
-                    entry_ids=[eid],
-                    principal=h.get("actor_id"),
-                    at=str(h.get("created_at") or ""),
-                    detail=None,      # ⛔ 不放正文——藏进审计日志不算删除
-                ))
-        return rows
+        got = self._talk().call("audit_log")
+        return [
+            AuditEvent(
+                event_id=e["event_id"], action=e["action"],
+                entry_ids=e["entry_ids"], principal=e.get("principal"),
+                at=e.get("at", ""),
+                detail=None,      # ⛔ 不放正文——藏进审计日志不算删除
+            )
+            for e in got["events"]
+        ]
 
     def storage_locations(self) -> list[str]:
         """⭐ 申报持久层，让带外取证那一步能做。"""
@@ -205,8 +174,6 @@ class Mem0Adapter(Answerable, AdapterBase):
 
     def _span_for(self, doc_id: str | None, memory: str) -> list:
         """⭐ 只在 infer=False 时给得出区间——存的就是原文。"""
-        from amb.core import Span
-
         if self._infer or not doc_id:
             return []
         original = self._raw.get(doc_id)
@@ -217,83 +184,3 @@ class Mem0Adapter(Answerable, AdapterBase):
             # ⛔ 对不上就不给——⚠️ 猜一个区间比不给更糟
             return []
         return [Span(doc_id=doc_id, start=start, end=start + len(memory))]
-
-
-def _reset_mem0_modules() -> None:
-    """⚠️ mem0 在导入时固化 MEM0_DIR——换 home 就得让它重新导入一次。
-
-    ⛔ 只清 mem0 自己的模块，不动 openai/qdrant——
-    那两个没有这个问题，清了反而会丢掉我们打的缓存补丁。
-    """
-    import sys
-
-    for name in [m for m in sys.modules if m == "mem0" or m.startswith("mem0.")]:
-        del sys.modules[name]
-
-
-def _wrap_llm_cache(memory: Any) -> None:
-    """给 **这个 Memory 实例**的 LLM 客户端套缓存。
-
-    ⛔ 打在类上不行：mem0 的 client 已经构造完，
-    而 openai 的 `@required_args` 装饰器在**导入时**就绑定了原函数——
-    ⚠️ 替换类属性对已存在的调用路径不生效（踩过，表现是命中数恒为 0）。
-    ⭐ 打在实例的 `chat.completions` 对象上才拦得到。
-    """
-    import time
-
-    from amb.adapters.llm_cache import global_cache
-
-    cache = global_cache()
-    if not cache.enabled:
-        return
-
-    llm = getattr(memory, "llm", None)
-    client = getattr(llm, "client", None)
-    target = getattr(getattr(client, "chat", None), "completions", None)
-    if target is None or getattr(target, "_amb_cached", False):
-        return
-
-    original = target.create
-
-    def cached(**kwargs):
-        payload = _jsonable({k: v for k, v in kwargs.items()
-                             if k != "extra_headers"})
-        try:
-            hit = cache.get(payload)
-        except Exception as exc:  # noqa: BLE001 —— 退回真调用，⛔ 但要说话
-            # ⚠️ 静默吞掉会让「缓存没生效」变成一个查不出来的 bug——踩过。
-            _warn_once(f"缓存读取失败：{type(exc).__name__}: {exc}")
-            hit = None
-        if hit is not None:
-            from openai.types.chat import ChatCompletion
-
-            return ChatCompletion.model_validate(hit)
-        t0 = time.perf_counter()
-        got = original(**kwargs)
-        try:
-            cache.put(payload, got.model_dump(),
-                      int((time.perf_counter() - t0) * 1000))
-        except Exception as exc:  # noqa: BLE001
-            _warn_once(f"缓存写入失败：{type(exc).__name__}: {exc}")
-        return got
-
-    target.create = cached
-    target._amb_cached = True
-
-
-_WARNED: set[str] = set()
-
-
-def _warn_once(message: str) -> None:
-    """⛔ 缓存故障必须可见——⚠️ 静默降级会让它变成查不出来的 bug。"""
-    import sys
-
-    if message not in _WARNED:
-        _WARNED.add(message)
-        print(f"⚠️ {message}", file=sys.stderr)
-
-
-def _jsonable(payload: dict) -> dict:
-    import json
-
-    return json.loads(json.dumps(payload, default=str, sort_keys=True))

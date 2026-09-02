@@ -99,7 +99,14 @@ def install_git(dep: Dependency) -> Installed:
 
 def install(name: str, *, upgrade: bool = False) -> Installed:
     dep = dependency(name)
-    got = install_pip(dep, upgrade=upgrade) if dep.kind is Kind.PIP else install_git(dep)
+    if dep.kind is Kind.VENV:
+        from amb.setup.venv import install_venv
+
+        got = install_venv(dep, upgrade=upgrade)
+    elif dep.kind is Kind.PIP:
+        got = install_pip(dep, upgrade=upgrade)
+    else:
+        got = install_git(dep)
     lock = load_lock()
     lock[name] = got.as_dict()
     save_lock(lock)

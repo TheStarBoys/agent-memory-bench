@@ -12,7 +12,9 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-SKIP = {".git", ".venv", "node_modules", "__pycache__", "out"}
+# ⛔ `.external` 是外部系统的地盘（隔离 venv、clone 下来的题库），
+# 我们的文档守卫不去管上游的 README——那不是我们的产出（原则④）。
+SKIP = {".git", ".venv", ".external", "node_modules", "__pycache__", "out"}
 DOCS = sorted(p for p in ROOT.rglob("*.md") if not SKIP & set(p.relative_to(ROOT).parts))
 
 

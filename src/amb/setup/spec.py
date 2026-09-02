@@ -20,7 +20,13 @@ from pathlib import Path
 
 
 class Kind(StrEnum):
-    PIP = "pip"      # PyPI 包，装进当前解释器
+    #: ⚠️ 装进**我们的**解释器。只给宿主与工具（如 dsh）——
+    #: 那些我们要在进程内直接 import。
+    PIP = "pip"
+    #: ⭐ 装进 `.external/venvs/<name>/` 的**独立** venv，走子进程说话。
+    #: ⛔ 所有被测系统都必须是这一种：它们的依赖跟我们的会打架，
+    #: 实测 MemoryOS 降过 openai、a-mem 的 litellm 卡 openai<3。
+    VENV = "venv"
     GIT = "git"      # clone 到 .external/，⛔ 不进版本库
 
 
@@ -84,11 +90,20 @@ LOCKFILE = Path(".external/installed.json")
 REGISTRY: dict[str, Dependency] = {
     "mem0": Dependency(
         name="mem0",
-        kind=Kind.PIP,
+        kind=Kind.VENV,
         source="mem0ai",
         pin="2.0.19",
         verify_import="mem0",
         note="被测系统。⚠️ 需要 OPENAI 兼容端点，配置见 configs/",
+    ),
+    "a_mem": Dependency(
+        name="a_mem",
+        kind=Kind.VENV,
+        source="a-mem",   # ⚠️ 发行名是 a-mem，import 名才是 agentic_memory
+        pin="0.2.6",
+        verify_import="agentic_memory",
+        note="被测系统。⭐ embedding 本地跑不花钱；"
+             "⚠️ 它写死 OpenAI 官方端点，适配器用 OPENAI_BASE_URL 搭桥",
     ),
     "locomo": Dependency(
         name="locomo",

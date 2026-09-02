@@ -47,6 +47,20 @@ def build(name: str, *, context_budget: int = 24_000,
                      storage_dir=os.environ.get(
                          "AMB_MEM0_DIR",
                          str(Path(".external") / f"{name}-store")))
+    elif name == "a_mem":
+        from amb.setup import require_installed
+
+        require_installed("a_mem")
+        # ⛔ 不传 embed_*：A-mem 的 embedding 在本地跑（all-MiniLM-L6-v2），
+        # ⚠️ 所以它跟其他臂**不是同一个 embedder**——比较时要记着这一条。
+        arm = create(name,
+                     llm_model=require("AMB_LLM_MODEL"),
+                     llm_base_url=require("AMB_LLM_BASE_URL"),
+                     api_key_env=os.environ.get("AMB_LLM_API_KEY_ENV",
+                                                "SILICONFLOW_API_KEY"),
+                     storage_dir=os.environ.get(
+                         "AMB_AMEM_DIR",
+                         str(Path(".external") / "a_mem-store")))
     else:
         arm = create(name)
     attach = getattr(arm, "attach_llm", None)

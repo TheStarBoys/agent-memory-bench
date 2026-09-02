@@ -168,3 +168,73 @@ def global_cache() -> LLMCache:
         flag = os.environ.get("AMB_LLM_CACHE", "").lower()
         _GLOBAL = LLMCache(enabled=flag in ("1", "true", "yes", "on"))
     return _GLOBAL
+
+
+_WARNED: set[str] = set()
+
+
+def warn_once(message: str) -> None:
+    """⛔ 缓存故障必须可见——⚠️ 静默降级会让它变成查不出来的 bug。"""
+    import sys
+
+    if message not in _WARNED:
+        _WARNED.add(message)
+        print(f"⚠️ {message}", file=sys.stderr)
+
+
+def wrap_openai_client(client: object, *,
+                       force_temperature: float | None = None) -> bool:
+    """给**一个已构造好的** openai 客户端实例套缓存。返回是否真的打上了。
+
+    ⛔ 打在类上不行：openai 的 `@required_args` 装饰器在**导入时**就绑定了
+    原函数——⚠️ 替换类属性对已存在的调用路径不生效（踩过，表现是命中数恒为 0）。
+    ⭐ 打在实例的 `chat.completions` 对象上才拦得到。
+
+    `force_temperature`：⚠️ 被测系统若自己传了 temperature>0，缓存会
+    按 `_cacheable` 跳过，而且**判分不可复现**。mem0 默认 0.1、
+    A-mem 默认 1.0——两个都踩过。传 0.0 把它钉死，⛔ 并在文档里写明改了什么。
+    """
+    import time
+
+    cache = global_cache()
+    if not cache.enabled:
+        return False
+
+    target = getattr(getattr(client, "chat", None), "completions", None)
+    if target is None or getattr(target, "_amb_cached", False):
+        return False
+
+    original = target.create
+
+    def cached(**kwargs):
+        if force_temperature is not None:
+            kwargs["temperature"] = force_temperature
+        payload = _jsonable({k: v for k, v in kwargs.items()
+                             if k != "extra_headers"})
+        try:
+            hit = cache.get(payload)
+        except Exception as exc:  # noqa: BLE001 —— 退回真调用，⛔ 但要说话
+            warn_once(f"缓存读取失败：{type(exc).__name__}: {exc}")
+            hit = None
+        if hit is not None:
+            from openai.types.chat import ChatCompletion
+
+            return ChatCompletion.model_validate(hit)
+        t0 = time.perf_counter()
+        got = original(**kwargs)
+        try:
+            cache.put(payload, got.model_dump(),
+                      int((time.perf_counter() - t0) * 1000))
+        except Exception as exc:  # noqa: BLE001
+            warn_once(f"缓存写入失败：{type(exc).__name__}: {exc}")
+        return got
+
+    target.create = cached
+    target._amb_cached = True
+    return True
+
+
+def _jsonable(payload: dict) -> dict:
+    import json
+
+    return json.loads(json.dumps(payload, default=str, sort_keys=True))

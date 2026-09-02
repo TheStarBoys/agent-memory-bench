@@ -49,7 +49,7 @@ def names() -> list[str]:
 
 
 #: 真被测系统（不是对照组）。⚠️ 它们需要 setup 装好外部依赖。
-SYSTEMS: tuple[str, ...] = ("mem0", "mem0_raw")
+SYSTEMS: tuple[str, ...] = ("mem0", "mem0_raw", "a_mem")
 
 
 def _install_control_arms() -> None:
@@ -80,6 +80,10 @@ def _install_systems() -> None:
     # ⭐ 同一个系统，关掉 LLM 抽取。并排跑，量的是
     # 「抽取买到了什么、花了多少」——⚠️ 实测快 21 倍。
     register("mem0_raw", lambda **kw: Mem0Adapter(**{**kw, "infer": False}))
+
+    from amb.adapters.impl.a_mem import AMemAdapter
+
+    register("a_mem", AMemAdapter)
 
 
 _install_control_arms()
