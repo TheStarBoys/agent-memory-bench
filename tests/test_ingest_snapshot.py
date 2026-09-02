@@ -334,3 +334,62 @@ def test_timeouts_are_retried_but_loudly(monkeypatch) -> None:
 
     assert llm_cache._with_retry(slow, {}) == "好了"
     assert llm_cache.RETRIES.retries >= 1     # ⭐ 记了账，不是静默的
+
+
+# ── ⑦ 快照省了时间，⛔ 不该连成本测量一起丢掉 ──────────────────
+def test_snapshot_carries_the_measured_ingest_cost(tmp_path: Path) -> None:
+    """⛔ 命中快照时摄入被整段跳过，那一格本次约等于 0——
+    ⚠️ 而成本恰恰是对比里最要紧的一列（a_mem 31.26s/条 vs mem0_raw 1.01s/条）。
+
+    ⭐ 存快照那次的数字**可以**带回来：快照键锁死了臂 + 版本 + 摄入身份 +
+    语料指纹，四项全同才命中，所以它量的就是这份语料上的这个系统。
+    """
+    from amb.runner.snapshot import SnapshotKey, save, saved_cost
+
+    key = SnapshotKey("a_mem", "0.2.6", "Qwen/Qwen3-8B|thinking=0", "abc123")
+    store = tmp_path / "store"
+    store.mkdir()
+    (store / "db").write_text("x")
+    save(key, store, root=tmp_path / "snaps",
+         cost={"ingest_ms": 937836, "items": 30, "tokens_in": 12345})
+
+    got = saved_cost(key, root=tmp_path / "snaps")
+    assert got["ingest_ms"] == 937836 and got["tokens_in"] == 12345
+
+
+def test_a_snapshot_without_recorded_cost_reports_nothing(tmp_path: Path) -> None:
+    """⛔ 老快照没记成本——⚠️ 那就报 None，不猜、不拿 0 冒充。"""
+    from amb.runner.snapshot import SnapshotKey, save, saved_cost
+
+    key = SnapshotKey("mem0", "2.0.19", "b", "abc123")
+    store = tmp_path / "store"
+    store.mkdir()
+    (store / "db").write_text("x")
+    save(key, store, root=tmp_path / "snaps")        # ⚠️ 不带 cost
+    assert saved_cost(key, root=tmp_path / "snaps") is None
+
+
+def test_the_snapshot_footnote_never_goes_silent() -> None:
+    """⛔ 踩过：`ingest_snapshot` 的值加了说明之后，渲染层的精确匹配
+    `== "命中"` 静默失效，† 标记整个消失。
+
+    ⚠️ 一个「标记本身会不见」的 bug 比标错更糟：读者不会发现少了什么。
+    """
+    from amb.report.render import _render_cost
+    from amb.report.schema import ArmResult, Score
+
+    def _arm(name, snap):
+        return ArmResult(
+            arm=name, is_control=(name == "naive_rag"),
+            scores={"locomo_retrieval": Score(suite="locomo_retrieval",
+                                              status="scored",
+                                              metrics={"evidence_recall": 0.7})},
+            cost={"ingest": 900_000, "probe": 100},
+            cost_profile={"items_ingested": 30, "items_probed": 17},
+            ingest_snapshot=snap)
+
+    text = "\n".join(_render_cost(
+        [_arm("a_mem", "命中（摄入成本取自存快照那次实测）"),
+         _arm("naive_rag", "未启用")],
+        ["locomo_retrieval"], "Qwen/Qwen3-8B"))
+    assert "†" in text and "存快照那次实测" in text

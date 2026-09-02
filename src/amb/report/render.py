@@ -137,8 +137,10 @@ def _render_cost(arms: list, suites: list[str],
     profiles = {a.arm: _profile(a) for a in arms}
     # ⚠️ 快照命中的臂，「摄入耗时」不是这次真测的——⛔ 必须标出来，
     # 否则成本那一列会被读成「它很快」。
+    # ⚠️ 用前缀匹配：命中时这个字段会带上「成本取自哪一次」的说明。
+    # ⛔ 精确匹配 "命中" 会让标记静默消失——踩过。
     cached = sorted(a.arm for a in arms
-                    if getattr(a, "ingest_snapshot", "") == "命中")
+                    if getattr(a, "ingest_snapshot", "").startswith("命中"))
 
     # ⭐ 质量取**参与面最广**的那个套件——⛔ 不合成总分。
     # ⚠️ 挑一个大多数臂都不支持的套件，成本表就只剩一行，比较不起来。
@@ -206,9 +208,11 @@ def _render_cost(arms: list, suites: list[str],
                 f"价格 {PRICES_AS_OF} 查）。⛔ 只含**这次跑**："
                 "成本随库大小变的系统，小样本会系统性偏低。"]
     if cached:
-        out += ["", f"† {'、'.join(cached)} 命中了**摄入快照**——"
-                "⛔ 这几条的「每条摄入」和「总耗时」不是这次真测的，"
-                "⚠️ 不能拿它们跟没命中的臂比速度。"]
+        out += ["", f"† {'、'.join(cached)} 命中了**摄入快照**，"
+                "摄入那一格是**存快照那次实测**的数字，不是本次。"
+                "⭐ 它仍然是真测量：快照键锁死了臂 + 版本 + 摄入身份 + 语料，"
+                "四项全同才命中。⚠️ 但那是另一次跑的墙钟，"
+                "⛔ 机器负载不同会有出入。"]
     out.append("")
     return out
 

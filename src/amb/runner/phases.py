@@ -111,13 +111,30 @@ def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
     # ⚠️ 存快照必须在 close **之后**：子进程还开着 qdrant/chroma 时拷目录
     # 会拷到半截。⛔ 半截快照比没有更糟——它会静默给出别的系统的分。
     if snap is not None and not restored:
-        _try_save(snap, adapter)
+        _try_save(snap, adapter, cost={
+            "ingest_ms": ledger.wall_ms_harness.get("ingest", 0),
+            "items": len(plan.documents),
+            **({} if isinstance(usage, (Unsupported, Failed)) or not usage else {
+                "tokens_in": sum(u.tokens_in for u in usage),
+                "tokens_out": sum(u.tokens_out for u in usage),
+                "llm_calls": sum(u.llm_calls for u in usage),
+            }),
+        })
     result.participation = {
         "declared": len(caps),
         "total_caps": len(Capability),
         "items": items,
     }
     result.cost = dict(ledger.wall_ms_harness)
+    # ⭐ 命中快照时，摄入耗时本次约等于 0——⛔ 那不是「它很快」，
+    # 是这一步被跳过了。⚠️ 把存快照那次的**实测**数字带回来：
+    # 快照键锁死了臂 + 版本 + 摄入身份 + 语料，四项全同才命中，
+    # 所以那个数字量的就是这份语料上的这个系统。
+    # ⚠️ 但它是**另一次跑**的墙钟——报告里必须标出来，⛔ 不能冒充本次测量。
+    carried = _carried_cost(snap) if restored else None
+    if carried:
+        result.cost["ingest"] = int(carried.get("ingest_ms", 0))
+        result.ingest_snapshot = "命中（摄入成本取自存快照那次实测）"
     # ⭐ 成本画像：⚠️ 没测到就是 None，⛔ 不拿 0 冒充「没花钱」。
     profile: dict[str, object] = {
         "items_ingested": len(plan.documents),
@@ -129,6 +146,10 @@ def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
             "tokens_out": sum(u.tokens_out for u in usage),
             "llm_calls": sum(u.llm_calls for u in usage),
         }
+    elif carried and "tokens_in" in carried:
+        # ⚠️ 同理：命中快照时本次没发过 LLM 调用，token 也要带回来
+        profile |= {k: carried[k] for k in ("tokens_in", "tokens_out",
+                                            "llm_calls") if k in carried}
     result.cost_profile = profile
     return result, guard.expected
 
@@ -177,12 +198,21 @@ def _try_restore(key, adapter: Adapter) -> bool:
     return bool(store and restore(key, store))
 
 
-def _try_save(key, adapter: Adapter) -> None:
+def _try_save(key, adapter: Adapter, cost: dict | None = None) -> None:
     from amb.runner.snapshot import save
 
     store = _store_of(adapter)
     if store is not None:
-        save(key, store)
+        save(key, store, cost=cost)
+
+
+def _carried_cost(key) -> dict | None:
+    """存快照那次实测的摄入成本。⛔ 没记就是 None，⚠️ 不猜。"""
+    if key is None:
+        return None
+    from amb.runner.snapshot import saved_cost
+
+    return saved_cost(key)
 
 
 def now_rfc3339() -> str:

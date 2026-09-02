@@ -66,15 +66,43 @@ def restore(key: SnapshotKey, into: Path, root: Path = ROOT) -> bool:
     return True
 
 
-def save(key: SnapshotKey, store: Path, root: Path = ROOT) -> None:
-    """摄入完存一份。⚠️ 写完才落 .complete——⛔ 半截快照比没有更糟。"""
+def saved_cost(key: SnapshotKey, root: Path = ROOT) -> dict | None:
+    """存快照那次**实测**的摄入成本。⛔ 命中快照时它才是真数字。
+
+    ⚠️ 不带这个的话，快照命中的臂摄入耗时显示成 ~0，
+    而那正好是成本对比里最要紧的一格——⭐ 省了时间不该连测量结果一起丢掉。
+
+    ⚠️ 这个数字**可以**跨跑复用：快照键已经锁死了臂 + 版本 + 摄入身份 +
+    语料指纹，⛔ 四项全同才会命中，所以它测的就是这份语料上的这个系统。
+    ⚠️ 但它是**上一次**的墙钟，机器负载不同会有出入——报告里要标出来。
+    """
+    if not (key.path(root) / ".complete").is_file():
+        return None
+    try:
+        meta = json.loads((key.path(root) / "meta.json").read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    got = meta.get("ingest_cost")
+    return got if isinstance(got, dict) else None
+
+
+def save(key: SnapshotKey, store: Path, root: Path = ROOT,
+         cost: dict | None = None) -> None:
+    """摄入完存一份。⚠️ 写完才落 .complete——⛔ 半截快照比没有更糟。
+
+    `cost`：⭐ 这一次**实测**的摄入成本，一起存进去，
+    ⛔ 让后面命中快照的跑还能报出真数字。
+    """
     if not store.is_dir():
         return
     dst = key.path(root)
     shutil.rmtree(dst, ignore_errors=True)
     dst.mkdir(parents=True, exist_ok=True)
     shutil.copytree(store, dst / "store")
+    meta = key.as_dict()
+    if cost:
+        meta["ingest_cost"] = cost
     (dst / "meta.json").write_text(
-        json.dumps(key.as_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+        json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
     # ⛔ 最后一步：只有它在，快照才算数
     (dst / ".complete").write_text("", encoding="utf-8")
