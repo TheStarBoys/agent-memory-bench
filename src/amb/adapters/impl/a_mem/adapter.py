@@ -22,6 +22,7 @@ from amb.core import (
     Document,
     Entry,
     Unsupported,
+    Usage,
     require,
 )
 
@@ -92,6 +93,22 @@ class AMemAdapter(Answerable, AdapterBase):
 
     def count(self) -> int:
         return int(self._talk().call("count")["count"])
+
+    def usage(self) -> list[Usage] | Unsupported:
+        """⭐ 成本实测。⚠️ 数字来自**我们的**包装层，⛔ 不是它自报的——
+        它没有报 token 的接口，但每一次 openai 调用都经过我们手里。
+
+        ⛔ 分不出 ingest / probe：我们的计量器是按进程累计的，
+        ⚠️ 硬拆会造出一个假的分配。全部记在 ingest——
+        这一档（`--no-answer`）本来就只有摄入调 LLM。
+        """
+        if self._bridge is None:
+            return Unsupported("没跑过，无从计量")
+        got = self._talk().call("meter")
+        if not got:
+            return Unsupported("worker 拿不到计量器")
+        return [Usage(phase="ingest", tokens_in=got["tokens_in"],
+                      tokens_out=got["tokens_out"], llm_calls=got["llm_calls"])]
 
     def storage_locations(self) -> list[str]:
         """⭐ 申报持久层：带外取证那一步要用，摄入快照也认它。"""

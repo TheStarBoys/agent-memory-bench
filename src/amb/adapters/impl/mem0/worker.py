@@ -51,6 +51,17 @@ class Runner:
         return {"version": getattr(mem0, "__version__", "?"),
                 "python": sys.version.split()[0]}
 
+    def meter(self) -> dict:
+        """⭐ 我们在包装层实测的 token 用量。⛔ 不是被测系统自报的。"""
+        shared = os.environ.get("AMB_CACHE_MODULE_DIR")
+        if shared and shared not in sys.path:
+            sys.path.insert(0, shared)
+        try:
+            from llm_cache import METER
+        except ImportError:
+            return {}
+        return METER.as_dict()
+
     def ingest(self, *, doc_id: str, text: str, principal: str | None) -> dict:
         got = self.memory.add(text, user_id=principal or self.default,
                               metadata={"doc_id": doc_id}, infer=self.infer)

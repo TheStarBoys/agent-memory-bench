@@ -294,3 +294,61 @@ def test_report_flags_a_cached_run_as_not_a_latency_measurement() -> None:
     text = render(report)
     assert "缓存命中 9/10" in text
     assert "不是独立测量" in text
+
+
+def test_money_is_measured_not_estimated() -> None:
+    """⛔ 有价格表却一个 token 都没测——那时报告里钱那一列永远是空的。
+
+    ⚠️ 原则⑥ 说「token 只有适配器报得出来」指的是**被测系统自报**。
+    ⭐ 但我们拦着每一次 openai 调用，usage 就在响应里——
+    那是**我们测的**，比自报可信，也不要求它声明 ACCOUNTING。
+    """
+    from amb.adapters.llm_cache import Meter
+
+    m = Meter()
+
+    class _U:
+        prompt_tokens, completion_tokens = 8413, 150
+
+    m.add(_U())
+    m.add(_U())
+    got = m.as_dict()
+    assert got["tokens_in"] == 16826 and got["llm_calls"] == 2
+    # ⚠️ 重试等待单独报——⛔ 不能算进「这个系统很慢」
+    assert "retry_waited_s" in got
+
+
+def test_cache_hits_are_not_counted_as_spend() -> None:
+    """⚠️ 缓存命中那次没真花钱——⛔ 算进去会让成本虚高。"""
+    from amb.adapters.llm_cache import Meter
+
+    m = Meter()
+    m.cached_calls += 3
+    assert m.as_dict()["tokens_in"] == 0
+    assert m.as_dict()["cached_calls"] == 3
+
+
+def test_the_cost_table_shows_money() -> None:
+    """⛔ 算出来不印出来等于没算。"""
+    from amb.report.render import _render_cost
+    from amb.report.schema import ArmResult, Score
+
+    arms = [
+        ArmResult(arm="mem0", is_control=False,
+                  scores={"locomo_retrieval": Score(
+                      suite="locomo_retrieval", status="scored",
+                      metrics={"evidence_recall": 0.7})},
+                  cost={"ingest": 1000, "probe": 100},
+                  cost_profile={"items_ingested": 10, "items_probed": 5,
+                                "tokens_in": 84130, "tokens_out": 1500}),
+        ArmResult(arm="naive_rag", is_control=True,
+                  scores={"locomo_retrieval": Score(
+                      suite="locomo_retrieval", status="scored",
+                      metrics={"evidence_recall": 0.6})},
+                  cost={"ingest": 100, "probe": 100},
+                  cost_profile={"items_ingested": 10, "items_probed": 5}),
+    ]
+    text = "\n".join(_render_cost(arms, ["locomo_retrieval"], "Qwen/Qwen3-8B"))
+    assert "钱" in text and "$" in text
+    # ⛔ 没测到的臂写 —，⚠️ 不拿 0 冒充「没花钱」
+    assert "—" in text

@@ -200,6 +200,38 @@ def _is_rate_limit(exc: Exception) -> bool:
                               or "TPM" in text or "RPM" in text)
 
 
+class Meter:
+    """⭐ **我们自己**在包装层测的 token 用量。
+
+    ⛔ 原则⑥ 说「token 只有适配器报得出来」——那是指被测系统自报。
+    ⚠️ 但我们拦着每一次 openai 调用，usage 就在响应里，
+    ⭐ 这是**我们测的**，比自报更可信，且不要求它声明 ACCOUNTING。
+
+    ⚠️ 缓存命中的调用不计——⛔ 那次没真花钱，算进去会虚高。
+    """
+
+    def __init__(self) -> None:
+        self.tokens_in = 0
+        self.tokens_out = 0
+        self.calls = 0
+        self.cached_calls = 0
+
+    def add(self, usage) -> None:
+        self.tokens_in += int(getattr(usage, "prompt_tokens", 0) or 0)
+        self.tokens_out += int(getattr(usage, "completion_tokens", 0) or 0)
+        self.calls += 1
+
+    def as_dict(self) -> dict:
+        return {"tokens_in": self.tokens_in, "tokens_out": self.tokens_out,
+                "llm_calls": self.calls, "cached_calls": self.cached_calls,
+                "retries": RETRIES.retries,
+                # ⚠️ 重试等待单独报——⛔ 那是供应商配额的成本，不是系统的
+                "retry_waited_s": round(RETRIES.waited_s, 1)}
+
+
+METER = Meter()
+
+
 class RetryStats:
     """⚠️ 重试等了多久要能报出来——⛔ 否则它会被算进「这个系统很慢」。"""
 
@@ -269,7 +301,9 @@ def wrap_openai_client(client: object, *,
                 kwargs[name] = value
         # ⛔ 缓存没开也要走到这儿——受控变量比缓存重要
         if not cache.enabled:
-            return _with_retry(original, kwargs)
+            got = _with_retry(original, kwargs)
+            METER.add(getattr(got, "usage", None))
+            return got
         payload = _jsonable({k: v for k, v in kwargs.items()
                              if k != "extra_headers"})
         try:
@@ -280,9 +314,12 @@ def wrap_openai_client(client: object, *,
         if hit is not None:
             from openai.types.chat import ChatCompletion
 
+            # ⚠️ 命中不计 token——⛔ 那次没真花钱
+            METER.cached_calls += 1
             return ChatCompletion.model_validate(hit)
         t0 = time.perf_counter()
         got = _with_retry(original, kwargs)
+        METER.add(getattr(got, "usage", None))
         try:
             cache.put(payload, got.model_dump(),
                       int((time.perf_counter() - t0) * 1000))

@@ -171,8 +171,8 @@ def _render_cost(arms: list, suites: list[str],
            f"{len(quality)}/{len(arms)} 条臂参与）", "",
            "⛔ **不给总分**——快与准的权衡因用途而异，"
            "合成一个数就等于替使用者做了那个取舍。", "",
-           "| | 质量 | Δ vs 地板 | 总耗时 | 每条摄入 | 每次回答 | 判定 |",
-           "|---|---:|---:|---:|---:|---:|---|"]
+           "| | 质量 | Δ vs 地板 | 总耗时 | 每条摄入 | 每次回答 | token | 钱 | 判定 |",
+           "|---|---:|---:|---:|---:|---:|---:|---:|---|"]
     for v in judge_cost(quality, profiles, floor):
         p = profiles[v.arm]
         d = "—" if v.quality_delta is None else f"{v.quality_delta:+.3f}"
@@ -182,10 +182,22 @@ def _render_cost(arms: list, suites: list[str],
         if v.arm in cached:
             ing = f"⚠️ {ing}†"
         prb = _seconds(p.probe_ms_per_item)
+        # ⛔ 没测到就写 —，⚠️ 不拿 0 冒充「没花钱」
+        toks = ("—" if p.tokens_in is None
+                else f"{(p.tokens_in + (p.tokens_out or 0)) / 1000:.0f}k")
+        money = "—" if p.money_usd is None else f"${p.money_usd:.3f}"
         out.append(f"| {v.arm} | {v.quality:.3f} | {d} | {ratio} | {ing} | {prb} "
-                   f"| {v.label} |")
+                   f"| {toks} | {money} | {v.label} |")
         if v.note:
             out.append(f"| | | | | | | ⚠️ {v.note} |")
+    priced = [v.arm for v in judge_cost(quality, profiles, floor)
+              if profiles[v.arm].money_usd is not None]
+    if priced:
+        from amb.scoring import PRICES_AS_OF
+
+        out += ["", f"⚠️ 钱 = **挂牌价 × 实测 token**（{backbone_model or '?'}，"
+                f"价格 {PRICES_AS_OF} 查）。⛔ 只含**这次跑**："
+                "成本随库大小变的系统，小样本会系统性偏低。"]
     if cached:
         out += ["", f"† {'、'.join(cached)} 命中了**摄入快照**——"
                 "⛔ 这几条的「每条摄入」和「总耗时」不是这次真测的，"

@@ -73,6 +73,17 @@ class Runner:
                 f"加载不到宿主的 llm_cache（{exc}），受控变量钉不住") from None
         wrap_openai_client(client)
 
+    def meter(self) -> dict:
+        """⭐ 我们在包装层实测的 token 用量。⛔ 不是被测系统自报的。"""
+        shared = os.environ.get("AMB_CACHE_MODULE_DIR")
+        if shared and shared not in sys.path:
+            sys.path.insert(0, shared)
+        try:
+            from llm_cache import METER
+        except ImportError:
+            return {}
+        return METER.as_dict()
+
     def ingest(self, *, doc_id: str, text: str) -> dict:
         memory_id = self.system.add_note(text)
         if memory_id:
