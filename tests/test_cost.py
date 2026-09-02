@@ -352,3 +352,31 @@ def test_the_cost_table_shows_money() -> None:
     assert "钱" in text and "$" in text
     # ⛔ 没测到的臂写 —，⚠️ 不拿 0 冒充「没花钱」
     assert "—" in text
+
+
+def test_full_context_is_flagged_as_degenerate_in_retrieval() -> None:
+    """⛔ `full_context` 在检索档里把**全部语料**交出去（query/k 刻意忽略），
+    所以 evidence_recall 必然满分。
+
+    ⚠️ 一行 `full_context = 1.000` 会被读成「天花板很高」，
+    实际是**分母被绕过了**。⭐ 它有意义的地方在回答档。
+    ⛔ 不标出来，这张表就在骗人。
+    """
+    from amb.report.render import _render_lane
+    from amb.report.schema import ArmResult, Report, Score
+
+    def _arm(name, control, value):
+        return ArmResult(arm=name, is_control=control,
+                         scores={"locomo_retrieval": Score(
+                             suite="locomo_retrieval", status="scored",
+                             metrics={"evidence_recall": value})})
+
+    report = Report(run_id="r", at="t",
+                    world={"name": "w", "seed": 1, "digest": ""},
+                    backbone={}, externals={}, sampling={})
+    text = _render_lane("library", [_arm("full_context", True, 1.0),
+                                    _arm("naive_rag", True, 0.64),
+                                    _arm("a_mem", False, 0.7)], report)
+
+    assert "退化†" in text            # ⭐ 那一行被标了
+    assert "分母被绕过" in text        # ⛔ 且脚注解释了为什么——不能是孤儿脚注

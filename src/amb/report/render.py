@@ -272,9 +272,23 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
             #    拿它们互比再标「帮倒忙」是把参照系当成了选手。
             if arm.is_control:
                 dtxt = "（地板）" if floor and arm.arm == floor.arm else "（参照）"
+                # ⛔ full_context 在检索档里把**全部语料**交出去（query/k 刻意忽略），
+                # 所以 recall 必然是 1.000——⚠️ 不是它检索得好，是它不检索。
+                # ⭐ 不标出来的话，读者会把它当成一个有意义的天花板。
+                if arm.arm == "full_context" and suite != "qa":
+                    dtxt = "⚠️ 退化†"
             else:
                 dtxt = _delta_text(v, ci, floor, floor_ci)
             out.append(f"| {arm.arm} ({tag}) | {shown} | {dtxt} | scored | |")
+        # ⛔ 孤儿脚注最糟：标了 † 却不说它什么意思
+        if any(a.arm == "full_context" and (sc := a.scores.get(suite))
+               and sc.status == "scored" for a in arms) and suite != "qa":
+            out += ["",
+                    "† `full_context` 在**检索档**里不做检索——它把全部语料交出去"
+                    "（`query` 与 `k` 刻意忽略），所以 recall 必然满分。"
+                    "⛔ 那不是天花板，是**分母被绕过了**"
+                    "（见 [baselines](baselines.md#full-context-retrieval)）。"
+                    "⭐ 它有意义的地方在回答档：那里 backbone 要自己在全文里找。"]
         out.append("")
 
         # 六格/五指标这类配对指标全量附上——⛔ 只报主指标就能刷分
