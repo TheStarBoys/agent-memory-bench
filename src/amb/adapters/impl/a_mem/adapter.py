@@ -93,6 +93,10 @@ class AMemAdapter(Answerable, AdapterBase):
     def count(self) -> int:
         return int(self._talk().call("count")["count"])
 
+    def storage_locations(self) -> list[str]:
+        """⭐ 申报持久层：带外取证那一步要用，摄入快照也认它。"""
+        return [self._config["storage_dir"]]
+
     def delete(self, entry_ids: list[str]) -> DeleteResult | Unsupported:
         got = self._talk().call("delete", entry_ids=entry_ids)
         return DeleteResult(deleted=got["deleted"], refused=got["refused"])

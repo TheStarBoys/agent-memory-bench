@@ -102,7 +102,13 @@ class Bridge:
                 self._died(f"回的不是 JSON（多半是往 stdout 打日志了）："
                            f"{line[:200]!r}")) from None
         if not got.get("ok"):
-            raise BridgeError(f"{self._script.name} {op}: {got.get('error')}")
+            # ⛔ 带上子进程的 stderr——worker 已经把 traceback 打在那儿了。
+            # ⚠️ 只报一行 error 会让「它为什么失败」查不出来（踩过：
+            # 一个 sqlite 错误码，看不到是哪一行、什么路径触发的）。
+            tail = "\n    ".join(self._stderr[-20:])
+            raise BridgeError(
+                f"{self._script.name} {op}: {got.get('error')}"
+                + (f"\n  子进程 stderr 末尾：\n    {tail}" if tail else ""))
         return got.get("result")
 
     def _died(self, why: str) -> str:

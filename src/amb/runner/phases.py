@@ -40,10 +40,12 @@ class Plan:
 
 
 def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
-            *, is_control: bool, rebuild=None) -> tuple[ArmResult, str]:
+            *, is_control: bool, rebuild=None,
+            backbone: str = "") -> tuple[ArmResult, str]:
     """把一条臂跑完五阶段。返回结果与最终世界哈希。
 
     ⚠️ rebuild：N4 的第 3 步要重开适配器，没给就不跑 N4。
+    ⚠️ backbone：⛔ 只用于摄入快照的键——空串表示不用快照。
     """
     ledger = Ledger()
     caps = adapter.capabilities()
@@ -62,10 +64,17 @@ def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
         guard.check(Phase.SETUP)
 
         # ── ingest ───────────────────────────────────────────
+        # ⭐ 摄入占总耗时 86%，而它对「同一语料 + 同一系统 + 同一 backbone」
+        # 是确定的。⚠️ 命中就整段跳过。
+        snap = _snapshot_key(name, adapter, plan, backbone)
+        restored = _try_restore(snap, adapter)
         with ledger.measure("ingest"):
-            for doc in plan.documents:
-                adapter.ingest(doc)
-            adapter.finalize()
+            if not restored:
+                for doc in plan.documents:
+                    adapter.ingest(doc)
+                adapter.finalize()
+        result.ingest_snapshot = (
+            "命中" if restored else ("已存" if snap else "未启用"))
         guard.check(Phase.INGEST)   # ⛔ 摄入期间也不许碰世界
 
         # ── mutate：只有评测器动手，适配器不被通知 ──────────────
@@ -94,6 +103,10 @@ def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
         guard.check(Phase.PROBE)
 
     adapter.close()
+    # ⚠️ 存快照必须在 close **之后**：子进程还开着 qdrant/chroma 时拷目录
+    # 会拷到半截。⛔ 半截快照比没有更糟——它会静默给出别的系统的分。
+    if snap is not None and not restored:
+        _try_save(snap, adapter)
     result.participation = {
         "declared": len(caps),
         "total_caps": len(Capability),
@@ -115,6 +128,52 @@ def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
         }
     result.cost_profile = profile
     return result, guard.expected
+
+
+def _store_of(adapter: Adapter) -> Path | None:
+    """适配器申报的持久层。⛔ 只认申报了**唯一一个**目录的——
+    ⚠️ 多个目录说明它的状态不止一处，拷一个会拿到不一致的快照。"""
+    places = getattr(adapter, "storage_locations", lambda: [])()
+    if isinstance(places, list) and len(places) == 1:
+        path = Path(places[0])
+        return path if path.parent.exists() else None
+    return None
+
+
+def _snapshot_key(name: str, adapter: Adapter, plan: Plan, backbone: str):
+    """⛔ 键漏一项就会拿错快照。没 backbone / 没申报持久层就**不用快照**。"""
+    if not backbone or _store_of(adapter) is None:
+        return None
+    from amb.runner.snapshot import SnapshotKey, corpus_digest
+    from amb.setup import snapshot as lockfile
+
+    # ⚠️ 版本按**适配器**查（mem0 与 mem0_raw 是同一个类、同一个依赖），
+    # ⛔ 但快照键用的是**臂名**——两条臂摄入行为不同（infer 开/关），
+    # 键要是共用就会互相拿到对方的库。
+    dependency = getattr(adapter, "name", name)
+    version = (lockfile().get(dependency, {}) or {}).get("actual", "")
+    if not version:
+        # ⚠️ 对照组没有外部版本号——它们摄入本来就便宜，⛔ 不值得冒拿错的风险
+        return None
+    return SnapshotKey(arm=name, arm_version=version, backbone=backbone,
+                       corpus_digest=corpus_digest(plan.documents))
+
+
+def _try_restore(key, adapter: Adapter) -> bool:
+    if key is None:
+        return False
+    from amb.runner.snapshot import restore
+
+    store = _store_of(adapter)
+    return bool(store and restore(key, store))
+
+
+def _try_save(key, adapter: Adapter) -> None:
+    from amb.runner.snapshot import save
+
+    store = _store_of(adapter)
+    if store is not None:
+        save(key, store)
 
 
 def now_rfc3339() -> str:

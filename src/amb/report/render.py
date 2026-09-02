@@ -135,6 +135,11 @@ def _render_cost(arms: list, suites: list[str],
         return CostProfile(arm=a.arm, wall_ms=dict(a.cost or {}), **fields)
 
     profiles = {a.arm: _profile(a) for a in arms}
+    # ⚠️ 快照命中的臂，「摄入耗时」不是这次真测的——⛔ 必须标出来，
+    # 否则成本那一列会被读成「它很快」。
+    cached = sorted(a.arm for a in arms
+                    if getattr(a, "ingest_snapshot", "") == "命中")
+
     # ⭐ 质量取**参与面最广**的那个套件——⛔ 不合成总分。
     # ⚠️ 挑一个大多数臂都不支持的套件，成本表就只剩一行，比较不起来。
     def scored_count(name: str) -> int:
@@ -173,11 +178,18 @@ def _render_cost(arms: list, suites: list[str],
         d = "—" if v.quality_delta is None else f"{v.quality_delta:+.3f}"
         ratio = _ratio_text(v.cost_ratio)
         ing = _seconds(p.ingest_ms_per_item)
+        # ⚠️ 快照命中 → 这一格不是这次真测的
+        if v.arm in cached:
+            ing = f"⚠️ {ing}†"
         prb = _seconds(p.probe_ms_per_item)
         out.append(f"| {v.arm} | {v.quality:.3f} | {d} | {ratio} | {ing} | {prb} "
                    f"| {v.label} |")
         if v.note:
             out.append(f"| | | | | | | ⚠️ {v.note} |")
+    if cached:
+        out += ["", f"† {'、'.join(cached)} 命中了**摄入快照**——"
+                "⛔ 这几条的「每条摄入」和「总耗时」不是这次真测的，"
+                "⚠️ 不能拿它们跟没命中的臂比速度。"]
     out.append("")
     return out
 

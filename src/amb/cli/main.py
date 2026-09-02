@@ -109,6 +109,9 @@ def main(argv: list[str] | None = None) -> int:
                     is_control=name in control_arms(),
                     # ⚠️ N4 第 3 步要重开一个同样的适配器
                     rebuild=lambda n=name: build(n, context_budget=args.budget, llm=llm),
+                    # ⭐ 摄入快照的键之一。⛔ 没挂 backbone 就不用快照——
+                    # 摄入结果会因 backbone 而异，键漏了它就会拿错。
+                    backbone=(llm.model if llm else ""),
                 )
             except Exception as exc:  # noqa: BLE001
                 # ⛔ 不只打到 stderr——静默消失会被读成「没参赛」
