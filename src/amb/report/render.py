@@ -164,6 +164,20 @@ def _render_cost(arms: list, suites: list[str]) -> list[str]:
 
 def _render_lane(lane: str, arms: list, report: Report) -> str:
     out: list[str] = [f"# 档：{LANE_LABEL[lane]}", ""]
+
+    # ⛔ 跑挂的臂必须在报告里可见——⚠️ 静默消失会被读成「没参赛」
+    crashed = [a for a in arms if a.crashed]
+    if crashed:
+        out += ["## ⛔ 这些臂没跑完", "",
+                "⚠️ 它们**不是不支持，也不是 0 分**——是跑挂了。"
+                "⛔ 这次结果里没有它们。", "",
+                "| | 挂在哪 |", "|---|---|"]
+        out += [f"| {a.arm} | {a.crashed} |" for a in crashed]
+        out.append("")
+    arms = [a for a in arms if not a.crashed]
+    if not arms:
+        return chr(10).join(out)
+
     suites = sorted({s for a in arms for s in a.scores})
 
     for suite in suites:

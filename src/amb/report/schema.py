@@ -28,6 +28,9 @@ class ArmResult:
     scores: dict[str, Score] = field(default_factory=dict)
     #: 声明与参与——堵住「少声明占便宜」。⚠️ 不换算成分数、不排名。
     participation: dict[str, int] = field(default_factory=dict)
+    #: ⛔ 跑挂了就记在这里——**不许只留在 stderr**。
+    #: ⚠️ 一条臂静默消失，读者会以为它没参赛，而实际是它崩了。
+    crashed: str | None = None
     #: 墙钟，评测器从外部独立计时。⚠️ 适配器自报的那份另计（原则⑥）。
     cost: dict[str, int] = field(default_factory=dict)
     #: ⭐ 完整成本画像：每条摄入多久、每次回答多久、token、钱。

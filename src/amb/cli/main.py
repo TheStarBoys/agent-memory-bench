@@ -14,7 +14,7 @@ import tempfile
 from pathlib import Path
 
 from amb.core import load_dotenv
-from amb.report import Report, render
+from amb.report import ArmResult, Report, render
 from amb.runner import (
     backbone, build, build_plan, control_arms, now_rfc3339, run_one,
 )
@@ -107,7 +107,12 @@ def main(argv: list[str] | None = None) -> int:
                     rebuild=lambda n=name: build(n, context_budget=args.budget, llm=llm),
                 )
             except Exception as exc:  # noqa: BLE001
-                print(f"✗ {name}: {type(exc).__name__}: {exc}", file=sys.stderr)
+                # ⛔ 不只打到 stderr——静默消失会被读成「没参赛」
+                msg = f"{type(exc).__name__}: {exc}"[:200]
+                print(f"✗ {name}: {msg}", file=sys.stderr)
+                report.lanes.setdefault("library", []).append(
+                    ArmResult(arm=name, is_control=name in control_arms(),
+                              crashed=msg))
                 continue
             report.world["digest"] = world_digest
             report.lanes.setdefault('library', []).append(result)
@@ -139,7 +144,10 @@ def _run_agent_lane(report: Report, names: list[str], workdir: Path) -> None:
             result, digest = run_one_agent(name, spec, plan, workdir / name,
                                            is_control=name in agent_arms())
         except Exception as exc:  # noqa: BLE001
-            print(f"✗ agent/{name}: {type(exc).__name__}: {exc}", file=sys.stderr)
+            msg = f"{type(exc).__name__}: {exc}"[:200]
+            print(f"✗ agent/{name}: {msg}", file=sys.stderr)
+            report.lanes.setdefault("agent", []).append(
+                ArmResult(arm=name, is_control=name in agent_arms(), crashed=msg))
             continue
         report.world["digest"] = digest
         report.lanes.setdefault("agent", []).append(result)

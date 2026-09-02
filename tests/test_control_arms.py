@@ -146,3 +146,91 @@ def test_registry_rejects_substring_match() -> None:
         create("bm")       # bm25 的前缀
     with pytest.raises(KeyError):
         create("null_x")   # 含 null
+
+
+# ── ⛔ 传输抖动不该丢掉一条臂 ────────────────────────────────────
+def test_embedding_client_retries_on_a_truncated_read() -> None:
+    """⚠️ 实测：端点在大批量上会 IncompleteRead（读到一半断流）。
+
+    ⛔ 那不是端点坏了，是客户端没扛住——
+    **评测框架不该因为传输抖动就丢一条臂**。
+    """
+    import http.client
+
+    from amb.adapters.embedding import EmbeddingClient, EmbeddingConfig
+
+    cfg = EmbeddingConfig(model="m", base_url="http://x", api_key_env="AMB_T",
+                          max_retries=3, max_batch=8)
+    client = EmbeddingClient(cfg)
+    calls = {"n": 0}
+
+    def flaky(texts):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise http.client.IncompleteRead(b"partial")
+        return [[0.1] * 4 for _ in texts]
+
+    client._post = flaky  # noqa: SLF001
+    import time as _t
+
+    real_sleep, _t.sleep = _t.sleep, lambda _s: None
+    try:
+        got = client.embed(["a", "b"])
+    finally:
+        _t.sleep = real_sleep
+    assert len(got) == 2 and calls["n"] == 3
+
+
+def test_embedding_client_gives_up_loudly_not_silently() -> None:
+    """⛔ 重试用尽后抛异常——⚠️ 静默返回空向量会让分数变成假的。"""
+    import http.client
+
+    from amb.adapters.embedding import EmbeddingClient, EmbeddingConfig, EmbeddingError
+
+    client = EmbeddingClient(EmbeddingConfig("m", "http://x", "AMB_T",
+                                             max_retries=2))
+
+    def always_fails(texts):
+        raise http.client.IncompleteRead(b"")
+
+    client._post = always_fails  # noqa: SLF001
+    import time as _t
+
+    real_sleep, _t.sleep = _t.sleep, lambda _s: None
+    try:
+        with pytest.raises(EmbeddingError, match="重试"):
+            client.embed(["a"])
+    finally:
+        _t.sleep = real_sleep
+
+
+def test_large_input_is_split_into_batches() -> None:
+    """⚠️ 分批是防截断的另一半——⛔ 一次塞太多就会撞上。"""
+    from amb.adapters.embedding import EmbeddingClient, EmbeddingConfig
+
+    client = EmbeddingClient(EmbeddingConfig("m", "http://x", "AMB_T", max_batch=4))
+    seen: list[int] = []
+    client._post = lambda ts: (seen.append(len(ts)) or  # noqa: SLF001
+                               [[0.0] for _ in ts])
+    client.embed([f"t{i}" for i in range(10)])
+    assert seen == [4, 4, 2] and max(seen) <= 4
+
+
+def test_a_crashed_arm_is_visible_in_the_report() -> None:
+    """⛔ 跑挂的臂不许只留在 stderr。
+
+    ⚠️ 一条臂静默消失，读者会以为它**没参赛**，而实际是它**崩了**——
+    那是两件完全不同的事。
+    """
+    from amb.report import ArmResult, Report, render
+
+    report = Report(run_id="t", at="t",
+                    world={"name": "x", "seed": 1, "digest": "d"},
+                    backbone={"model": "m"},
+                    lanes={"library": [
+                        ArmResult(arm="boom", is_control=False,
+                                  crashed="IncompleteRead: 断流"),
+                    ]})
+    text = render(report)
+    assert "没跑完" in text and "boom" in text and "IncompleteRead" in text
+    assert "不是不支持，也不是 0 分" in text
