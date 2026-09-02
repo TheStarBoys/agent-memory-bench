@@ -53,10 +53,17 @@ class SampleResult:
     total: int
     #: ⭐ 每类抽了几条，⚠️ 分层抽样要看它才知道有没有漏类
     by_stratum: dict[str, int] = field(default_factory=dict)
+    #: ⚠️ 额外的抽样约束（比如限了几个对话）——⛔ 也要进报告
+    spec_note: str = ""
 
     def provenance(self) -> dict[str, object]:
-        return {**self.spec.provenance(), "sampled": len(self.items),
-                "total": self.total, "by_stratum": dict(self.by_stratum)}
+        out: dict[str, object] = {
+            **self.spec.provenance(), "sampled": len(self.items),
+            "total": self.total, "by_stratum": dict(self.by_stratum),
+        }
+        if self.spec_note:
+            out["note"] = self.spec_note
+        return out
 
 
 def sample(items: Sequence[T], spec: SampleSpec, *,

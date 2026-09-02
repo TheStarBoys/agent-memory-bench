@@ -137,7 +137,28 @@ class LocomoRetrievalSuite:
         return run
 
 
-def pick(data: LocomoData, spec: SampleSpec) -> SampleResult:
-    """抽题。⚠️ 结果的 provenance 要进报告。"""
-    return sample(data.questions, spec,
-                  key=lambda q: q.qa_id, stratum=lambda q: q.stratum)
+def pick(data: LocomoData, spec: SampleSpec,
+         max_conversations: int | None = None) -> SampleResult:
+    """抽题。⚠️ 结果的 provenance 要进报告。
+
+    ⛔ `max_conversations` 控的是**语料量**，与题数是两件事：
+    抽 20 道题可能碰到全部 10 个对话 → 摄入 5882 轮。
+    对 mem0 这种每条都调 LLM 的系统，**语料量才是那个约束**
+    （实测：不限的话要跑几小时）。
+
+    ⚠️ 先限对话再抽题——⛔ 反过来会抽出没有语料的题。
+    """
+    import random as _r
+
+    questions = data.questions
+    if max_conversations is not None:
+        convs = sorted(data.turns)
+        keep = set(_r.Random(spec.seed).sample(
+            convs, k=min(max_conversations, len(convs))))
+        questions = [q for q in questions if q.conversation_id in keep]
+
+    got = sample(questions, spec, key=lambda q: q.qa_id,
+                 stratum=lambda q: q.stratum)
+    if max_conversations is not None:
+        got.spec_note = f"max_conversations={max_conversations}"
+    return got

@@ -24,11 +24,15 @@ def parse_sample(text: str, seed: int):
     return SampleSpec(strategy, n=int(tail), seed=seed)
 
 
-def build_plan(bench: str, *, sample: str = "all", seed: int = 42
+def build_plan(bench: str, *, sample: str = "all", seed: int = 42,
+               max_conversations: int | None = None
                ) -> tuple[Plan, dict[str, Any], str]:
-    """返回 (plan, 抽样 provenance, 世界名)。"""
+    """返回 (plan, 抽样 provenance, 世界名)。
+
+    ⚠️ max_conversations 控语料量——⛔ 与题数是两件事。
+    """
     if bench == "locomo":
-        return _locomo(sample, seed)
+        return _locomo(sample, seed, max_conversations)
     if bench == "toy":
         from worlds import toy
 
@@ -37,7 +41,8 @@ def build_plan(bench: str, *, sample: str = "all", seed: int = 42
     raise KeyError(f"未知题库 {bench!r}。已知：toy · locomo")
 
 
-def _locomo(sample: str, seed: int) -> tuple[Plan, dict[str, Any], str]:
+def _locomo(sample: str, seed: int,
+            max_conversations: int | None) -> tuple[Plan, dict[str, Any], str]:
     """⛔ 数据没取下来会抛 DatasetMissing——不是给 0 分。"""
     from amb.suites.public import (
         LocomoRetrievalSuite,
@@ -48,7 +53,7 @@ def _locomo(sample: str, seed: int) -> tuple[Plan, dict[str, Any], str]:
     from amb.world import WorldManifest
 
     data = load()
-    picked = pick(data, parse_sample(sample, seed))
+    picked = pick(data, parse_sample(sample, seed), max_conversations)
     convs = {q.conversation_id for q in picked.items}
     plan = Plan(
         manifest=WorldManifest(name="locomo", seed=seed,

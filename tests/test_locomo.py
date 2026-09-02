@@ -110,3 +110,36 @@ def test_n_larger_than_total_takes_everything() -> None:
 def test_a_sampling_spec_without_n_is_refused() -> None:
     with pytest.raises(ValueError, match="需要正的 n"):
         SampleSpec(Strategy.RANDOM)
+
+
+def test_corpus_size_is_bounded_separately_from_question_count(data) -> None:
+    """⛔ 抽题数量与语料量是两件事。
+
+    ⚠️ 实测撞见的：stratified:20 会碰到全部 10 个对话 → 摄入 5882 轮。
+    对 mem0 这种每条都调 LLM 的系统，**语料量才是那个约束**——
+    不限的话要跑几小时。
+    """
+    from amb.suites.public.locomo import documents_for
+
+    spec = SampleSpec(Strategy.STRATIFIED, 20, seed=42)
+    wide = pick(data, spec)
+    narrow = pick(data, spec, max_conversations=1)
+
+    assert len(wide.items) == len(narrow.items) == 20, "题数一样"
+    wide_docs = documents_for(data, {q.conversation_id for q in wide.items})
+    narrow_docs = documents_for(data, {q.conversation_id for q in narrow.items})
+    assert len(narrow_docs) < len(wide_docs) / 5, "⭐ 语料量应当大幅下降"
+
+
+def test_conversation_limit_is_recorded_in_provenance(data) -> None:
+    """⛔ 限了语料也要进报告——不然两次跑不可比。"""
+    p = pick(data, SampleSpec(Strategy.STRATIFIED, 20, seed=42),
+             max_conversations=2).provenance()
+    assert p["note"] == "max_conversations=2"
+
+
+def test_questions_always_have_their_corpus(data) -> None:
+    """⛔ 先限对话再抽题——反过来会抽出没有语料的题。"""
+    got = pick(data, SampleSpec(Strategy.STRATIFIED, 30, seed=5),
+               max_conversations=2)
+    assert len({q.conversation_id for q in got.items}) <= 2
