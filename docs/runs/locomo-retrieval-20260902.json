@@ -1,0 +1,523 @@
+{
+  "run_id": "locomo-2026-09-02T10:14:15Z",
+  "at": "2026-09-02T10:14:15Z",
+  "world": {
+    "name": "locomo",
+    "seed": 20260902,
+    "digest": "sha256:2fdfd88f7ce5763f4e3ff11e4602f7fccf8c5542ae92b020d6cb3e19a62ecb65"
+  },
+  "backbone": {
+    "model": "—（未跑 answer 档）",
+    "temperature": null,
+    "thinking": null
+  },
+  "lanes": {
+    "library": [
+      {
+        "arm": "null",
+        "is_control": true,
+        "declared": [
+          "ingest",
+          "search"
+        ],
+        "scores": {
+          "locomo_retrieval": {
+            "suite": "locomo_retrieval",
+            "status": "scored",
+            "reason": null,
+            "denominator": 126,
+            "metrics": {
+              "evidence_recall": 0.0,
+              "命中任一率": 0.0,
+              "题数": 126.0,
+              "recall_1-多跳": 0.0,
+              "题数_1-多跳": 9.0,
+              "recall_2-时间推理": 0.0,
+              "题数_2-时间推理": 13.0,
+              "recall_3-开放域推断": 0.0,
+              "题数_3-开放域推断": 5.0,
+              "recall_4-单跳事实": 0.0,
+              "题数_4-单跳事实": 64.0,
+              "recall_5-弃权": 0.0,
+              "题数_5-弃权": 35.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "evidence_recall": {
+                "point": 0.0,
+                "low": 1.734723475976807e-18,
+                "high": 0.02958576448219845,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              },
+              "命中任一率": {
+                "point": 0.0,
+                "low": 1.734723475976807e-18,
+                "high": 0.02958576448219845,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall_1-多跳": {
+                "point": 0.0,
+                "low": 1.734723475976807e-18,
+                "high": 0.02958576448219845,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall_2-时间推理": {
+                "point": 0.0,
+                "low": 1.734723475976807e-18,
+                "high": 0.02958576448219845,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall_3-开放域推断": {
+                "point": 0.0,
+                "low": 1.734723475976807e-18,
+                "high": 0.02958576448219845,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall_4-单跳事实": {
+                "point": 0.0,
+                "low": 1.734723475976807e-18,
+                "high": 0.02958576448219845,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall_5-弃权": {
+                "point": 0.0,
+                "low": 1.734723475976807e-18,
+                "high": 0.02958576448219845,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              }
+            }
+          }
+        },
+        "participation": {
+          "declared": 2,
+          "total_caps": 11,
+          "items": 126
+        },
+        "crashed": null,
+        "not_applicable": null,
+        "cost": {
+          "setup": 0,
+          "ingest": 0,
+          "probe": 0
+        },
+        "cost_profile": {
+          "items_ingested": 419,
+          "items_probed": 126
+        },
+        "ingest_snapshot": "未启用"
+      },
+      {
+        "arm": "bm25",
+        "is_control": true,
+        "declared": [
+          "governance",
+          "ingest",
+          "provenance",
+          "reality",
+          "search"
+        ],
+        "scores": {
+          "locomo_retrieval": {
+            "suite": "locomo_retrieval",
+            "status": "scored",
+            "reason": null,
+            "denominator": 126,
+            "metrics": {
+              "evidence_recall": 0.527027027027027,
+              "命中任一率": 0.6190476190476191,
+              "题数": 126.0,
+              "recall_1-多跳": 0.047619047619047616,
+              "题数_1-多跳": 9.0,
+              "recall_2-时间推理": 0.5714285714285714,
+              "题数_2-时间推理": 13.0,
+              "recall_3-开放域推断": 0.375,
+              "题数_3-开放域推断": 5.0,
+              "recall_4-单跳事实": 0.6231884057971014,
+              "题数_4-单跳事实": 64.0,
+              "recall_5-弃权": 0.6388888888888888,
+              "题数_5-弃权": 35.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "evidence_recall": {
+                "point": 0.527027027027027,
+                "low": 0.44034685936239126,
+                "high": 0.6121079641791115,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              },
+              "命中任一率": {
+                "point": 0.6190476190476191,
+                "low": 0.5319219933564636,
+                "high": 0.6991290151001559,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall_1-多跳": {
+                "point": 0.047619047619047616,
+                "low": 0.02200448838795111,
+                "high": 0.10000167947689512,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall_2-时间推理": {
+                "point": 0.5714285714285714,
+                "low": 0.4841686100117482,
+                "high": 0.6544619950622235,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall_3-开放域推断": {
+                "point": 0.375,
+                "low": 0.2953445140690353,
+                "high": 0.4620519270515142,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall_4-单跳事实": {
+                "point": 0.6231884057971014,
+                "low": 0.5361126788342644,
+                "high": 0.7029748864382374,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall_5-弃权": {
+                "point": 0.6388888888888888,
+                "low": 0.5520596663632513,
+                "high": 0.7174998435028046,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              }
+            }
+          }
+        },
+        "participation": {
+          "declared": 5,
+          "total_caps": 11,
+          "items": 126
+        },
+        "crashed": null,
+        "not_applicable": null,
+        "cost": {
+          "setup": 0,
+          "ingest": 5,
+          "probe": 89
+        },
+        "cost_profile": {
+          "items_ingested": 419,
+          "items_probed": 126
+        },
+        "ingest_snapshot": "未启用"
+      },
+      {
+        "arm": "naive_rag",
+        "is_control": true,
+        "declared": [
+          "ingest",
+          "provenance",
+          "search"
+        ],
+        "scores": {
+          "locomo_retrieval": {
+            "suite": "locomo_retrieval",
+            "status": "scored",
+            "reason": null,
+            "denominator": 126,
+            "metrics": {
+              "evidence_recall": 0.6418918918918919,
+              "命中任一率": 0.7142857142857143,
+              "题数": 126.0,
+              "recall_1-多跳": 0.47619047619047616,
+              "题数_1-多跳": 9.0,
+              "recall_2-时间推理": 0.6428571428571429,
+              "题数_2-时间推理": 13.0,
+              "recall_3-开放域推断": 0.5,
+              "题数_3-开放域推断": 5.0,
+              "recall_4-单跳事实": 0.8115942028985508,
+              "题数_4-单跳事实": 64.0,
+              "recall_5-弃权": 0.4444444444444444,
+              "题数_5-弃权": 35.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "evidence_recall": {
+                "point": 0.6418918918918919,
+                "low": 0.5551202790825821,
+                "high": 0.7202675445103074,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              },
+              "命中任一率": {
+                "point": 0.7142857142857143,
+                "low": 0.6299837099284312,
+                "high": 0.7859081052934836,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall_1-多跳": {
+                "point": 0.47619047619047616,
+                "low": 0.3909870103609822,
+                "high": 0.5628027879476938,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall_2-时间推理": {
+                "point": 0.6428571428571429,
+                "low": 0.556104768935823,
+                "high": 0.7211564412121205,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall_3-开放域推断": {
+                "point": 0.5,
+                "low": 0.4139974353838817,
+                "high": 0.5860025646161183,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall_4-单跳事实": {
+                "point": 0.8115942028985509,
+                "low": 0.7344864479782752,
+                "high": 0.8702644524168767,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall_5-弃权": {
+                "point": 0.4444444444444444,
+                "low": 0.36060225925953826,
+                "high": 0.5315739367940392,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              }
+            }
+          }
+        },
+        "participation": {
+          "declared": 3,
+          "total_caps": 11,
+          "items": 126
+        },
+        "crashed": null,
+        "not_applicable": null,
+        "cost": {
+          "setup": 0,
+          "ingest": 102822,
+          "probe": 225332
+        },
+        "cost_profile": {
+          "items_ingested": 419,
+          "items_probed": 126
+        },
+        "ingest_snapshot": "未启用"
+      },
+      {
+        "arm": "full_context",
+        "is_control": true,
+        "declared": [],
+        "scores": {},
+        "participation": {},
+        "crashed": null,
+        "not_applicable": "语料 55385 码点 > 预算 24000——该档记 N/A（见 docs/baselines.md），⛔ 不记 0",
+        "cost": {},
+        "cost_profile": {},
+        "ingest_snapshot": "未启用"
+      },
+      {
+        "arm": "mem0_raw",
+        "is_control": false,
+        "declared": [
+          "governance",
+          "ingest",
+          "provenance",
+          "search"
+        ],
+        "scores": {
+          "locomo_retrieval": {
+            "suite": "locomo_retrieval",
+            "status": "scored",
+            "reason": null,
+            "denominator": 126,
+            "metrics": {
+              "evidence_recall": 0.6554054054054054,
+              "命中任一率": 0.7301587301587301,
+              "题数": 126.0,
+              "recall_1-多跳": 0.47619047619047616,
+              "题数_1-多跳": 9.0,
+              "recall_2-时间推理": 0.6428571428571429,
+              "题数_2-时间推理": 13.0,
+              "recall_3-开放域推断": 0.5,
+              "题数_3-开放域推断": 5.0,
+              "recall_4-单跳事实": 0.8260869565217391,
+              "题数_4-单跳事实": 64.0,
+              "recall_5-弃权": 0.4722222222222222,
+              "题数_5-弃权": 35.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "evidence_recall": {
+                "point": 0.6554054054054054,
+                "low": 0.5689354019590916,
+                "high": 0.7326798334045493,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              },
+              "命中任一率": {
+                "point": 0.7301587301587301,
+                "low": 0.6466970973041132,
+                "high": 0.800001519045351,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall_1-多跳": {
+                "point": 0.47619047619047616,
+                "low": 0.3909870103609822,
+                "high": 0.5628027879476938,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall_2-时间推理": {
+                "point": 0.6428571428571429,
+                "low": 0.556104768935823,
+                "high": 0.7211564412121205,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall_3-开放域推断": {
+                "point": 0.5,
+                "low": 0.4139974353838817,
+                "high": 0.5860025646161183,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall_4-单跳事实": {
+                "point": 0.8260869565217391,
+                "low": 0.7505335699673225,
+                "high": 0.8823452792834175,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall_5-弃权": {
+                "point": 0.4722222222222222,
+                "low": 0.3871703743636666,
+                "high": 0.5589177236631221,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              }
+            }
+          }
+        },
+        "participation": {
+          "declared": 4,
+          "total_caps": 11,
+          "items": 126
+        },
+        "crashed": null,
+        "not_applicable": null,
+        "cost": {
+          "setup": 0,
+          "ingest": 333137,
+          "probe": 99832
+        },
+        "cost_profile": {
+          "items_ingested": 419,
+          "items_probed": 126
+        },
+        "ingest_snapshot": "已存"
+      },
+      {
+        "arm": "mem0",
+        "is_control": false,
+        "declared": [],
+        "scores": {},
+        "participation": {},
+        "crashed": "BridgeError: worker.py ingest: LLMError: LLM extraction failed: Error code: 429 - {'code': 50602, 'message': 'Request was rejected due to rate limiting. Details: TPM limit reached.', 'data': None}\n  子",
+        "not_applicable": null,
+        "cost": {},
+        "cost_profile": {},
+        "ingest_snapshot": "未启用"
+      }
+    ]
+  },
+  "host": {},
+  "externals": {
+    "a_mem": {
+      "actual": "0.2.6",
+      "declared": "0.2.6",
+      "detail": "隔离环境：openai=2.54.0 chromadb=1.5.9 litellm=1.99.0 sentence-transformers=6.0.1",
+      "kind": "venv",
+      "location": ".external/venvs/a_mem/bin/python",
+      "name": "a_mem",
+      "ok": true
+    },
+    "locomo": {
+      "actual": "3eb6f2c585f5e1699204e3c3bdf7adc5c28cb376",
+      "declared": "main",
+      "detail": "",
+      "kind": "git",
+      "location": ".external/locomo",
+      "name": "locomo",
+      "ok": true
+    },
+    "mem0": {
+      "actual": "2.0.19",
+      "declared": "2.0.19",
+      "detail": "隔离环境：openai=3.7.0",
+      "kind": "venv",
+      "location": ".external/venvs/mem0/bin/python",
+      "name": "mem0",
+      "ok": true
+    }
+  },
+  "sampling": {
+    "strategy": "all",
+    "n": null,
+    "seed": 20260902,
+    "ids": [],
+    "sampled": 126,
+    "total": 126,
+    "by_stratum": {
+      "3-开放域推断": 5,
+      "2-时间推理": 13,
+      "1-多跳": 9,
+      "4-单跳事实": 64,
+      "5-弃权": 35
+    },
+    "note": "max_conversations=1 max_turns=419 dropped_no_evidence=116"
+  },
+  "cache": {}
+}

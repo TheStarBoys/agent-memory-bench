@@ -225,3 +225,75 @@ def test_unknown_ingest_model_disables_the_snapshot(monkeypatch) -> None:
 
     monkeypatch.delenv("AMB_LLM_MODEL", raising=False)
     assert ingest_identity() == ""
+
+
+# ── ⑥ 供应商限流不该变成被测系统的分数 ────────────────────────
+def test_rate_limit_is_retried_not_fatal(monkeypatch) -> None:
+    """⛔ 实测踩点：mem0 摄入到第 ~130 条撞 TPM 上限，整条臂判「跑挂了」，
+    而它已经跑了 16 分钟。
+
+    ⚠️ 供应商配额既不是被测系统的错，也不该变成它的分数。
+    """
+    from amb.adapters import llm_cache
+
+    monkeypatch.setattr(llm_cache, "RETRY_BASE_S", 0.0)   # ⚠️ 测试里不真等
+    attempts = []
+
+    class _RateLimited(Exception):
+        status_code = 429
+
+    def flaky(**kw):
+        attempts.append(1)
+        if len(attempts) < 3:
+            raise _RateLimited("Request was rejected due to rate limiting: TPM")
+        return "成功了"
+
+    assert llm_cache._with_retry(flaky, {}) == "成功了"
+    assert len(attempts) == 3
+
+
+def test_non_rate_limit_errors_are_never_retried(monkeypatch) -> None:
+    """⛔ 只重试限流——⚠️ 把真 bug 重试掉比慢更糟：
+    它会把一个确定性的失败变成一个「跑了很久然后失败」的失败。
+    """
+    import pytest
+
+    from amb.adapters import llm_cache
+
+    monkeypatch.setattr(llm_cache, "RETRY_BASE_S", 0.0)
+    attempts = []
+
+    def broken(**kw):
+        attempts.append(1)
+        raise ValueError("提示写错了")
+
+    with pytest.raises(ValueError):
+        llm_cache._with_retry(broken, {})
+    assert len(attempts) == 1        # ⛔ 只试一次
+
+
+def test_retry_gives_up_and_reports_the_real_error(monkeypatch) -> None:
+    """⚠️ 退避不是无限的——⛔ 撑不过去要把**原始错误**抛出来，
+    不能变成一个说不清原因的超时。"""
+    import pytest
+
+    from amb.adapters import llm_cache
+
+    monkeypatch.setattr(llm_cache, "RETRY_BASE_S", 0.0)
+    monkeypatch.setattr(llm_cache, "RETRY_MAX", 2)
+
+    class _RateLimited(Exception):
+        status_code = 429
+
+    def always(**kw):
+        raise _RateLimited("429 rate limit")
+
+    with pytest.raises(_RateLimited):
+        llm_cache._with_retry(always, {})
+
+
+def test_retry_wait_is_accounted_separately() -> None:
+    """⛔ 重试等待不能算进「这个系统很慢」——⚠️ 那是供应商配额的成本。"""
+    from amb.adapters.llm_cache import RETRIES
+
+    assert hasattr(RETRIES, "waited_s") and hasattr(RETRIES, "retries")

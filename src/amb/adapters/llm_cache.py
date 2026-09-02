@@ -182,6 +182,35 @@ def warn_once(message: str) -> None:
         print(f"⚠️ {message}", file=sys.stderr)
 
 
+#: 限流重试。⛔ 供应商 429 不是被测系统的错，也不是我们的分数——
+#: ⚠️ 实测：mem0 摄入到第 ~130 条时撞 TPM 上限，整条臂当场判「跑挂了」，
+#: 而它已经跑了 16 分钟。⭐ 退避重试放在这一层，被测系统完全看不见。
+RETRY_MAX = int(os.environ.get("AMB_LLM_RETRY", "6"))
+#: 退避基数（秒）。⚠️ TPM 是**按分钟**的窗口，所以要退到分钟级才有用。
+RETRY_BASE_S = float(os.environ.get("AMB_LLM_RETRY_BASE_S", "8"))
+
+
+def _is_rate_limit(exc: Exception) -> bool:
+    """⛔ 只重试限流，别的错误照抛——⚠️ 把真 bug 重试掉比慢更糟。"""
+    status = getattr(exc, "status_code", None) or getattr(exc, "code", None)
+    if status == 429 or str(status) == "429":
+        return True
+    text = str(exc)
+    return "429" in text and ("rate limit" in text.lower()
+                              or "TPM" in text or "RPM" in text)
+
+
+class RetryStats:
+    """⚠️ 重试等了多久要能报出来——⛔ 否则它会被算进「这个系统很慢」。"""
+
+    def __init__(self) -> None:
+        self.retries = 0
+        self.waited_s = 0.0
+
+
+RETRIES = RetryStats()
+
+
 def backbone_overrides() -> dict:
     """被测系统自己发的调用里，**我们有权钉死**的那几项。
 
@@ -240,7 +269,7 @@ def wrap_openai_client(client: object, *,
                 kwargs[name] = value
         # ⛔ 缓存没开也要走到这儿——受控变量比缓存重要
         if not cache.enabled:
-            return original(**kwargs)
+            return _with_retry(original, kwargs)
         payload = _jsonable({k: v for k, v in kwargs.items()
                              if k != "extra_headers"})
         try:
@@ -253,7 +282,7 @@ def wrap_openai_client(client: object, *,
 
             return ChatCompletion.model_validate(hit)
         t0 = time.perf_counter()
-        got = original(**kwargs)
+        got = _with_retry(original, kwargs)
         try:
             cache.put(payload, got.model_dump(),
                       int((time.perf_counter() - t0) * 1000))
@@ -264,6 +293,31 @@ def wrap_openai_client(client: object, *,
     target.create = cached
     target._amb_cached = True
     return True
+
+
+def _with_retry(call, kwargs: dict):
+    """撞限流就退避重试。⛔ 只对限流生效。
+
+    ⚠️ 等待时间累进 `RETRIES`，报告要把它跟「系统本身多慢」分开——
+    ⛔ 否则供应商的配额会被读成被测系统的成本。
+    """
+    import random
+    import time as _time
+
+    for attempt in range(RETRY_MAX + 1):
+        try:
+            return call(**kwargs)
+        except Exception as exc:  # noqa: BLE001
+            if attempt >= RETRY_MAX or not _is_rate_limit(exc):
+                raise
+            # ⚠️ 指数退避 + 抖动：TPM 是按分钟的窗口，退到分钟级才有意义
+            wait = RETRY_BASE_S * (2 ** attempt) * (0.5 + random.random())
+            RETRIES.retries += 1
+            RETRIES.waited_s += wait
+            warn_once(f"撞到限流，退避重试（第 {attempt + 1}/{RETRY_MAX} 次，"
+                      f"等 {wait:.0f}s）——⚠️ 这段等待不算被测系统的成本")
+            _time.sleep(wait)
+    raise RuntimeError("不可达")
 
 
 def _jsonable(payload: dict) -> dict:
