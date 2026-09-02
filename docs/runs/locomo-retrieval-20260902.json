@@ -1,6 +1,6 @@
 {
-  "run_id": "locomo-2026-09-02T10:14:15Z",
-  "at": "2026-09-02T10:14:15Z",
+  "run_id": "locomo-2026-09-02T10:51:08Z",
+  "at": "2026-09-02T10:51:08Z",
   "world": {
     "name": "locomo",
     "seed": 20260902,
@@ -112,7 +112,7 @@
         "cost": {
           "setup": 0,
           "ingest": 0,
-          "probe": 0
+          "probe": 1
         },
         "cost_profile": {
           "items_ingested": 419,
@@ -221,8 +221,8 @@
         "not_applicable": null,
         "cost": {
           "setup": 0,
-          "ingest": 5,
-          "probe": 89
+          "ingest": 8,
+          "probe": 162
         },
         "cost_profile": {
           "items_ingested": 419,
@@ -329,8 +329,8 @@
         "not_applicable": null,
         "cost": {
           "setup": 0,
-          "ingest": 102822,
-          "probe": 225332
+          "ingest": 95649,
+          "probe": 232033
         },
         "cost_profile": {
           "items_ingested": 419,
@@ -450,26 +450,122 @@
         "not_applicable": null,
         "cost": {
           "setup": 0,
-          "ingest": 333137,
-          "probe": 99832
+          "ingest": 0,
+          "probe": 99912
+        },
+        "cost_profile": {
+          "items_ingested": 419,
+          "items_probed": 126
+        },
+        "ingest_snapshot": "命中"
+      },
+      {
+        "arm": "mem0",
+        "is_control": false,
+        "declared": [
+          "governance",
+          "ingest",
+          "search"
+        ],
+        "scores": {
+          "locomo_retrieval": {
+            "suite": "locomo_retrieval",
+            "status": "scored",
+            "reason": null,
+            "denominator": 126,
+            "metrics": {
+              "evidence_recall": 0.7297297297297297,
+              "命中任一率": 0.7936507936507936,
+              "题数": 126.0,
+              "recall_1-多跳": 0.5714285714285714,
+              "题数_1-多跳": 9.0,
+              "recall_2-时间推理": 0.6428571428571429,
+              "题数_2-时间推理": 13.0,
+              "recall_3-开放域推断": 0.5,
+              "题数_3-开放域推断": 5.0,
+              "recall_4-单跳事实": 0.855072463768116,
+              "题数_4-单跳事实": 64.0,
+              "recall_5-弃权": 0.6666666666666666,
+              "题数_5-弃权": 35.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "evidence_recall": {
+                "point": 0.7297297297297297,
+                "low": 0.6462438496921715,
+                "high": 0.7996221504106021,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              },
+              "命中任一率": {
+                "point": 0.7936507936507936,
+                "low": 0.7148150905604327,
+                "high": 0.8551107302992285,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall_1-多跳": {
+                "point": 0.5714285714285714,
+                "low": 0.4841686100117482,
+                "high": 0.6544619950622235,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall_2-时间推理": {
+                "point": 0.6428571428571429,
+                "low": 0.556104768935823,
+                "high": 0.7211564412121205,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall_3-开放域推断": {
+                "point": 0.5,
+                "low": 0.4139974353838817,
+                "high": 0.5860025646161183,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall_4-单跳事实": {
+                "point": 0.855072463768116,
+                "low": 0.7831122699327304,
+                "high": 0.9060224770291867,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall_5-弃权": {
+                "point": 0.6666666666666666,
+                "low": 0.5805019155164631,
+                "high": 0.7429694963228038,
+                "n": 126,
+                "effective_n": null,
+                "caveat": null
+              }
+            }
+          }
+        },
+        "participation": {
+          "declared": 3,
+          "total_caps": 11,
+          "items": 126
+        },
+        "crashed": null,
+        "not_applicable": null,
+        "cost": {
+          "setup": 0,
+          "ingest": 4197969,
+          "probe": 145235
         },
         "cost_profile": {
           "items_ingested": 419,
           "items_probed": 126
         },
         "ingest_snapshot": "已存"
-      },
-      {
-        "arm": "mem0",
-        "is_control": false,
-        "declared": [],
-        "scores": {},
-        "participation": {},
-        "crashed": "BridgeError: worker.py ingest: LLMError: LLM extraction failed: Error code: 429 - {'code': 50602, 'message': 'Request was rejected due to rate limiting. Details: TPM limit reached.', 'data': None}\n  子",
-        "not_applicable": null,
-        "cost": {},
-        "cost_profile": {},
-        "ingest_snapshot": "未启用"
       }
     ]
   },
