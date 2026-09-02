@@ -143,17 +143,53 @@ python -m amb.cli --bench locomo --sample stratified:50 --max-convs 2 \
 | `utils/` **8006 行**，单文件 4569 行 | 没有 `utils/`；每个包必须写清"只干哪一件事" |
 | 兄弟模块反向依赖，一个基准成了所有人的地基 | 分层，用 AST 检查 import 方向 |
 
-## 从哪读起
+## 文档导航
 
-| 想知道 | 读 |
+### 我想…
+
+| | 读 |
 |---|---|
-| 为什么不直接 fork 现成框架 | [`docs/harnesses.md`](docs/harnesses.md) |
-| 八类题各自考什么 | [`docs/suites/`](docs/suites/README.md) |
-| 后四类的认知科学依据 | [`docs/cognition.md`](docs/cognition.md) |
-| 接一个新系统要做什么 | [`docs/adapters/`](docs/adapters/README.md) |
-| 代码怎么分层、为什么 | [`ARCHITECTURE.md`](ARCHITECTURE.md) |
+| ⭐ **接一个记忆系统 / 题库 / 运行时进来** | [`docs/integrating.md`](docs/integrating.md) —— 照着做，含检查单 |
+| 快速判断这个项目值不值得看 | [`docs/harnesses.md`](docs/harnesses.md) —— 为什么不 fork 现成框架 |
+| 看懂某一类题在考什么 | [`docs/suites/`](docs/suites/README.md) |
+| 看懂代码怎么分层、为什么 | [`ARCHITECTURE.md`](ARCHITECTURE.md) |
+| 知道一个分数该怎么读 | [`docs/report.md`](docs/report.md) · [`docs/baselines.md`](docs/baselines.md) |
 
-完整索引在 [`docs/README.md`](docs/README.md)。
+### 设计（为什么这么考）
+
+| | |
+|---|---|
+| [`docs/cognition.md`](docs/cognition.md) | 从人的记忆反推该考什么——后四类的依据，附证据等级 |
+| [`docs/suites/README.md`](docs/suites/README.md) | 八类题，两条独立推导 |
+| [`docs/baselines.md`](docs/baselines.md) | 五条对照组——⛔ 没有地板线，所有分数都读不出意义 |
+
+### 协议（怎么接进来）
+
+| | |
+|---|---|
+| ⭐ [`docs/integrating.md`](docs/integrating.md) | **接入流程**：钉死版本 → 一键装 → 薄壳 → 如实声明 → 真跑 |
+| [`docs/adapters/README.md`](docs/adapters/README.md) | 六条原则，其中②机制中立是防主场优势的唯一手段 |
+| [`docs/adapters/protocol.md`](docs/adapters/protocol.md) | 接口定义：三态返回 · 能力自述 · id 契约 · 五阶段 |
+| [`docs/adapters/world.md`](docs/adapters/world.md) | 有状态的世界——N1 的地基 |
+| [`src/amb/setup/README.md`](src/amb/setup/README.md) | 一键 setup：版本怎么钉、怎么记 |
+
+### 对象（考谁、用谁的题）
+
+| | |
+|---|---|
+| [`docs/systems.md`](docs/systems.md) | 22 个被测系统 · ⭐ mem0 已接入 |
+| [`docs/benchmarks.md`](docs/benchmarks.md) | 15 个公开题库 · ⭐ LoCoMo 已接入 |
+| [`docs/harnesses.md`](docs/harnesses.md) | 现成框架，以及上游判分坏了怎么办 |
+
+### 结果（怎么读一个分数）
+
+| | |
+|---|---|
+| [`docs/report.md`](docs/report.md) | 报告格式：三态怎么落到表上，利益关系怎么标 |
+| [`docs/baselines.md`](docs/baselines.md) | ⛔ 绝对分不单独报，必须给地板线与 Δ |
+
+完整索引在 [`docs/README.md`](docs/README.md)；
+每个代码包自己的 README 说清「它只干哪一件事」。
 
 ## License
 

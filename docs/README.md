@@ -2,6 +2,7 @@
 
 | 文档 | 回答什么 |
 |---|---|
+| ⭐ [`integrating.md`](integrating.md) | **接入流程**：记忆系统 / 题库 / 运行时怎么接进来，含检查单 |
 | [`cognition.md`](cognition.md) | **凭什么考这些**：从人的记忆反推评测维度，以及四个尚未覆盖的缺口 |
 | [`systems.md`](systems.md) | **被测对象**：22 个记忆系统，各自把哪件事当主要问题，stars 与活跃度 |
 | [`benchmarks.md`](benchmarks.md) | **别人的题**：15 个公开题库，怎么获取，什么题型 |
