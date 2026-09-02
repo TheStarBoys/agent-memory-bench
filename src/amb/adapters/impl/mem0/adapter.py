@@ -33,8 +33,13 @@ class Mem0Adapter(Answerable, AdapterBase):
                  embed_model: str, embed_base_url: str,
                  embed_dims: int, storage_dir: str,
                  api_key_env: str = "SILICONFLOW_API_KEY",
+                 infer: bool = True,
                  default_principal: str = "amb") -> None:
         self._api_key_env = api_key_env
+        # ⭐ infer=False 跳过 LLM 抽取，只存原文 + 向量。
+        # ⚠️ 实测快 21 倍（1.7s/条 vs 36.7s/条）——
+        # 两者并排跑，量的就是「LLM 抽取买到了什么、花了多少」。
+        self._infer = infer
         self._cfg = {
             "llm": {"provider": "openai", "config": {
                 "model": llm_model, "openai_base_url": llm_base_url}},
@@ -50,14 +55,21 @@ class Mem0Adapter(Answerable, AdapterBase):
         self._default = default_principal
         self._memory: Any = None
         self._ids: list[str] = []
+        #: ⭐ infer=False 时留一份原文，N2 的区间靠它算
+        self._raw: dict[str, str] = {}
 
     # ── 能力自述 ────────────────────────────────────────────────
     def capabilities(self) -> set[Capability]:
-        # ⛔ 不声明 PROVENANCE：它返回抽出来的事实，给不出原文区间。
-        # ⛔ 不声明 REALITY：它不对外部世界求值。
-        # ⚠️ 声明 GOVERNANCE 是因为它有 user_id 过滤 + history()——
-        #    ⭐ 但那是过滤不是授权，四步探针会把这一点测出来。
-        return set(BASELINE) | self._answer_caps() | {Capability.GOVERNANCE}
+        """⛔ 不声明 REALITY：它不对外部世界求值。
+        ⚠️ 声明 GOVERNANCE 是因为有 user_id 过滤 + history()——
+        ⭐ 但那是过滤不是授权，四步探针会把这一点测出来。
+        """
+        caps = set(BASELINE) | self._answer_caps() | {Capability.GOVERNANCE}
+        if not self._infer:
+            # ⭐ 不抽取时它存的**就是原文**，所以给得出来源区间——
+            # ⚠️ 这是关掉抽取换来的一个真实能力差异。
+            caps |= {Capability.PROVENANCE}
+        return caps
 
     # ── 生命周期 ────────────────────────────────────────────────
     def _client(self) -> Any:
@@ -91,7 +103,10 @@ class Mem0Adapter(Answerable, AdapterBase):
             doc.text,
             user_id=doc.principal or self._default,
             metadata={"doc_id": doc.doc_id},
+            infer=self._infer,
         )
+        if not self._infer:
+            self._raw[doc.doc_id] = doc.text
         for row in (got or {}).get("results", []):
             if row.get("id"):
                 self._ids.append(row["id"])
@@ -113,7 +128,9 @@ class Mem0Adapter(Answerable, AdapterBase):
                 # ⭐ 靠我们塞进 metadata 的 doc_id 对账；
                 # ⚠️ 它归并之后一条记忆可能来自多个文档，这里只拿得到一个
                 doc_ids=[doc_id] if doc_id else [],
-                spans=[],          # ⛔ 给不出原文区间——所以不声明 PROVENANCE
+                # ⭐ 不抽取时存的就是原文，区间对得上；
+                # ⛔ 抽取模式给不出——所以那时候不声明 PROVENANCE
+                spans=self._span_for(doc_id, row.get("memory", "")),
                 principal=(row.get("user_id") or principal or self._default),
             ))
         return out
@@ -159,3 +176,18 @@ class Mem0Adapter(Answerable, AdapterBase):
     def storage_locations(self) -> list[str]:
         """⭐ 申报持久层，让带外取证那一步能做。"""
         return [self._storage_dir]
+
+    def _span_for(self, doc_id: str | None, memory: str) -> list:
+        """⭐ 只在 infer=False 时给得出区间——存的就是原文。"""
+        from amb.core import Span
+
+        if self._infer or not doc_id:
+            return []
+        original = self._raw.get(doc_id)
+        if not original:
+            return []
+        start = original.find(memory)
+        if start < 0:
+            # ⛔ 对不上就不给——⚠️ 猜一个区间比不给更糟
+            return []
+        return [Span(doc_id=doc_id, start=start, end=start + len(memory))]

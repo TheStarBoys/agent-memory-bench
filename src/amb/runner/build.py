@@ -30,7 +30,7 @@ def build(name: str, *, context_budget: int = 24_000,
             base_url=require("AMB_EMBED_BASE_URL"),
             api_key_env=os.environ.get("AMB_EMBED_API_KEY_ENV", "SILICONFLOW_API_KEY"),
         ))
-    elif name == "mem0":
+    elif name in ("mem0", "mem0_raw"):
         # ⛔ 没 setup 就拒绝，不静默跑出一个分
         from amb.setup import require_installed
 
@@ -43,8 +43,10 @@ def build(name: str, *, context_budget: int = 24_000,
                      embed_dims=int(os.environ.get("AMB_EMBED_DIMS", "2560")),
                      api_key_env=os.environ.get("AMB_EMBED_API_KEY_ENV",
                                                 "SILICONFLOW_API_KEY"),
+                     # ⛔ 两条臂各用各的库——共用会互相污染
                      storage_dir=os.environ.get(
-                         "AMB_MEM0_DIR", str(Path(".external") / "mem0-store")))
+                         "AMB_MEM0_DIR",
+                         str(Path(".external") / f"{name}-store")))
     else:
         arm = create(name)
     attach = getattr(arm, "attach_llm", None)

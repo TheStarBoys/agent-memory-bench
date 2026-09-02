@@ -12,7 +12,7 @@
 
 | 系统 | ★ | 许可 | 最后推送 | 解决什么 |
 |---|---:|---|---|---|
-| [mem0](https://github.com/mem0ai/mem0) | 64.5k | Apache-2.0 | 08-31 | **事实抽取 + 增量归并**。LLM 抽事实，与已有比对后 ADD/UPDATE/DELETE。生态最大 |
+| [mem0](https://github.com/mem0ai/mem0) ⭐已接入 | 64.5k | Apache-2.0 | 08-31 | **事实抽取 + 增量归并**。LLM 抽事实，与已有比对后 ADD/UPDATE/DELETE。生态最大。⚠️ 实测摄入 **36.7 秒/条**；⭐ `infer=False` 关掉抽取后 **1.7 秒/条**，两种配置并排跑 |
 | [graphrag](https://github.com/microsoft/graphrag) | 35.8k | MIT | 08-31 | **图化索引**。抽实体关系建图，社区检测出层级摘要。严格说是 RAG，常被当对照 |
 | [graphiti (Zep)](https://github.com/getzep/graphiti) | 30.5k | Apache-2.0 | 09-01 | **时序知识图谱**。四时间戳双时态；裁决两阶段——LLM 出候选、**代码用时间区间确定性校验** |
 | [cognee](https://github.com/topoteretes/cognee) | 30.4k | Apache-2.0 | 09-01 | **ECL 管道**（Extract-Cognify-Load）。把记忆当数据工程问题，图+向量混合 |
