@@ -114,11 +114,16 @@ def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
     # worker 就退出了，计量器跟着没了——踩过，表现是钱那一列永远空着，
     # 而且不报错（usage() 只是返回 Unsupported）。
     usage = adapter.usage()
+    # ⛔ 快照存的是**探针跑完之后**的 store，而指纹取自摄入刚完时。
+    # ⚠️ N4 治理档会删条目——那样存下来的快照跟它自己的指纹对不上，
+    # 下次必然验不过、白拷一遍。⭐ 存之前再取一次：变了就说明探针动过，
+    # ⛔ 那这份 store 不代表「摄入完的状态」，不该当快照。
+    settled = _canary(adapter, plan) == canary
 
     adapter.close()
     # ⚠️ 存快照必须在 close **之后**：子进程还开着 qdrant/chroma 时拷目录
     # 会拷到半截。⛔ 半截快照比没有更糟——它会静默给出别的系统的分。
-    if snap is not None and not restored:
+    if snap is not None and not restored and settled:
         _try_save(snap, adapter, canary=canary, cost={
             "ingest_ms": ledger.wall_ms_harness.get("ingest", 0),
             "items": len(plan.documents),
@@ -128,6 +133,10 @@ def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
                 "llm_calls": sum(u.llm_calls for u in usage),
             }),
         })
+    if snap is not None and not restored and not settled:
+        _warn(f"{name}：探针动过 store（多半是 N4 的删除），"
+              f"⛔ 不存快照——它不代表「摄入完的状态」")
+        result.ingest_snapshot = "未存（探针动过 store）"
     result.participation = {
         "declared": len(caps),
         "total_caps": len(Capability),
@@ -227,7 +236,10 @@ def _canary(adapter: Adapter, plan: Plan) -> dict:
     try:
         hits = adapter.search(plan.documents[0].text[:200], 3)
         return {"count": adapter.count(), "hits": len(hits),
-                "with_doc_ids": sum(1 for h in hits if h.doc_ids)}
+                "with_doc_ids": sum(1 for h in hits if h.doc_ids),
+                # ⚠️ 同一类潜伏问题：mem0_raw 的原文表也在 store 外面，
+                # 命中快照时 spans 会空掉——⛔ PROVENANCE 静默退化。
+                "with_spans": sum(1 for h in hits if h.spans)}
     except Exception:  # noqa: BLE001 —— ⚠️ 取不到指纹就不存，⛔ 但别拖垮这一跑
         return {}
 

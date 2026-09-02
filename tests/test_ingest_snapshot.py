@@ -454,3 +454,19 @@ def test_a_canary_round_trips(tmp_path: Path) -> None:
     save(key, store, root=tmp_path / "snaps",
          canary={"count": 30, "hits": 3, "with_doc_ids": 3})
     assert saved_canary(key, root=tmp_path / "snaps")["with_doc_ids"] == 3
+
+
+def test_a_store_the_probes_mutated_is_never_saved() -> None:
+    """⛔ 快照存的是**探针跑完之后**的 store，而指纹取自摄入刚完时。
+
+    ⚠️ N4 治理档会删条目——那样存下来的快照跟它自己的指纹对不上，
+    下次必然验不过、白拷一遍。⭐ 所以存之前再取一次指纹：
+    变了就说明探针动过，这份 store 不代表「摄入完的状态」，⛔ 不该当快照。
+    """
+    from pathlib import Path as _P
+
+    src = (_P(__file__).resolve().parents[1]
+           / "src/amb/runner/phases.py").read_text(encoding="utf-8")
+    # ⚠️ 这条守的是**顺序**，不是某个函数的返回值——所以看源码
+    assert "settled = _canary(adapter, plan) == canary" in src
+    assert "not restored and settled" in src, "存快照必须先确认探针没动过 store"
