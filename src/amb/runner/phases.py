@@ -50,6 +50,9 @@ def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
     ledger = Ledger()
     caps = adapter.capabilities()
     result = ArmResult(arm=name, is_control=is_control, declared=sorted(caps))
+    # ⭐ embedding 用量按臂记：⚠️ 计量器是进程级的，所以取**这条臂跑前跑后的差**。
+    # ⛔ 早先这一层完全不可见——一次跑慢了一倍而全程无人知晓。
+    embed_before = _embed_snapshot()
 
     # ── setup ────────────────────────────────────────────────
     with ledger.measure("setup"):
@@ -189,6 +192,11 @@ def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
     # ⭐ 摄入**前**的条数：⛔ 不是 0 就说明库脏了，这一跑的分不能要。
     # ⚠️ 命中快照时不适用（那时库里本来就该有东西），记 None。
     profile["pre_ingest_count"] = pre_count
+    # ⭐ 这条臂发出的 embedding 调用。⚠️ 只统计**我们这个进程**里的——
+    # ⛔ 走子进程的被测系统（mem0）那份在它自己的计量器里，随 usage() 回来。
+    profile |= {k: v - embed_before.get(k, 0)
+                for k, v in _embed_snapshot().items()
+                if v - embed_before.get(k, 0)}
     result.cost_profile = profile
     return result, guard.expected
 
@@ -244,6 +252,13 @@ def _try_save(key, adapter: Adapter, cost: dict | None = None,
     store = _store_of(adapter)
     if store is not None:
         save(key, store, cost=cost, canary=canary)
+
+
+def _embed_snapshot() -> dict[str, int]:
+    """embedding 计量器当前的读数。⛔ 只取整数项——差值才有意义。"""
+    from amb.adapters.embedding import METER
+
+    return {k: v for k, v in METER.as_dict().items() if isinstance(v, int)}
 
 
 def _count_or_none(adapter: Adapter) -> int | None:
