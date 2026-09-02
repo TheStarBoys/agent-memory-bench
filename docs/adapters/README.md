@@ -198,10 +198,23 @@ ask(question) -> str            retrieve_entries(question)   memory_count()
    ——公开基准需要，**不得返回三态**
 3. 按声明实现对应套件的方法
 4. 遵守 [id 契约](protocol.md#id-契约)：不回收、归并留 `supersedes`、`mutate` 期间不漂
-5. 钉死被测系统的版本号（[六个已停更的项目](../systems.md)尤其重要）
+5. ⚠️ 版本由 setup 钉死并记录——⛔ 没记录版本的跑不算数
 6. 跑冒烟，确认三件事：
    - 「不支持」被记成不支持，而不是 0
    - 「失败」被记成 `Failed`，而不是不支持
    - 适配器全程没有写过世界（哈希在四个阶段边界都一致）
+
+### ⭐ 一个已接入的例子：mem0
+
+| | |
+|---|---|
+| 接入方式 | `from mem0 import Memory`——包顶层导出，⛔ 不 import 内部子模块 |
+| 版本 | setup 钉死 `mem0ai==2.0.19`，装到的版本进报告 |
+| 声明了什么 | `INGEST` `SEARCH` `GOVERNANCE` |
+| ⛔ 没声明什么 | `PROVENANCE`（它返回抽出来的事实，给不出原文区间）· `REALITY`（不对外部世界求值） |
+| ⚠️ 实测发现 | 输入中文，抽出来的记忆是英文——它的抽取提示做了语言归一 |
+
+⚠️ 它的 `ingest` 每条都调 LLM，所以**语料量是硬约束**——
+跑公开题库时用 `--max-convs` 限住，⛔ 那与题数是两件事。
 
 接口定义见 [`protocol.md`](protocol.md)。
