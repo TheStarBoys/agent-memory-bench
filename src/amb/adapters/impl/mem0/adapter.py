@@ -84,6 +84,9 @@ class Mem0Adapter(Answerable, AdapterBase):
             # ⛔ 不让使用者手动设——适配器自己搭这座桥，
             # 配置里存的仍然只是**变量名**。
             os.environ.setdefault("OPENAI_API_KEY", require(self._api_key_env))
+            # ⭐ 给 mem0 内部的 openai 客户端套一层内容寻址缓存。
+            # ⛔ 只在 AMB_LLM_CACHE=1 时生效，⚠️ 且缓存命中的跑不是独立的延迟测量。
+            _install_openai_cache()
             self._memory = Memory.from_config(self._cfg)
         return self._memory
 
@@ -191,3 +194,52 @@ class Mem0Adapter(Answerable, AdapterBase):
             # ⛔ 对不上就不给——⚠️ 猜一个区间比不给更糟
             return []
         return [Span(doc_id=doc_id, start=start, end=start + len(memory))]
+
+
+def _install_openai_cache() -> None:
+    """给 openai 的 chat.completions.create 套缓存。
+
+    ⚠️ 打补丁是唯一的办法——mem0 不暴露注入点。
+    ⛔ 只包一层，不改它的行为：同样的请求返回同样的响应。
+    """
+    import time
+
+    from amb.adapters.llm_cache import global_cache
+
+    cache = global_cache()
+    if not cache.enabled:
+        return
+
+    from openai.resources.chat import completions as _mod
+
+    if getattr(_mod.Completions.create, "_amb_cached", False):
+        return
+    original = _mod.Completions.create
+
+    def cached(self, **kwargs):  # noqa: ANN001
+        payload = {k: v for k, v in kwargs.items() if k != "extra_headers"}
+        try:
+            hit = cache.get(_jsonable(payload))
+        except Exception:  # noqa: BLE001 —— ⛔ 缓存出问题就退回真调用
+            hit = None
+        if hit is not None:
+            from openai.types.chat import ChatCompletion
+
+            return ChatCompletion.model_validate(hit)
+        t0 = time.perf_counter()
+        got = original(self, **kwargs)
+        try:
+            cache.put(_jsonable(payload), got.model_dump(),
+                      int((time.perf_counter() - t0) * 1000))
+        except Exception:  # noqa: BLE001
+            pass
+        return got
+
+    cached._amb_cached = True          # noqa: SLF001
+    _mod.Completions.create = cached
+
+
+def _jsonable(payload: dict) -> dict:
+    import json
+
+    return json.loads(json.dumps(payload, default=str, sort_keys=True))

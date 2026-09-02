@@ -95,3 +95,98 @@ def test_no_single_composite_score() -> None:
     for v in judge_cost({"a": 0.5, "b": 0.6}, costs, "a"):
         assert not hasattr(v, "score")
         assert not hasattr(v, "总分")
+
+
+# ── ⭐ 不关 LLM 的提速手段 ──────────────────────────────────────
+def test_cache_is_content_addressed_on_everything_that_matters(tmp_path) -> None:
+    """⛔ 键漏掉任何一个影响输出的参数，就会串味。"""
+    from amb.adapters.llm_cache import LLMCache
+
+    c = LLMCache(tmp_path / "c.db")
+    base = {"model": "m", "temperature": 0.0, "messages": [{"role": "u"}]}
+    c.put(base, {"answer": "A"}, 1000)
+
+    assert c.get(base)["answer"] == "A"
+    # 换模型 / 换消息 / 换任一参数 → ⛔ 都不该命中
+    assert c.get({**base, "model": "other"}) is None
+    assert c.get({**base, "messages": [{"role": "v"}]}) is None
+    assert c.get({**base, "max_tokens": 100}) is None
+
+
+def test_sampling_temperature_is_never_cached(tmp_path) -> None:
+    """⛔ temperature>0 时缓存会把随机性冻成一个固定答案。
+
+    ⚠️ 系统本来会给出分布，缓存让它只给一个点——那改变了被测对象。
+    """
+    from amb.adapters.llm_cache import LLMCache
+
+    c = LLMCache(tmp_path / "c.db")
+    hot = {"model": "m", "temperature": 0.7, "messages": []}
+    c.put(hot, {"answer": "A"}, 1000)
+    assert c.get(hot) is None, "⛔ 不该缓存也不该命中"
+
+
+def test_cache_stats_are_reportable(tmp_path) -> None:
+    """⚠️ 命中率必须进报告——⛔ 命中 90% 的跑测的不是真延迟。"""
+    from amb.adapters.llm_cache import LLMCache
+
+    c = LLMCache(tmp_path / "c.db")
+    p = {"model": "m", "temperature": 0.0, "messages": []}
+    c.get(p)                       # miss
+    c.put(p, {"a": 1}, 36700)
+    c.get(p)                       # hit
+    st = c.stats.as_dict()
+    assert st["hits"] == 1 and st["misses"] == 1 and st["hit_rate"] == 0.5
+    assert st["saved_ms"] == 36700
+
+
+def test_snapshot_key_covers_everything_that_changes_ingest(tmp_path) -> None:
+    """⛔ 拿错快照比慢更糟——它会静默给出别的系统的分。"""
+    from amb.core import Document
+    from amb.runner.snapshot import SnapshotKey, corpus_digest
+
+    docs = [Document(doc_id="a", text="x"), Document(doc_id="b", text="y")]
+    base = SnapshotKey("mem0", "2.0.19", "Qwen3-8B", corpus_digest(docs))
+    for changed in (
+        SnapshotKey("mem0_raw", "2.0.19", "Qwen3-8B", base.corpus_digest),
+        SnapshotKey("mem0", "2.0.20", "Qwen3-8B", base.corpus_digest),
+        SnapshotKey("mem0", "2.0.19", "other-llm", base.corpus_digest),
+        SnapshotKey("mem0", "2.0.19", "Qwen3-8B", corpus_digest(docs[:1])),
+    ):
+        assert changed.digest != base.digest
+
+
+def test_corpus_digest_is_order_sensitive() -> None:
+    """⚠️ 归并型系统对摄入顺序敏感——⛔ 顺序必须进指纹。"""
+    from amb.core import Document
+    from amb.runner.snapshot import corpus_digest
+
+    docs = [Document(doc_id="a", text="x"), Document(doc_id="b", text="y")]
+    assert corpus_digest(docs) != corpus_digest(list(reversed(docs)))
+
+
+def test_a_half_written_snapshot_is_not_restored(tmp_path) -> None:
+    """⛔ 半截快照比没有更糟——只有 .complete 在才算数。"""
+    from amb.core import Document
+    from amb.runner.snapshot import SnapshotKey, corpus_digest, restore
+
+    key = SnapshotKey("x", "1", "b", corpus_digest([Document(doc_id="a", text="t")]))
+    root = tmp_path / "snap"
+    (key.path(root) / "store").mkdir(parents=True)
+    (key.path(root) / "store" / "f").write_text("half")
+    # ⚠️ 故意不落 .complete
+    assert restore(key, tmp_path / "out", root) is False
+
+
+def test_concurrent_ingest_is_documented_as_unsafe() -> None:
+    """⛔ 并发对归并型系统不安全——那不是加速，是换了个被测对象。
+
+    ⚠️ 这条把理由钉在文档里，防止有人日后「顺手优化」。
+    """
+    from pathlib import Path
+
+    doc = (Path(__file__).resolve().parents[1] / "docs" / "cost-control.md"
+           ).read_text(encoding="utf-8")
+    assert "为什么并发摄入不能用" in doc
+    assert "归并决策就变了" in doc
+    assert "摄入结果依赖已摄入内容的系统" in doc
