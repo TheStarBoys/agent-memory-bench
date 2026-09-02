@@ -75,6 +75,7 @@ class Mem0Adapter(Answerable, AdapterBase):
     def _client(self) -> Any:
         if self._memory is None:
             import os
+            from pathlib import Path
 
             from amb.core import require
 
@@ -84,6 +85,12 @@ class Mem0Adapter(Answerable, AdapterBase):
             # ⛔ 不让使用者手动设——适配器自己搭这座桥，
             # 配置里存的仍然只是**变量名**。
             os.environ.setdefault("OPENAI_API_KEY", require(self._api_key_env))
+            # ⛔ mem0 有个写死在 ~/.mem0/migrations_qdrant 的迁移库，
+            # 不受 config 控制。两条臂先后跑会撞锁：
+            #   RuntimeError: Storage folder … already accessed by another instance
+            # ⚠️ 给每条臂隔离整个 mem0 home，⛔ 否则第二条必挂。
+            os.environ["MEM0_DIR"] = str(Path(self._storage_dir) / "mem0-home")
+            Path(os.environ["MEM0_DIR"]).mkdir(parents=True, exist_ok=True)
             # ⭐ 给 mem0 内部的 openai 客户端套一层内容寻址缓存。
             # ⛔ 只在 AMB_LLM_CACHE=1 时生效，⚠️ 且缓存命中的跑不是独立的延迟测量。
             _install_openai_cache()
@@ -96,8 +103,20 @@ class Mem0Adapter(Answerable, AdapterBase):
         self._ids = []
 
     def close(self) -> None:
-        if self._memory is not None and hasattr(self._memory, "close"):
-            self._memory.close()
+        """⛔ 必须真的释放——不释放的话下一条臂会撞 Qdrant 的存储锁。"""
+        if self._memory is None:
+            return
+        for owner in (self._memory,
+                      getattr(self._memory, "vector_store", None),
+                      getattr(getattr(self._memory, "vector_store", None),
+                              "client", None)):
+            close = getattr(owner, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:  # noqa: BLE001 —— ⚠️ 关不上也别拖垮整跑
+                    pass
+        self._memory = None
 
     # ── 基线 ────────────────────────────────────────────────────
     def ingest(self, doc: Document) -> None:
@@ -194,6 +213,18 @@ class Mem0Adapter(Answerable, AdapterBase):
             # ⛔ 对不上就不给——⚠️ 猜一个区间比不给更糟
             return []
         return [Span(doc_id=doc_id, start=start, end=start + len(memory))]
+
+
+def _reset_mem0_modules() -> None:
+    """⚠️ mem0 在导入时固化 MEM0_DIR——换 home 就得让它重新导入一次。
+
+    ⛔ 只清 mem0 自己的模块，不动 openai/qdrant——
+    那两个没有这个问题，清了反而会丢掉我们打的缓存补丁。
+    """
+    import sys
+
+    for name in [m for m in sys.modules if m == "mem0" or m.startswith("mem0.")]:
+        del sys.modules[name]
 
 
 def _install_openai_cache() -> None:
