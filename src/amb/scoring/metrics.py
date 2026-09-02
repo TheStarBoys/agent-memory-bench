@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from amb.core import SuiteRun
+from amb.scoring.statistics import Interval, bootstrap, looks_like_proportion, wilson
 
 
 @dataclass(slots=True)
@@ -20,6 +21,13 @@ class Score:
     denominator: int = 0
     metrics: dict[str, float] = field(default_factory=dict)
     failed_rate: float = 0.0
+    #: ⭐ 每个指标的置信区间。⛔ 抽样分不带区间就是在骗人——
+    #: 它假装自己是全量分（docs/sampling.md）。
+    #: ⚠️ 算不出区间的指标**不在这里**，⛔ 不硬凑一个。
+    intervals: dict[str, Interval] = field(default_factory=dict)
+
+    def interval(self, metric: str) -> Interval | None:
+        return self.intervals.get(metric)
 
 
 #: 某套件的 Failed 率超过它，结果标记为不可信，⛔ 不进对比表。
@@ -573,5 +581,49 @@ SCORERS: dict[str, Any] = {
 }
 
 
-def score(run: SuiteRun) -> Score:
-    return SCORERS[run.suite](run)
+def score(run: SuiteRun, *, with_intervals: bool = True,
+          seed: int = 0) -> Score:
+    """判分，⭐ 并给每个指标配置信区间。
+
+    ⛔ 区间不是可选项：一个不带区间的抽样分假装自己是全量分。
+    ⚠️ 但算不出区间的指标**不给**，⛔ 不硬凑——那比没有更糟。
+    """
+    scorer = SCORERS[run.suite]
+    got = scorer(run)
+    if with_intervals and got.status == "scored" and run.observations:
+        got.intervals = _intervals_for(run, scorer, got, seed=seed)
+    return got
+
+
+#: 计数类指标不配区间——⚠️ 它们是**原始计数**，⛔ 不是被估计的比例。
+#: 给一个计数配「置信区间」会让人以为它是个估计量，那是误导。
+_COUNT_HINTS = ("题数", "计数_", "→", "该留-", "该丢-", "删除_", "隔离_", "桶")
+
+
+def _intervals_for(run: SuiteRun, scorer, got: Score, *,
+                   seed: int) -> dict[str, Interval]:
+    """比例走 Wilson（小样本更准），其余走重抽样。"""
+    n = len(run.observations)
+    wanted = [m for m in got.metrics if not any(h in m for h in _COUNT_HINTS)]
+    if not wanted or n < 2:
+        return {}
+
+    out: dict[str, Interval] = {}
+    boot_needed: list[str] = []
+    for m in wanted:
+        value = got.metrics[m]
+        if looks_like_proportion(m) and 0.0 <= value <= 1.0:
+            # ⚠️ 用比例还原成功数——分母是观测数，⛔ 不是别的
+            out[m] = wilson(value * n, n)
+        else:
+            boot_needed.append(m)
+
+    if boot_needed:
+        def recompute(obs: list) -> dict[str, float]:
+            replay = SuiteRun(run.suite, "scored")
+            replay.observations = obs
+            replay.failed = run.failed
+            return scorer(replay).metrics
+
+        out |= bootstrap(run.observations, recompute, boot_needed, seed=seed)
+    return out

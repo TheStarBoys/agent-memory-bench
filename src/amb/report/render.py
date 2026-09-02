@@ -60,6 +60,25 @@ def render(report: Report) -> str:
     return "\n".join(parts)
 
 
+def _delta_text(value: float, ci, floor, floor_ci) -> str:
+    """⛔ 区间重叠时不许声称谁更好。
+
+    ⚠️ 那不是「一样好」，也不是「更好但不显著」——
+    是**这次跑答不了这个问题**（docs/sampling.md）。
+    """
+    from amb.scoring.statistics import detectable_difference
+
+    d = delta(value, floor)
+    if d is None:
+        return ""
+    if ci is not None and floor_ci is not None and ci.overlaps(floor_ci):
+        n = min(ci.n, floor_ci.n)
+        mde = detectable_difference(min(value, floor.value), n)
+        return (f"⛔ 分不开（差 {d:+.3f}，n={n} 只能辨 ≥{mde:.3f}）")
+    # ⚠️ Δ ≤ 0 显式标出来：那意味着帮了倒忙
+    return f"**{d:+.3f} ⚠️帮倒忙**" if d <= 0 else f"{d:+.3f}"
+
+
 def _render_cost(arms: list, suites: list[str]) -> list[str]:
     """⭐ 成本与质量并排判——⛔ 不给总分，给帕累托关系。
 
@@ -134,6 +153,10 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
     for suite in suites:
         metric = HEADLINE.get(suite, "")
         floor = best_floor(arms, suite, metric)
+        floor_ci = None
+        if floor is not None:
+            fsc = next((a.scores.get(suite) for a in arms if a.arm == floor.arm), None)
+            floor_ci = fsc.interval(metric) if fsc else None
         # ⚠️ answer 档含生成器，署名必须写成「<系统> + <backbone>」
         signed = (f"  ——署名 `<系统> + {report.backbone.get('model', '?')}`"
                   if suite == "qa" else "")
@@ -143,7 +166,7 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
             f"地板线 **{floor.arm} = {floor.value:.3f}**" if floor
             else "⚠️ 无地板线——对照组在这一档全部不支持",
             "",
-            "| | 分 | Δ vs 地板 | 状态 | 不支持理由 |",
+            "| | 分 [95% 区间] | Δ vs 地板 | 状态 | 不支持理由 |",
             "|---|---|---|---|---|",
         ]
         for arm in sorted(arms, key=lambda a: (not a.is_control, a.arm)):
@@ -157,25 +180,30 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
                 out.append(f"| {arm.arm} ({tag}) | — | | **{sc.status}** | {sc.reason or ''} |")
                 continue
             v = sc.metrics.get(metric, 0.0)
+            # ⭐ 抽样分必须带区间——⛔ 不带区间的分假装自己是全量分
+            ci = sc.interval(metric)
+            shown = (f"{v:.3f} [{ci.low:.3f}, {ci.high:.3f}]" if ci
+                     else f"{v:.3f}")
             # ⛔ Δ 只对被测系统算。对照组是参照系本身，
             #    拿它们互比再标「帮倒忙」是把参照系当成了选手。
             if arm.is_control:
                 dtxt = "（地板）" if floor and arm.arm == floor.arm else "（参照）"
             else:
-                d = delta(v, floor)
-                # ⚠️ Δ ≤ 0 显式标出来：那意味着帮了倒忙
-                dtxt = "" if d is None else (
-                    f"**{d:+.3f} ⚠️帮倒忙**" if d <= 0 else f"{d:+.3f}"
-                )
-            out.append(f"| {arm.arm} ({tag}) | {v:.3f} | {dtxt} | scored | |")
+                dtxt = _delta_text(v, ci, floor, floor_ci)
+            out.append(f"| {arm.arm} ({tag}) | {shown} | {dtxt} | scored | |")
         out.append("")
 
         # 六格/五指标这类配对指标全量附上——⛔ 只报主指标就能刷分
         for arm in arms:
             sc = arm.scores.get(suite)
             if sc and sc.status == "scored" and len(sc.metrics) > 1:
-                detail = " · ".join(f"{k}={v:.3f}" for k, v in sc.metrics.items())
-                out.append(f"- `{arm.arm}` {detail}")
+                # ⭐ 明细也带区间——⛔ 这里才是主要的读数区
+                parts = []
+                for k, v in sc.metrics.items():
+                    ci = sc.interval(k)
+                    parts.append(f"{k}={v:.3f}[{ci.low:.2f},{ci.high:.2f}]"
+                                 if ci else f"{k}={v:.3f}")
+                out.append(f"- `{arm.arm}` " + " · ".join(parts))
         out.append("")
 
     out += _render_cost(arms, suites)

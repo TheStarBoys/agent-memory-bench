@@ -164,3 +164,62 @@ def compare(a_name: str, a: Interval, b_name: str, b: Interval,
                 f"但 n={min(a.n, b.n)} 只能分辨 ≥{mde:.3f} 的差异——"
                 f"⚠️ 不许声称谁更好")
     return Comparison(a_name, b_name, diff, sep, mde, note)
+
+
+# ── 通用重抽样 ──────────────────────────────────────────────────
+#: 默认重抽次数。⚠️ 小样本上 1000 次足够稳，再多是浪费。
+RESAMPLES = 1000
+
+
+def bootstrap(observations: list, recompute, metric_names: list[str], *,
+              resamples: int = RESAMPLES, seed: int = 0,
+              z: float = Z95) -> dict[str, Interval]:
+    """对**任意**指标做重抽样区间。
+
+    ⭐ 为什么要它：Wilson 只对**比例**成立。
+    秩相关、回归斜率、ECE、Brier 都不是比例——
+    ⛔ 给它们套 Wilson 是错的，而**不给区间**又违反抽样纪律。
+    重抽样对这些都成立。
+
+    recompute: 一批观测 → {指标名: 值}
+    ⚠️ 重抽是对**观测**抽，不是对指标抽——⛔ 后者没有意义。
+    """
+    import random
+
+    n = len(observations)
+    if n < 2:
+        return {}
+
+    rng = random.Random(seed)
+    draws: dict[str, list[float]] = {m: [] for m in metric_names}
+    for _ in range(resamples):
+        sample_ = [observations[rng.randrange(n)] for _ in range(n)]
+        try:
+            got = recompute(sample_)
+        except Exception:  # noqa: BLE001 —— 某次重抽退化（比如某类全空）就跳过
+            continue
+        for m in metric_names:
+            if isinstance(got.get(m), (int, float)):
+                draws[m].append(float(got[m]))
+
+    out: dict[str, Interval] = {}
+    base = recompute(observations)
+    for m, values in draws.items():
+        if len(values) < resamples * 0.5:
+            continue          # ⛔ 一半以上重抽都算不出来 → 不给区间，不硬凑
+        values.sort()
+        lo = values[int(0.025 * len(values))]
+        hi = values[min(len(values) - 1, int(0.975 * len(values)))]
+        out[m] = Interval(float(base.get(m, 0.0)), lo, hi, n)
+    return out
+
+
+#: 这些指标是**比例**，可以用 Wilson（小样本上比重抽样准）。
+#: ⚠️ 名字里带这些词的按比例处理；⛔ 其余一律走重抽样。
+PROPORTION_HINTS = (
+    "率", "准确", "召回", "recall", "top1", "命中", "占比", "全对",
+)
+
+
+def looks_like_proportion(metric: str) -> bool:
+    return any(h in metric for h in PROPORTION_HINTS)
