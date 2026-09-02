@@ -1,0 +1,30 @@
+# ⚠️ **当前阶段临时用的** backbone，⛔ 不是默认。
+#
+# 用它的理由只有一个：**快**——实测同一条抽取调用 3.3s，
+# 是当天候选里最快的（见 docs/backbone.md 的表）。
+# 现阶段还在「把八类题在两个档上跑通」，速度优先。
+#
+# ⛔ 一旦开始出可发布的分数就换回 siliconflow-qwen3.toml：
+#    那个跟 MemoryData 的对照配置同款，地板线能互相印证。
+#    ⚠️ 换 backbone 会让已有分数作废，报告抬头会印出用的是哪个。
+#
+# ⛔ 这里存的是**环境变量名**，不是 key 本身。
+
+[llm]
+provider    = "openai"
+model       = "inclusionAI/Ling-flash-2.0"
+base_url    = "https://api.siliconflow.com/v1"
+api_key_env = "SILICONFLOW_API_KEY"
+temperature = 0.0                           # ⛔ 判分要可复现，不采样
+thinking    = false                         # ⭐ 见 docs/backbone.md#thinking
+timeout_s   = 1200
+
+# ⚠️ embedding 不跟着换——它是另一个受控变量，换了差别里就混进 embedder。
+[embedding]
+model       = "Qwen/Qwen3-Embedding-4B"
+base_url    = "https://api.siliconflow.com/v1"
+api_key_env = "SILICONFLOW_API_KEY"
+timeout_s   = 120
+
+[context]
+budget_chars = 24000

@@ -2,6 +2,7 @@
 
 | 文档 | 回答什么 |
 |---|---|
+| ⭐ [`backbone.md`](backbone.md) | **选哪个 LLM**：实测对照表 · ⭐ 关思考是 15 倍 · ⛔ 为什么不能用裸提示量 |
 | ⭐ [`llm-demand.md`](llm-demand.md) | **对 LLM 的要求**：提示预算可直接量——mem0 8413 token vs MemoryOS 280 |
 | ⭐ [`cost-control.md`](cost-control.md) | **贵的系统怎么跑得起来**：摄入快照 · LLM 缓存 · ⛔ 为什么不能并发 |
 | ⭐ [`runs/`](runs/README.md) | **运行结果存档**：每次跑留一份，含版本 · 抽样 · 成本 |
