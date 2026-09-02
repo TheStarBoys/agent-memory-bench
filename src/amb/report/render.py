@@ -34,6 +34,13 @@ def render(report: Report) -> str:
     ]
     if report.host:
         head.append(f"宿主 dsh-sdk {report.host.get('version', '?')}")
+    if report.externals:
+        # ⛔ 没记录版本的跑不算数——外部依赖的实际版本必须可追
+        pins = " · ".join(
+            f"{n}@{(row.get('actual') or '?')[:12]}"
+            for n, row in sorted(report.externals.items()) if row.get("ok")
+        )
+        head.append(f"外部依赖 {pins or '（无）'}")
     head += ["", "⛔ **两档的数不可互比**——一档喂的是干净语料，"
              "一档喂的是 agent 自己搅出来的现场。", ""]
 

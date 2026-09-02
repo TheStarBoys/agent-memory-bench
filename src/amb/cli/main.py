@@ -20,8 +20,34 @@ from amb.runner import (
 )
 
 
+def _setup_cmd(argv: list[str]) -> int:
+    """一键装外部依赖。⭐ 记录**实际装到的**版本。"""
+    from amb.setup import install_all, status
+
+    ap = argparse.ArgumentParser(prog="amb setup")
+    ap.add_argument("names", nargs="*", help="不给就装全部")
+    ap.add_argument("--check", action="store_true", help="只看状态，不装")
+    ap.add_argument("--upgrade", action="store_true")
+    args = ap.parse_args(argv)
+
+    rows = (status(args.names or None) if args.check
+            else install_all(args.names or None, upgrade=args.upgrade))
+    width = max((len(r.name) for r in rows), default=4)
+    for r in rows:
+        mark = "✓" if r.ok else "✗"
+        same = "" if r.actual == r.declared else "  ⚠️ 与声明不同"
+        print(f"  {mark} {r.name:<{width}}  声明 {r.declared}  实际 {r.actual}{same}")
+        if r.detail:
+            print(f"      {r.detail[:200]}")
+    return 0 if all(r.ok for r in rows) else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     load_dotenv()
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "setup":
+        return _setup_cmd(argv[1:])
+
     ap = argparse.ArgumentParser(prog="amb")
     ap.add_argument("--arms", default=",".join(control_arms()),
                     help="逗号分隔；默认跑全部五条对照组")
@@ -41,12 +67,16 @@ def main(argv: list[str] | None = None) -> int:
     # ⛔ 全局唯一的 backbone——所有臂必须同一个，否则 answer 档不可比
     llm = None if args.no_answer else backbone()
 
+    from amb.setup import snapshot
+
     report = Report(
         run_id=f"toy-{now_rfc3339()}",
         at=now_rfc3339(),
         world={"name": toy.MANIFEST.name, "seed": toy.MANIFEST.seed, "digest": ""},
         backbone={"model": llm.model if llm else "—（未跑 answer 档）",
                   "temperature": llm.temperature if llm else None},
+        # ⭐ 外部依赖的实际版本，⛔ 没有它这次跑不算数
+        externals=snapshot(),
     )
 
     names = [a for a in args.arms.split(",") if a]

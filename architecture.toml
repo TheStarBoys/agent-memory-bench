@@ -3,19 +3,20 @@
 
 [layers]
 # 顺序即层级。下层不得知道上层的存在。
-order = ["core", "world", "agent", "adapters", "suites", "scoring", "report", "runner", "cli"]
+order = ["core", "setup", "world", "agent", "adapters", "suites", "scoring", "report", "runner", "cli"]
 
 [deps]
 # 每层允许 import 的其他层。⛔ 没列出的一律禁止，包括同级兄弟。
 core     = []
+setup    = ["core"]                # 外部依赖的一键安装，⛔ 不认识任何被测系统的内部
 world    = ["core"]
-agent    = ["core", "world"]      # DSH 宿主：把 world 挂到 ctx.fs 等 seam 上
-adapters = ["core"]               # ⛔ 不依赖 agent：插件契约在 core，由 runner 装配
-suites   = ["core", "world", "agent"]
+agent    = ["core", "setup", "world"]      # DSH 宿主：把 world 挂到 ctx.fs 等 seam 上
+adapters = ["core", "setup"]      # ⛔ 不依赖 agent：插件契约在 core，由 runner 装配
+suites   = ["core", "setup", "world", "agent"]
 scoring  = ["core"]
 report   = ["core", "scoring"]
-runner   = ["core", "world", "agent", "adapters", "suites", "scoring", "report"]
-cli      = ["core", "runner", "report"]
+runner   = ["core", "setup", "world", "agent", "adapters", "suites", "scoring", "report"]
+cli      = ["core", "setup", "runner", "report"]
 
 [agent]
 # agent 层是被测对象的宿主，⛔ 它本身是受控变量，不是变量。

@@ -51,6 +51,8 @@ class Report:
     lanes: dict[str, list[ArmResult]] = field(default_factory=dict)
     #: ⚠️ 宿主版本进报告：换 DSH 版本等于换尺子，要重跑全部基线。
     host: dict[str, Any] = field(default_factory=dict)
+    #: ⭐ 全部外部依赖的**实际**版本。⛔ 没记录版本的跑不算数。
+    externals: dict[str, Any] = field(default_factory=dict)
 
     @property
     def arms(self) -> list[ArmResult]:
