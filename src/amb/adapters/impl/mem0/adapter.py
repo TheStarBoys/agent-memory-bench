@@ -42,7 +42,12 @@ class Mem0Adapter(Answerable, AdapterBase):
         self._infer = infer
         self._cfg = {
             "llm": {"provider": "openai", "config": {
-                "model": llm_model, "openai_base_url": llm_base_url}},
+                "model": llm_model, "openai_base_url": llm_base_url,
+                # ⛔ mem0 默认 temperature=0.1 —— 判分要可复现，采样温度不该 >0。
+                # ⚠️ 这也是缓存能生效的前提：temperature>0 时不缓存，
+                # 否则会把随机性冻成一个固定答案。
+                "temperature": 0.0,
+                "top_p": 1.0}},
             "embedder": {"provider": "openai", "config": {
                 "model": embed_model, "embedding_dims": embed_dims,
                 "openai_base_url": embed_base_url}},

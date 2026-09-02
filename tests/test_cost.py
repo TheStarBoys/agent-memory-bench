@@ -190,3 +190,35 @@ def test_concurrent_ingest_is_documented_as_unsafe() -> None:
     assert "为什么并发摄入不能用" in doc
     assert "归并决策就变了" in doc
     assert "摄入结果依赖已摄入内容的系统" in doc
+
+
+def test_mem0_pins_temperature_to_zero() -> None:
+    """⛔ mem0 默认 temperature=0.1——判分要可复现，采样温度不该 >0。
+
+    ⚠️ 这也是缓存能生效的前提：temperature>0 时我们不缓存
+    （那会把随机性冻成一个固定答案）。
+    ⭐ 实测：这一条没设时，缓存命中率恒为 0，而且**没有任何报错**——
+    ⛔ 一个静默失效的优化，比没有优化更糟。
+    """
+    from amb.adapters.impl.mem0 import Mem0Adapter
+
+    arm = Mem0Adapter(llm_model="m", llm_base_url="u", embed_model="e",
+                      embed_base_url="u", embed_dims=8, storage_dir="/tmp/x")
+    llm_cfg = arm._cfg["llm"]["config"]  # noqa: SLF001
+    assert llm_cfg["temperature"] == 0.0
+    assert llm_cfg["top_p"] == 1.0
+
+
+def test_a_nonzero_temperature_payload_is_never_cached(tmp_path) -> None:
+    """⛔ 这条纪律不因为「想让缓存生效」而放宽。"""
+    from amb.adapters.llm_cache import LLMCache
+
+    c = LLMCache(tmp_path / "c.db")
+    for temp in (0.1, 0.7, 1.0):
+        p = {"model": "m", "temperature": temp, "messages": []}
+        c.put(p, {"a": 1}, 100)
+        assert c.get(p) is None, f"temperature={temp} ⛔ 不该缓存"
+    # 只有 0.0 才缓存
+    zero = {"model": "m", "temperature": 0.0, "messages": []}
+    c.put(zero, {"a": 1}, 100)
+    assert c.get(zero) is not None
