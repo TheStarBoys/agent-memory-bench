@@ -11,6 +11,7 @@ import argparse
 import json
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 from amb.core import load_dotenv
@@ -101,8 +102,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.lane == "agent":
             _emit(report, args)
             return 0
-        for name in names:
+        for i, name in enumerate(names, 1):
             root = Path(tmp) / name
+            # ⚠️ 一条臂可能跑一小时（实测 a_mem 55s/条且随库变贵）。
+            # ⛔ 全跑完才出声的话，中途崩了就什么都看不到——进度走 stderr，
+            # ⭐ stdout 留给报告本身，管道用法不受影响。
+            print(f"▶ [{i}/{len(names)}] {name} …", file=sys.stderr, flush=True)
+            started = time.perf_counter()
             try:
                 result, world_digest = run_one(
                     name, build(name, context_budget=args.budget, llm=llm), plan, root,
@@ -116,13 +122,19 @@ def main(argv: list[str] | None = None) -> int:
             except Exception as exc:  # noqa: BLE001
                 # ⛔ 不只打到 stderr——静默消失会被读成「没参赛」
                 msg = f"{type(exc).__name__}: {exc}"[:200]
-                print(f"✗ {name}: {msg}", file=sys.stderr)
+                print(f"✗ [{i}/{len(names)}] {name}: {msg}",
+                      file=sys.stderr, flush=True)
                 report.lanes.setdefault("library", []).append(
                     ArmResult(arm=name, is_control=name in control_arms(),
                               crashed=msg))
                 continue
             report.world["digest"] = world_digest
             report.lanes.setdefault('library', []).append(result)
+            took = time.perf_counter() - started
+            snap = ("　⭐ 摄入快照命中"
+                    if result.ingest_snapshot == "命中" else "")
+            print(f"✓ [{i}/{len(names)}] {name}　{took:.0f}s{snap}",
+                  file=sys.stderr, flush=True)
 
     # ⭐ 缓存状况进报告——⚠️ 包括「为什么没生效」
     report.cache = cache_report()
