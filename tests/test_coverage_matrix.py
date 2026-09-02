@@ -21,12 +21,12 @@ EXPECTED = {
     "N1": {"library": ("n1_prompted", "n1_spontaneous"),
            "agent": ("n1_prompted", "n1_spontaneous")},
     "N2": {"library": ("n2_provenance",), "agent": ("n2_provenance_agent",)},
-    "N3": {"library": ("n3_reasoning",), "agent": ()},
-    "N4": {"library": ("n4_governance",), "agent": ()},
+    "N3": {"library": ("n3_reasoning",), "agent": ("n3_reasoning_agent",)},
+    "N4": {"library": ("n4_governance",), "agent": ("n4_governance_agent",)},
     "N5": {"library": ("n5_observed", "n5_self_reported"), "agent": ("n5_agent",)},
     "N6": {"library": ("n6_structure",), "agent": ("n6_agent",)},
-    "N7": {"library": ("n7_calibration",), "agent": ()},
-    "N8": {"library": ("n8_induction",), "agent": ()},
+    "N7": {"library": ("n7_calibration",), "agent": ("n7_calibration",)},
+    "N8": {"library": ("n8_induction",), "agent": ("n8_induction",)},
 }
 
 
@@ -68,13 +68,24 @@ def test_all_eight_classes_are_covered_in_at_least_one_lane() -> None:
         assert lanes["library"] or lanes["agent"], f"{klass} 两档都没有探针"
 
 
-def test_known_agent_lane_gaps_are_explicit() -> None:
-    """⚠️ N3/N4/N7/N8 在 agent 档还没有探针——这是**已知**缺口。
+def test_no_agent_lane_gaps_remain() -> None:
+    """⭐ 八类在两档都有探针了。
 
-    ⛔ 写在这里是为了让它不能被悄悄忘掉；
-    补上探针之后要同时改 EXPECTED 和文档的状态表。
+    ⛔ 这条断言从「缺口是 N3/N4/N7/N8」翻成了「没有缺口」——
+    以后哪一类从 agent 档掉出去，它会立刻红。
     """
     gaps = {k for k, v in EXPECTED.items() if not v["agent"]}
-    assert gaps == {"N3", "N4", "N7", "N8"}, (
-        f"agent 档缺口变了：{sorted(gaps)}——记得同步文档"
-    )
+    assert not gaps, f"agent 档又出现缺口：{sorted(gaps)}——记得同步文档"
+
+
+def test_agent_lane_scope_differences_are_documented() -> None:
+    """⚠️ 判分口径同源不等于范围一样。
+
+    ⛔ N3 在 agent 档判不了「规则是否适用」（拿不到 rule），
+    N4 在 agent 档到不了带外取证那一步（重开宿主 = 连插件一起重开）。
+    这两条写在各自的 docstring 里，⛔ 不许拿它们冒充直接调库那一档的分。
+    """
+    from amb.suites.agent_native import n3_reasoning, n4_governance
+
+    assert "判不了" in (n3_reasoning.__doc__ or "")
+    assert "⛔ 不四舍五入成通过" in (n4_governance.__doc__ or "")

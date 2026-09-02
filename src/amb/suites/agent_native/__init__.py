@@ -8,6 +8,10 @@ from amb.suites.agent_native.n2_provenance import (
     AgentProvenanceSuite,
     CitationProbe,
 )
+from amb.suites.agent_native.n3_reasoning import AgentReasoningSuite
+from amb.suites.agent_native.n4_governance import AgentGovernanceSuite, ForgetProbe
+from amb.suites.agent_native.n7_calibration import AgentCalibrationSuite
+from amb.suites.agent_native.n8_induction import AgentInductionSuite
 from amb.suites.agent_native.qa import AgentQASuite
 from amb.suites.agent_native.recall_check import (
     AgentRecallSuite,
@@ -17,7 +21,9 @@ from amb.suites.agent_native.recall_check import (
 )
 
 __all__ = [
-    "AgentRecallSuite", "RecallItem", "retention_items", "structure_items",
+    "AgentCalibrationSuite", "AgentGovernanceSuite", "AgentInductionSuite",
     "AgentPromptedRealitySuite", "AgentProvenanceSuite", "AgentQASuite",
-    "AgentSpontaneousRealitySuite", "CitationProbe",
+    "AgentReasoningSuite", "AgentRecallSuite", "AgentSpontaneousRealitySuite",
+    "CitationProbe", "ForgetProbe", "RecallItem",
+    "retention_items", "structure_items",
 ]

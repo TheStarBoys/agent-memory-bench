@@ -218,9 +218,14 @@ def agent_suites(verdict_sink) -> list:
         AgentPromptedRealitySuite,
         AgentProvenanceSuite,
         AgentQASuite,
+        AgentCalibrationSuite,
+        AgentGovernanceSuite,
+        AgentInductionSuite,
+        AgentReasoningSuite,
         AgentRecallSuite,
         AgentSpontaneousRealitySuite,
         CitationProbe,
+        ForgetProbe,
         retention_items,
         structure_items,
     )
@@ -239,4 +244,19 @@ def agent_suites(verdict_sink) -> list:
             probes_from(EVENT_STREAM, NEED_CURVE, now_s=86_400 * 30.0)[:4])),
         AgentRecallSuite("n6_agent", structure_items(TOPOLOGY)[:2],
                          cues_key="cues_list"),
+        # ⚠️ agent 档每题一轮会话，很慢；这里都只取一小撮验机制
+        AgentReasoningSuite(FACT_GRAPH, questions_from(FACT_GRAPH)[:2],
+                            verdict_sink),
+        AgentGovernanceSuite([
+            ForgetProbe(
+                probe=DELETION_PROBES[0],
+                remember=f"请记住：{DELETION_PROBES[0].text}",
+                forget=f"请忘掉关于{DELETION_PROBES[0].query}的那条记忆。",
+            )
+        ]),
+        AgentCalibrationSuite([
+            CalibrationItem("k1", "哪个脑结构学得慢？", ("新皮层",), salient=True),
+            CalibrationItem("k2", "一次暴露就能记住靠哪个结构？", ("海马",)),
+        ], verdict_sink),
+        AgentInductionSuite(REGULARITIES[:1]),
     ]

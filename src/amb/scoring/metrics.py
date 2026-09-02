@@ -184,7 +184,10 @@ def score_qa(run: SuiteRun) -> Score:
 
 #: 四步探针，⚠️ 顺序即加压顺序——报到哪一步为止。
 _DELETE_STEPS = ("none", "deleted", "filtered", "survives_restart",
-                 "gone_from_storage")
+                 "gone_from_storage",
+                 # ⚠️ agent 档专有：重开宿主 = 连插件一起重开，
+                 # 到不了带外那一步，最高只能报「答案里不再出现」
+                 "gone_from_answers")
 
 
 def score_governance(run: SuiteRun) -> Score:
@@ -545,6 +548,8 @@ def score_locomo_retrieval(run: SuiteRun) -> Score:
 SCORERS: dict[str, Any] = {
     "locomo_retrieval": score_locomo_retrieval,
     "n3_reasoning": score_reasoning,
+    "n3_reasoning_agent": score_reasoning,
+    "n4_governance_agent": score_governance,
     "n4_governance": score_governance,
     "n8_induction": score_induction,
     "n7_calibration": score_calibration,

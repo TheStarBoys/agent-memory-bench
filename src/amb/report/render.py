@@ -13,6 +13,8 @@ HEADLINE = {
     "qa": "准确率",
     "locomo_retrieval": "evidence_recall",
     "n3_reasoning": "链条完好率",
+    "n3_reasoning_agent": "链条完好率",
+    "n4_governance_agent": "删除_gone_from_answers",
     "n4_governance": "彻底删除率",
     "n5_observed": "保留追踪度",
     "n5_agent": "保留追踪度",
