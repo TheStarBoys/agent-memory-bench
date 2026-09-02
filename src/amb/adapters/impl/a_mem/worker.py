@@ -47,20 +47,20 @@ class Runner:
                 "python": sys.version.split()[0]}
 
     def _pin_temperature(self) -> None:
-        """⛔ A-mem 调 `get_completion` 时不传 temperature，默认 **1.0**。
+        """钉死 backbone 的受控变量。
 
-        判分必须可复现，所以钉成 0.0；⚠️ 顺带缓存才可能生效
-        （temperature>0 一律不缓存）。这是我们改了它出厂行为的地方之一，
-        [README](README.md) 里有登记。
+        ⛔ A-mem 调 `get_completion` 时不传 temperature，默认 **1.0**；
+        ⭐ 而它默认也不关思考——实测思考开着摄入 3 条要 418.4s，关掉 27.4s。
+        两项都由宿主那份 `llm_cache.backbone_overrides()` 统一钉，
+        ⛔ 不在这儿复制一遍——复制就会跟宿主漂移。
 
-        ⭐ 实现用宿主那份 `llm_cache`——它只 import 标准库 + openai，
-        按路径加载得到。⛔ 不在这儿复制一遍，复制就会跟宿主漂移。
+        ⚠️ 这是我们改了它出厂行为的地方，[README](README.md) 里有登记。
         """
         client = getattr(
             getattr(getattr(self.system, "llm_controller", None), "llm", None),
             "client", None)
         if client is None:
-            log("⚠️ 没找到 openai 客户端，temperature 没钉住——判分可能不可复现")
+            log("⚠️ 没找到 openai 客户端，受控变量没钉住——判分可能不可复现")
             return
         shared = os.environ.get("AMB_CACHE_MODULE_DIR")
         if shared and shared not in sys.path:
@@ -68,26 +68,10 @@ class Runner:
         try:
             from llm_cache import wrap_openai_client
         except ImportError as exc:
-            log(f"⚠️ 加载不到宿主的 llm_cache（{exc}），退回只钉温度")
-            self._pin_only(client)
-            return
-        if not wrap_openai_client(client, force_temperature=0.0):
-            # ⚠️ 缓存没开也要钉温度——判分可复现优先于缓存
-            self._pin_only(client)
-
-    @staticmethod
-    def _pin_only(client) -> None:
-        target = getattr(getattr(client, "chat", None), "completions", None)
-        if target is None or getattr(target, "_amb_pinned", False):
-            return
-        original = target.create
-
-        def pinned(**kwargs):
-            kwargs["temperature"] = 0.0
-            return original(**kwargs)
-
-        target.create = pinned
-        target._amb_pinned = True
+            # ⛔ 钉不住就不许静默跑下去——那会产出一个不可复现的分数
+            raise RuntimeError(
+                f"加载不到宿主的 llm_cache（{exc}），受控变量钉不住") from None
+        wrap_openai_client(client)
 
     def ingest(self, *, doc_id: str, text: str) -> dict:
         memory_id = self.system.add_note(text)

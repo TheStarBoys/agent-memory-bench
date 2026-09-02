@@ -182,33 +182,65 @@ def warn_once(message: str) -> None:
         print(f"⚠️ {message}", file=sys.stderr)
 
 
+def backbone_overrides() -> dict:
+    """被测系统自己发的调用里，**我们有权钉死**的那几项。
+
+    ⛔ 这些是 backbone 的受控变量，不是被测系统的设置——
+    所有臂必须一致，否则分数不可比。⚠️ 每一项都要进报告。
+
+    | 钉什么 | 为什么 |
+    |---|---|
+    | `temperature=0.0` | 判分要可复现。⚠️ mem0 默认 0.1、A-mem 默认 1.0，两个都踩过 |
+    | `enable_thinking=False` | ⭐ 思考型 backbone 输出 token 大 6～8 倍。实测 A-mem 摄入 3 条：418.4s → 27.4s |
+
+    ⚠️ 不支持 `enable_thinking` 的服务端会忽略它，⛔ 不是错误。
+    要开思考就 `AMB_LLM_THINKING=1`，⭐ 报告里会写着开了。
+    """
+    thinking = os.environ.get("AMB_LLM_THINKING", "").lower() in (
+        "1", "true", "yes", "on")
+    out: dict = {"temperature": 0.0}
+    if not thinking:
+        out["extra_body"] = {"enable_thinking": False}
+    return out
+
+
 def wrap_openai_client(client: object, *,
-                       force_temperature: float | None = None) -> bool:
-    """给**一个已构造好的** openai 客户端实例套缓存。返回是否真的打上了。
+                       force_temperature: float | None = None,
+                       overrides: dict | None = None) -> bool:
+    """钉死 backbone 的受控变量，并（在启用时）套缓存。返回是否打上了。
+
+    ⛔ **缓存没开也会打补丁**——受控变量比缓存重要：⚠️ 早先只在缓存启用时
+    才打，那样不开缓存的跑用的是被测系统自己的 temperature，
+    判分不可复现，而且没人会发现。
 
     ⛔ 打在类上不行：openai 的 `@required_args` 装饰器在**导入时**就绑定了
     原函数——⚠️ 替换类属性对已存在的调用路径不生效（踩过，表现是命中数恒为 0）。
     ⭐ 打在实例的 `chat.completions` 对象上才拦得到。
 
-    `force_temperature`：⚠️ 被测系统若自己传了 temperature>0，缓存会
-    按 `_cacheable` 跳过，而且**判分不可复现**。mem0 默认 0.1、
-    A-mem 默认 1.0——两个都踩过。传 0.0 把它钉死，⛔ 并在文档里写明改了什么。
+    `overrides` 不传就用 `backbone_overrides()`；⛔ 传空字典 `{}` 才是
+    「什么都不钉」。`force_temperature` 覆盖其中的温度那一项。
     """
     import time
 
     cache = global_cache()
-    if not cache.enabled:
-        return False
-
     target = getattr(getattr(client, "chat", None), "completions", None)
     if target is None or getattr(target, "_amb_cached", False):
         return False
 
     original = target.create
+    pins = dict(backbone_overrides() if overrides is None else overrides)
+    if force_temperature is not None:
+        pins["temperature"] = force_temperature
 
     def cached(**kwargs):
-        if force_temperature is not None:
-            kwargs["temperature"] = force_temperature
+        for name, value in pins.items():
+            if name == "extra_body":
+                kwargs["extra_body"] = {**(kwargs.get("extra_body") or {}), **value}
+            else:
+                kwargs[name] = value
+        # ⛔ 缓存没开也要走到这儿——受控变量比缓存重要
+        if not cache.enabled:
+            return original(**kwargs)
         payload = _jsonable({k: v for k, v in kwargs.items()
                              if k != "extra_headers"})
         try:

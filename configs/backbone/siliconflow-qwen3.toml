@@ -12,6 +12,11 @@ model       = "Qwen/Qwen3-8B"
 base_url    = "https://api.siliconflow.com/v1"
 api_key_env = "SILICONFLOW_API_KEY"
 temperature = 0.0                           # ⛔ 判分要可复现，不采样
+# ⭐ 关思考。实测 A-mem 摄入 3 条：思考开 663s，关 43s——**15 倍**，
+# 抽取结果没变差（反而少造了一条对不回原文的记忆）。
+# ⚠️ 这是受控变量，所有臂一致，⛔ 并且会印在报告抬头上。
+# 要开就 AMB_LLM_THINKING=1。
+thinking    = false
 timeout_s   = 1200                          # 20min：长语料的抽取会很慢
 
 [embedding]

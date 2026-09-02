@@ -33,7 +33,10 @@ def render(report: Report) -> str:
         f"# {report.run_id}",
         "",
         f"世界 {report.world['name']} · 种子 {report.world['seed']} · {report.world['digest'][:19]}…",
-        f"backbone {report.backbone.get('model', '—')}",
+        f"backbone {report.backbone.get('model', '—')}"
+        # ⚠️ 思考开关直接改变成本与输出长度，⛔ 不能只躺在 JSON 里
+        + (" · ⚠️ 思考开" if report.backbone.get("thinking")
+           else " · 思考关" if report.backbone.get("thinking") is False else ""),
     ]
     if report.host:
         head.append(f"宿主 dsh-sdk {report.host.get('version', '?')}")

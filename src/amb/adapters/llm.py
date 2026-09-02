@@ -25,6 +25,10 @@ class LLMConfig:
     temperature: float = 0.0  # ⛔ 判分要可复现，不采样
     timeout_s: float = 600.0
     max_tokens: int = 512
+    #: ⭐ 思考型 backbone 会把输出 token 撑大 6～8 倍。实测 A-mem 摄入 3 条：
+    #: 思考开 418.4s，关 27.4s——**15 倍**，而抽取质量没变。
+    #: ⚠️ 这是 backbone 的受控变量，不是被测系统的设置；⛔ 必须进报告。
+    thinking: bool = False
 
 
 @dataclass(slots=True)
@@ -60,6 +64,8 @@ class LLMClient:
             "model": self.cfg.model,
             "temperature": self.cfg.temperature,
             "max_tokens": self.cfg.max_tokens,
+            # ⚠️ 不支持这个字段的服务端会忽略它，⛔ 不是错误
+            **({} if self.cfg.thinking else {"enable_thinking": False}),
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
@@ -89,4 +95,7 @@ def from_env() -> LLMConfig:
         model=require("AMB_LLM_MODEL"),
         base_url=require("AMB_LLM_BASE_URL"),
         api_key_env=os.environ.get("AMB_LLM_API_KEY_ENV", "SILICONFLOW_API_KEY"),
+        # ⛔ 默认关思考。要开就显式 AMB_LLM_THINKING=1，⚠️ 并且报告里会写着。
+        thinking=os.environ.get("AMB_LLM_THINKING", "").lower()
+        in ("1", "true", "yes", "on"),
     )

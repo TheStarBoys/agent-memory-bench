@@ -135,10 +135,13 @@ class Runner:
 
 
 def _wrap_cache(client) -> None:
-    """⭐ 用宿主那份 `llm_cache`——它只 import 标准库 + openai，按路径加载得到。
+    """钉死 backbone 的受控变量（temperature、关思考），并套上缓存。
+
+    ⭐ 用宿主那份 `llm_cache`——它只 import 标准库 + openai，按路径加载得到。
     ⛔ 不在这儿复制一遍，复制就会跟宿主漂移。
     """
     if client is None:
+        log("⚠️ 没找到 openai 客户端，受控变量没钉住——判分可能不可复现")
         return
     shared = os.environ.get("AMB_CACHE_MODULE_DIR")
     if shared and shared not in sys.path:
@@ -146,8 +149,9 @@ def _wrap_cache(client) -> None:
     try:
         from llm_cache import wrap_openai_client
     except ImportError as exc:
-        log(f"⚠️ 加载不到宿主的 llm_cache（{exc}），这一跑没有缓存")
-        return
+        # ⛔ 钉不住就不许静默跑下去——那会产出一个不可复现的分数
+        raise RuntimeError(
+            f"加载不到宿主的 llm_cache（{exc}），受控变量钉不住") from None
     wrap_openai_client(client)
 
 

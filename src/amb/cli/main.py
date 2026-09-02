@@ -84,7 +84,10 @@ def main(argv: list[str] | None = None) -> int:
         at=now_rfc3339(),
         world={"name": world_name, "seed": args.sample_seed, "digest": ""},
         backbone={"model": llm.model if llm else "—（未跑 answer 档）",
-                  "temperature": llm.temperature if llm else None},
+                  "temperature": llm.temperature if llm else None,
+                  # ⛔ 受控变量，必须进报告：思考型 backbone 输出 token
+                  # 大 6～8 倍，实测 A-mem 摄入 3 条 663s → 43s
+                  "thinking": llm.thinking if llm else None},
         # ⭐ 外部依赖的实际版本，⛔ 没有它这次跑不算数
         externals=snapshot(),
         # ⚠️ 抽样方式进报告——⛔ 抽样变了分数就不可比
