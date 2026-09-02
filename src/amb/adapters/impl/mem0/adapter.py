@@ -91,10 +91,9 @@ class Mem0Adapter(Answerable, AdapterBase):
             # ⚠️ 给每条臂隔离整个 mem0 home，⛔ 否则第二条必挂。
             os.environ["MEM0_DIR"] = str(Path(self._storage_dir) / "mem0-home")
             Path(os.environ["MEM0_DIR"]).mkdir(parents=True, exist_ok=True)
-            # ⭐ 给 mem0 内部的 openai 客户端套一层内容寻址缓存。
-            # ⛔ 只在 AMB_LLM_CACHE=1 时生效，⚠️ 且缓存命中的跑不是独立的延迟测量。
-            _install_openai_cache()
             self._memory = Memory.from_config(self._cfg)
+            # ⭐ 构造完之后在**实例**上套缓存
+            _wrap_llm_cache(self._memory)
         return self._memory
 
     def reset(self) -> None:
@@ -227,11 +226,13 @@ def _reset_mem0_modules() -> None:
         del sys.modules[name]
 
 
-def _install_openai_cache() -> None:
-    """给 openai 的 chat.completions.create 套缓存。
+def _wrap_llm_cache(memory: Any) -> None:
+    """给 **这个 Memory 实例**的 LLM 客户端套缓存。
 
-    ⚠️ 打补丁是唯一的办法——mem0 不暴露注入点。
-    ⛔ 只包一层，不改它的行为：同样的请求返回同样的响应。
+    ⛔ 打在类上不行：mem0 的 client 已经构造完，
+    而 openai 的 `@required_args` 装饰器在**导入时**就绑定了原函数——
+    ⚠️ 替换类属性对已存在的调用路径不生效（踩过，表现是命中数恒为 0）。
+    ⭐ 打在实例的 `chat.completions` 对象上才拦得到。
     """
     import time
 
@@ -241,33 +242,50 @@ def _install_openai_cache() -> None:
     if not cache.enabled:
         return
 
-    from openai.resources.chat import completions as _mod
-
-    if getattr(_mod.Completions.create, "_amb_cached", False):
+    llm = getattr(memory, "llm", None)
+    client = getattr(llm, "client", None)
+    target = getattr(getattr(client, "chat", None), "completions", None)
+    if target is None or getattr(target, "_amb_cached", False):
         return
-    original = _mod.Completions.create
 
-    def cached(self, **kwargs):  # noqa: ANN001
-        payload = {k: v for k, v in kwargs.items() if k != "extra_headers"}
+    original = target.create
+
+    def cached(**kwargs):
+        payload = _jsonable({k: v for k, v in kwargs.items()
+                             if k != "extra_headers"})
         try:
-            hit = cache.get(_jsonable(payload))
-        except Exception:  # noqa: BLE001 —— ⛔ 缓存出问题就退回真调用
+            hit = cache.get(payload)
+        except Exception as exc:  # noqa: BLE001 —— 退回真调用，⛔ 但要说话
+            # ⚠️ 静默吞掉会让「缓存没生效」变成一个查不出来的 bug——踩过。
+            _warn_once(f"缓存读取失败：{type(exc).__name__}: {exc}")
             hit = None
         if hit is not None:
             from openai.types.chat import ChatCompletion
 
             return ChatCompletion.model_validate(hit)
         t0 = time.perf_counter()
-        got = original(self, **kwargs)
+        got = original(**kwargs)
         try:
-            cache.put(_jsonable(payload), got.model_dump(),
+            cache.put(payload, got.model_dump(),
                       int((time.perf_counter() - t0) * 1000))
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            _warn_once(f"缓存写入失败：{type(exc).__name__}: {exc}")
         return got
 
-    cached._amb_cached = True          # noqa: SLF001
-    _mod.Completions.create = cached
+    target.create = cached
+    target._amb_cached = True
+
+
+_WARNED: set[str] = set()
+
+
+def _warn_once(message: str) -> None:
+    """⛔ 缓存故障必须可见——⚠️ 静默降级会让它变成查不出来的 bug。"""
+    import sys
+
+    if message not in _WARNED:
+        _WARNED.add(message)
+        print(f"⚠️ {message}", file=sys.stderr)
 
 
 def _jsonable(payload: dict) -> dict:
