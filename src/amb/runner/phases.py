@@ -102,6 +102,11 @@ def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
                 items += len(run.observations)
         guard.check(Phase.PROBE)
 
+    # ⛔ 计量必须在 close **之前**取：⚠️ 走子进程的适配器一旦 close，
+    # worker 就退出了，计量器跟着没了——踩过，表现是钱那一列永远空着，
+    # 而且不报错（usage() 只是返回 Unsupported）。
+    usage = adapter.usage()
+
     adapter.close()
     # ⚠️ 存快照必须在 close **之后**：子进程还开着 qdrant/chroma 时拷目录
     # 会拷到半截。⛔ 半截快照比没有更糟——它会静默给出别的系统的分。
@@ -113,9 +118,7 @@ def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
         "items": items,
     }
     result.cost = dict(ledger.wall_ms_harness)
-    # ⭐ 成本画像：⚠️ token 只有适配器报得出来，没声明 ACCOUNTING 就是 None，
-    # ⛔ 不拿 0 冒充「没花钱」。
-    usage = adapter.usage()
+    # ⭐ 成本画像：⚠️ 没测到就是 None，⛔ 不拿 0 冒充「没花钱」。
     profile: dict[str, object] = {
         "items_ingested": len(plan.documents),
         "items_probed": items,

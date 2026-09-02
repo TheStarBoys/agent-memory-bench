@@ -160,12 +160,17 @@ def _render_cost(arms: list, suites: list[str],
     if not quality:
         return []
 
-    floor = max(quality, key=lambda k: quality[k])
-    for a in arms:                       # 地板取对照组里最强的
-        if a.is_control and a.arm in quality:
-            floor = max((x.arm for x in arms if x.is_control and x.arm in quality),
-                        key=lambda k: quality[k])
-            break
+    # 地板取对照组里最强的，⛔ 但**排除退化的臂**——
+    # ⚠️ full_context 在检索档里不检索，recall 恒为 1.000 且总耗时约 1ms。
+    # 拿它当分母，所有真实臂的耗时比会变成天文数字（实测 938102x），
+    # 并被判成「被地板压制·没有存在理由」——⛔ 两个结论都是错的。
+    from amb.report.floor import is_degenerate
+
+    controls = [a.arm for a in arms
+                if a.is_control and a.arm in quality
+                and not is_degenerate(a.arm, chosen)]
+    floor = (max(controls, key=lambda k: quality[k]) if controls
+             else max(quality, key=lambda k: quality[k]))
 
     out = [f"## 成本 × 质量　（质量看 `{chosen}` 的 {HEADLINE[chosen]}，"
            f"{len(quality)}/{len(arms)} 条臂参与）", "",
@@ -173,6 +178,8 @@ def _render_cost(arms: list, suites: list[str],
            "合成一个数就等于替使用者做了那个取舍。", "",
            "| | 质量 | Δ vs 地板 | 总耗时 | 每条摄入 | 每次回答 | token | 钱 | 判定 |",
            "|---|---:|---:|---:|---:|---:|---:|---:|---|"]
+    # ⛔ 退化的臂不进成本表：它的「1ms 拿满分」既不是质量也不是速度
+    quality = {k: v for k, v in quality.items() if not is_degenerate(k, chosen)}
     for v in judge_cost(quality, profiles, floor):
         p = profiles[v.arm]
         d = "—" if v.quality_delta is None else f"{v.quality_delta:+.3f}"

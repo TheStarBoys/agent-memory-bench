@@ -110,3 +110,42 @@ def test_init_config_reaches_the_worker(tmp_path: Path) -> None:
 
     assert json.loads(marker.read_text())["api_key"] == "秘密"
     bridge.close()
+
+
+def test_death_is_permanent_regardless_of_poll_timing(tmp_path: Path) -> None:
+    """⛔ 「绝不重启」不能只靠 `poll()`。
+
+    ⚠️ 进程刚退出时 `poll()` 可能还返回 None（还没被回收），
+    那一瞬 `_start()` 会把死进程当活的交出去——实测在负载下偶发，
+    表现是整个测试套件跑时这条偶尔红一次，单独跑却总是绿。
+
+    ⭐ 所以死因要**记下来**并封死这座桥，不再每次重新判断。
+    """
+    bridge = _bridge(tmp_path)
+    bridge.call("ping")
+    with pytest.raises(BridgeError):
+        bridge.call("boom")
+
+    # ⚠️ 装作 poll() 还没反应过来
+    bridge._proc.poll = lambda: None            # noqa: SLF001
+    with pytest.raises(BridgeError, match="不重启"):
+        bridge.call("ping")
+
+
+def test_the_death_message_says_both_why_and_that_it_wont_restart(
+        tmp_path: Path) -> None:
+    """⚠️ 一条消息要同时说清两件事：
+    ⭐ **原始死因**（否则查不出为什么挂）、⛔ **不会重启**（否则调用方会重试）。
+    """
+    bridge = Bridge(Path(sys.executable), _worker(tmp_path, '''
+        import sys
+        print("依赖装错了", file=sys.stderr, flush=True)
+        sys.exit(3)
+    '''), {})
+    with pytest.raises(BridgeError) as got:
+        bridge.call("anything")
+    bridge.call.__self__          # 让 linter 闭嘴
+    text = str(got.value)
+    assert "依赖装错了" in text            # ⭐ 死因
+    with pytest.raises(BridgeError, match="不重启"):
+        bridge.call("anything")            # ⛔ 第二次说清不重启

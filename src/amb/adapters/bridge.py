@@ -44,16 +44,22 @@ class Bridge:
         self._timeout_s = timeout_s
         self._proc: subprocess.Popen | None = None
         self._stderr: list[str] = []
+        #: ⛔ 一旦判定死了就**永久**死了。⚠️ 不能只靠 poll()——
+        #: 进程刚退出时 poll() 可能还返回 None（还没被回收），
+        #: 那一瞬 _start() 会把死进程当活的交出去，
+        #: 「绝不静默重启」这条保证就漏了。实测在负载下会偶发。
+        self._dead: str | None = None
 
     def _start(self) -> subprocess.Popen:
+        if self._dead is not None:
+            raise BridgeError(self._dead)
         if self._proc is not None:
             if self._proc.poll() is None:
                 return self._proc
             # ⛔ 死了就是死了，**绝不静默重启**。
             # ⚠️ 重启会丢掉它摄入的全部状态，而调用方毫无察觉——
             # 那样跑出来的分数是「半个语料的记忆系统」的分数，比崩掉更糟。
-            raise BridgeError(self._died("子进程中途死了。⛔ 不重启——"
-                                         "重启会把已摄入的状态悄悄清空"))
+            raise BridgeError(self._mark_dead("子进程中途死了"))
         # ⭐ `llm_cache` 只 import 标准库 + openai，所以 worker 能按路径直接加载它。
         # ⚠️ 这样「缓存」和「temperature 钉 0」只有**一份**实现，
         # ⛔ 不在隔离环境里复制一遍——复制就会漂移。
@@ -89,11 +95,11 @@ class Bridge:
                                         ensure_ascii=False) + "\n")
             proc.stdin.flush()
         except (BrokenPipeError, ValueError) as exc:
-            raise BridgeError(self._died(f"写不进去：{exc}")) from None
+            raise BridgeError(self._mark_dead(f"写不进去：{exc}")) from None
 
         line = proc.stdout.readline()
         if not line:
-            raise BridgeError(self._died("子进程没回话就退了"))
+            raise BridgeError(self._mark_dead("子进程没回话就退了"))
         try:
             got = json.loads(line)
         except json.JSONDecodeError:
@@ -110,6 +116,19 @@ class Bridge:
                 f"{self._script.name} {op}: {got.get('error')}"
                 + (f"\n  子进程 stderr 末尾：\n    {tail}" if tail else ""))
         return got.get("result")
+
+    def _mark_dead(self, why: str) -> str:
+        """记下死因并**封死**这座桥。
+
+        ⚠️ 之后每次调用都抛同一条消息，而它必须同时说清两件事：
+        ⭐ **原始死因**（否则查不出为什么挂）和
+        ⛔ **不会重启**（否则调用方会以为再试一次就好）。
+        """
+        if self._dead is None:
+            self._dead = (self._died(why)
+                          + "\n  ⛔ 这座桥已封死，不重启——"
+                            "重启会把已摄入的状态悄悄清空。")
+        return self._dead
 
     def _died(self, why: str) -> str:
         code = self._proc.poll() if self._proc else None
