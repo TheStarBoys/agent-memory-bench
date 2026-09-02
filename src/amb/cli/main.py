@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import tempfile
 import time
@@ -92,7 +93,11 @@ def main(argv: list[str] | None = None) -> int:
                   "temperature": llm.temperature if llm else None,
                   # ⛔ 受控变量，必须进报告：思考型 backbone 输出 token
                   # 大 6～8 倍，实测 A-mem 摄入 3 条 663s → 43s
-                  "thinking": llm.thinking if llm else None},
+                  "thinking": llm.thinking if llm else None,
+                  # ⭐ 摄入用的那个模型。⛔ 与回答 backbone 是两件事：
+                  # `--no-answer` 时没有回答 backbone，⚠️ 但被测系统摄入时
+                  # 照样调 LLM——钱那一列要靠它才算得出来。
+                  "ingest_model": os.environ.get("AMB_LLM_MODEL", "")},
         # ⭐ 外部依赖的实际版本，⛔ 没有它这次跑不算数
         externals=snapshot(),
         # ⚠️ 抽样方式进报告——⛔ 抽样变了分数就不可比

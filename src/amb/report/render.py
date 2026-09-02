@@ -315,7 +315,10 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
                 out.append(f"- `{arm.arm}` " + " · ".join(parts))
         out.append("")
 
-    out += _render_cost(arms, suites, report.backbone.get("model"))
+    # ⛔ 检索档（`--no-answer`）没有回答 backbone，⚠️ 但被测系统**摄入时照样调 LLM**
+    # ——mem0 这一跑就烧了 367 万 token。拿摄入那个模型定价，
+    # ⭐ 否则钱那一列永远是空的，而钱是[原则⑥](../../docs/adapters/README.md#p6)的一等维度。
+    out += _render_cost(arms, suites, _pricing_model(report.backbone))
     # ⭐ 行为指纹：⛔ 不是分数，是「这一跑正不正常」的凭据。
     # ⚠️ 两次跑同一语料同一臂，指纹应当一致——不一致就先别信分数。
     prints = [(a.arm, a.cost_profile["canary"], a.cost_profile)
@@ -345,6 +348,20 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
                    f"| {p.get('items', 0)} | {cost} |")
     out.append("")
     return "\n".join(out)
+
+
+def _pricing_model(backbone: dict) -> str:
+    """按哪个模型的挂牌价算钱。
+
+    ⛔ 回答档用回答 backbone；⚠️ 检索档没有回答 backbone，
+    这时 token 全是**摄入**烧的，该用摄入那个模型。
+    ⛔ 两者不同时不混算——那会把一个模型的价用在另一个模型的 token 上。
+    """
+    model = backbone.get("model") or ""
+    # ⚠️ `--no-answer` 时这一格是一句说明文字，不是模型名
+    if model and not model.startswith("—"):
+        return model
+    return str(backbone.get("ingest_model") or "")
 
 
 def _pre_ingest(profile: dict) -> str:
