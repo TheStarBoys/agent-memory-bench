@@ -88,6 +88,10 @@ class Verdict:
     note: str = ""
 
 
+#: 低于这个毫秒数就当「测不出来」。⚠️ 计时精度所限，
+#: ⛔ 报成 0 会让人以为「零成本」，而实际只是「低于精度」。
+BELOW_RESOLUTION_MS = 5
+
 #: ⚠️ 慢到这个程度，「记得住」也救不回来——
 #: 用户问一句等这么久，体验上等于没有记忆。
 #: ⛔ 这不是及格线，是一个**要在报告里显眼标出来**的阈值。
@@ -108,6 +112,9 @@ def judge(quality: dict[str, float], costs: dict[str, CostProfile],
     for arm, q in quality.items():
         c = costs.get(arm)
         ratio = (c.total_ms / floor_t) if (c and floor_t > 0) else None
+        if c is not None and c.total_ms < BELOW_RESOLUTION_MS:
+            # ⛔ 不是「零成本」，是低于计时精度——渲染层会写成 <0.001x
+            ratio = None if floor_t == 0 else max(ratio or 0.0, 0.0)
         dq = (q - floor_q) if floor_q is not None else None
 
         label, note = _label(arm, floor_arm, dq, ratio, c)

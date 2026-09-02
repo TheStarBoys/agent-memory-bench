@@ -190,6 +190,7 @@ python -m amb.cli --bench locomo --sample stratified:50 --max-convs 2 \
 
 | | 读 |
 |---|---|
+| ⭐ **看实际跑出来什么** | [`docs/runs/`](docs/runs/README.md) —— 每次跑的存档，含版本 / 抽样 / 成本 |
 | ⭐ **看懂一个分数能不能信** | [`docs/sampling.md`](docs/sampling.md) —— 抽样方法论、置信区间、样本量 |
 | ⭐ **接一个记忆系统 / 题库 / 运行时进来** | [`docs/integrating.md`](docs/integrating.md) —— 照着做，含检查单 |
 | 快速判断这个项目值不值得看 | [`docs/harnesses.md`](docs/harnesses.md) —— 为什么不 fork 现成框架 |
@@ -231,6 +232,7 @@ python -m amb.cli --bench locomo --sample stratified:50 --max-convs 2 \
 | [`docs/report.md`](docs/report.md) | 报告格式：三态怎么落到表上，利益关系怎么标 |
 | [`docs/baselines.md`](docs/baselines.md) | ⛔ 绝对分不单独报，必须给地板线与 Δ |
 | ⭐ [`docs/sampling.md`](docs/sampling.md) | ⛔ 抽样分必须带区间；区间重叠不许声称谁更好 |
+| ⭐ [`docs/runs/`](docs/runs/README.md) | **运行结果存档**——⛔ 每份都带版本 / 抽样 / 成本，否则不可复现 |
 
 完整索引在 [`docs/README.md`](docs/README.md)；
 每个代码包自己的 README 说清「它只干哪一件事」。

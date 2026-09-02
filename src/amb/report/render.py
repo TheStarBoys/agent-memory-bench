@@ -60,6 +60,24 @@ def render(report: Report) -> str:
     return "\n".join(parts)
 
 
+def _ratio_text(ratio: float | None) -> str:
+    """⛔ 「0.0x」会被读成「零成本」，而实际只是低于计时精度。"""
+    if ratio is None:
+        return "—"
+    if ratio < 0.001:
+        return "<0.001x"
+    return f"{ratio:.3f}x" if ratio < 1 else f"{ratio:.1f}x"
+
+
+def _seconds(ms: float | None) -> str:
+    """⚠️ 同理：0.00s 要能与「真的很快」区分开。"""
+    if ms is None:
+        return "—"
+    if ms < 1:
+        return "<0.001s"
+    return f"{ms / 1000:.3f}s" if ms < 1000 else f"{ms / 1000:.2f}s"
+
+
 def _delta_text(value: float, ci, floor, floor_ci) -> str:
     """⛔ 区间重叠时不许声称谁更好。
 
@@ -133,11 +151,9 @@ def _render_cost(arms: list, suites: list[str]) -> list[str]:
     for v in judge_cost(quality, profiles, floor):
         p = profiles[v.arm]
         d = "—" if v.quality_delta is None else f"{v.quality_delta:+.3f}"
-        ratio = "—" if v.cost_ratio is None else f"{v.cost_ratio:.1f}x"
-        ing = ("—" if p.ingest_ms_per_item is None
-               else f"{p.ingest_ms_per_item / 1000:.2f}s")
-        prb = ("—" if p.probe_ms_per_item is None
-               else f"{p.probe_ms_per_item / 1000:.2f}s")
+        ratio = _ratio_text(v.cost_ratio)
+        ing = _seconds(p.ingest_ms_per_item)
+        prb = _seconds(p.probe_ms_per_item)
         out.append(f"| {v.arm} | {v.quality:.3f} | {d} | {ratio} | {ing} | {prb} "
                    f"| {v.label} |")
         if v.note:
