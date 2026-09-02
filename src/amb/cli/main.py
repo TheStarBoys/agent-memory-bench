@@ -16,7 +16,7 @@ from pathlib import Path
 from amb.core import load_dotenv
 from amb.report import Report, render
 from amb.runner import (
-    Plan, backbone, build, control_arms, now_rfc3339, run_one,
+    backbone, build, build_plan, control_arms, now_rfc3339, run_one,
 )
 
 
@@ -53,16 +53,20 @@ def main(argv: list[str] | None = None) -> int:
                     help="逗号分隔；默认跑全部五条对照组")
     ap.add_argument("--budget", type=int, default=24000, help="full_context 的上下文预算")
     ap.add_argument("--json", type=Path, help="同时写一份 JSON")
+    ap.add_argument("--bench", choices=("toy", "locomo"), default="toy",
+                    help="跑哪个题库")
+    ap.add_argument("--sample", default="all",
+                    help="抽题：all | first:N | random:N | stratified:N | ids:a,b")
+    ap.add_argument("--sample-seed", type=int, default=42,
+                    help="⚠️ 随机抽样的种子——⛔ 进报告，不记就不可复现")
     ap.add_argument("--lane", choices=("library", "agent", "both"),
                     default="library", help="跑哪一档。⛔ 两档的数不可互比")
     ap.add_argument("--no-answer", action="store_true",
                     help="不挂 backbone，只跑检索档（省钱、离线可跑）")
     args = ap.parse_args(argv)
 
-    from worlds import toy  # 玩具世界；⚠️ 正式跑应由清单文件指定
-
-    plan = Plan(manifest=toy.MANIFEST, documents=toy.all_documents(),
-                changes=toy.CHANGES, suites_for=toy.suites)
+    plan, sampling, world_name = build_plan(
+        args.bench, sample=args.sample, seed=args.sample_seed)
 
     # ⛔ 全局唯一的 backbone——所有臂必须同一个，否则 answer 档不可比
     llm = None if args.no_answer else backbone()
@@ -70,13 +74,15 @@ def main(argv: list[str] | None = None) -> int:
     from amb.setup import snapshot
 
     report = Report(
-        run_id=f"toy-{now_rfc3339()}",
+        run_id=f"{world_name}-{now_rfc3339()}",
         at=now_rfc3339(),
-        world={"name": toy.MANIFEST.name, "seed": toy.MANIFEST.seed, "digest": ""},
+        world={"name": world_name, "seed": args.sample_seed, "digest": ""},
         backbone={"model": llm.model if llm else "—（未跑 answer 档）",
                   "temperature": llm.temperature if llm else None},
         # ⭐ 外部依赖的实际版本，⛔ 没有它这次跑不算数
         externals=snapshot(),
+        # ⚠️ 抽样方式进报告——⛔ 抽样变了分数就不可比
+        sampling=sampling,
     )
 
     names = [a for a in args.arms.split(",") if a]

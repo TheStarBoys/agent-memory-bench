@@ -505,7 +505,45 @@ def score_reasoning(run: SuiteRun) -> Score:
     return _finish(s, run)
 
 
+def score_locomo_retrieval(run: SuiteRun) -> Score:
+    """LoCoMo 检索质量：靠 evidence 对账，⛔ 不生成答案。
+
+    ⛔ **分类必须分开报。** 22% 是弃权题，只会返回 top-k 的系统
+    在那一类上必然全错——总分会把这件事糊掉。
+    """
+    s = Score(run.suite, run.status, run.reason)
+    if run.status != "scored":
+        return s
+
+    rows = [o.payload for o in run.observations]
+    n = len(rows) or 1
+
+    def recall(subset: list) -> float:
+        got = sum(len(r["hit"]) for r in subset)
+        want = sum(len(r["gold"]) for r in subset) or 1
+        return got / want
+
+    def hit_any(subset: list) -> float:
+        return sum(1 for r in subset if r["hit"]) / (len(subset) or 1)
+
+    s.metrics = {
+        "evidence_recall": recall(rows),
+        "命中任一率": hit_any(rows),
+        "题数": float(n),
+    }
+    # ⭐ 逐类分开——⛔ 总分会把弃权那一类糊掉
+    by_cat: dict[str, list] = {}
+    for r in rows:
+        by_cat.setdefault(r["stratum"], []).append(r)
+    for stratum in sorted(by_cat):
+        subset = by_cat[stratum]
+        s.metrics[f"recall_{stratum}"] = recall(subset)
+        s.metrics[f"题数_{stratum}"] = float(len(subset))
+    return _finish(s, run)
+
+
 SCORERS: dict[str, Any] = {
+    "locomo_retrieval": score_locomo_retrieval,
     "n3_reasoning": score_reasoning,
     "n4_governance": score_governance,
     "n8_induction": score_induction,

@@ -11,6 +11,7 @@ HEADLINE = {
     "n2_provenance": "精确匹配率",
     "n2_provenance_agent": "来源正确率",
     "qa": "准确率",
+    "locomo_retrieval": "evidence_recall",
     "n3_reasoning": "链条完好率",
     "n4_governance": "彻底删除率",
     "n5_observed": "保留追踪度",
@@ -41,6 +42,11 @@ def render(report: Report) -> str:
             for n, row in sorted(report.externals.items()) if row.get("ok")
         )
         head.append(f"外部依赖 {pins or '（无）'}")
+    if report.sampling:
+        sp = report.sampling
+        # ⛔ 抽样方式变了分数就不可比——种子也要在
+        head.append(f"抽题 {sp.get('strategy')} n={sp.get('sampled')}/"
+                    f"{sp.get('total')} seed={sp.get('seed')}")
     head += ["", "⛔ **两档的数不可互比**——一档喂的是干净语料，"
              "一档喂的是 agent 自己搅出来的现场。", ""]
 

@@ -53,6 +53,8 @@ class Report:
     host: dict[str, Any] = field(default_factory=dict)
     #: ⭐ 全部外部依赖的**实际**版本。⛔ 没记录版本的跑不算数。
     externals: dict[str, Any] = field(default_factory=dict)
+    #: ⚠️ 抽题方式与种子。⛔ 抽样变了分数就不可比。
+    sampling: dict[str, Any] = field(default_factory=dict)
 
     @property
     def arms(self) -> list[ArmResult]:
