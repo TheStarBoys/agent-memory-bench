@@ -35,7 +35,7 @@ def main(argv: list[str] | None = None) -> int:
 
     from worlds import toy  # 玩具世界；⚠️ 正式跑应由清单文件指定
 
-    plan = Plan(manifest=toy.MANIFEST, documents=toy.DOCUMENTS,
+    plan = Plan(manifest=toy.MANIFEST, documents=toy.all_documents(),
                 changes=toy.CHANGES, suites_for=toy.suites)
 
     # ⛔ 全局唯一的 backbone——所有臂必须同一个，否则 answer 档不可比

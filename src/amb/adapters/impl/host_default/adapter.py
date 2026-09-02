@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from amb.adapters.worldcheck import WorldReader
+from amb.adapters.worldcheck import WorldReader, looks_like_world_ref
 from amb.adapters.answerable import Answerable
 from amb.core import (
     BASELINE, AdapterBase, Capability, Claim, Document, Entry, Failed, Verdict,
@@ -50,7 +50,11 @@ class HostDefaultAdapter(Answerable, AdapterBase):
             missing = False
             unverifiable = False
             for ref in c.doc_ids:
-                r = self._reader.file(ref) if "/" in ref else self._reader.fact(ref)
+                if not looks_like_world_ref(ref):
+                    unverifiable = True       # ⛔ 内部 id，核不了
+                    continue
+                r = (self._reader.file(ref) if "/" in ref
+                     else self._reader.fact(ref))
                 grounds.append(r.ground)
                 if not r.exists:
                     missing = True

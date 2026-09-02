@@ -13,7 +13,21 @@ from amb.suites.native.n1_reality import (
 )
 from amb.suites.native.n2_provenance import ProvenanceSuite, SpanProbe
 from amb.suites.native.n4_governance import DeletionProbe, GovernanceSuite
+from amb.suites.native.n3_reasoning import ReasoningSuite, questions_from
+from amb.suites.native.n5_consolidation import (
+    ObservedRetentionSuite,
+    SelfReportedRetentionSuite,
+    probes_from,
+)
+from amb.suites.native.n6_structure import StructureSuite
+from amb.suites.native.n7_calibration import CalibrationItem, CalibrationSuite
+from amb.suites.native.n8_induction import InductionSuite
 from amb.suites.native.qa import QAItem, QASuite
+from amb.world.stream import events as _events
+from amb.world.stream import factgraph as _factgraph
+from amb.world.stream import need as _need
+from amb.world.stream import regularity as _regularity
+from amb.world.stream import topology as _topology
 from amb.suites.native.retrieval import Query, RetrievalSuite
 from amb.world import Change, ChangeKind, FileSpec, WorldManifest
 
@@ -26,9 +40,11 @@ _FILES = {
     "config/retention.txt": "retention_days=30",
 }
 
+SEED = 42
+
 MANIFEST = WorldManifest(
     name="toy",
-    seed=42,
+    seed=SEED,
     clock_start=CLOCK_START,
     files=tuple(FileSpec(p, t) for p, t in _FILES.items()),
     facts={"retention_days": "30", "region": "cn-north"},
@@ -43,6 +59,9 @@ DOCUMENTS = [
     Document(doc_id="secret/formula.md", text="内部配方编号 K-7391，仅限研发组。",
              timestamp=CLOCK_START, principal="alice", kind="document"),
 ]
+
+def all_documents() -> list[Document]:
+    return [*DOCUMENTS, *extra_documents()]
 
 CORPUS = dict(_FILES)
 
@@ -102,6 +121,37 @@ DELETION_PROBES = [
 ]
 
 
+# ── N3 / N5 / N6 / N7 / N8：各自的合成结构 ─────────────────────
+#: ⚠️ 都很小，只够验机制。⛔ 题量上统计上说明不了任何事。
+FACT_GRAPH = _factgraph.build(seed=SEED, chains=4, depth=3)
+EVENT_STREAM = _events.build(seed=SEED, span_s=86_400 * 30.0, per_cell=3)
+TOPOLOGY = _topology.build(seed=SEED, entities_per_fan=2)
+REGULARITIES = _regularity.build(seed=SEED)
+
+#: ⛔ 占位曲线：参数不是我们拟合的，拿它跑出来的 N5 分数**不得发布**。
+NEED_CURVE = _need.PLACEHOLDER
+
+
+def extra_documents() -> list[Document]:
+    """N3/N5/N6/N8 的语料。⚠️ 只进记忆，不进世界。"""
+    docs: list[Document] = []
+    for t in FACT_GRAPH.facts:
+        docs.append(Document(doc_id=str(t), text=t.sentence(),
+                             timestamp=CLOCK_START, principal="alice"))
+    for f in EVENT_STREAM.facts:
+        docs.append(Document(doc_id=f.fact_id, text=f.text,
+                             timestamp=CLOCK_START, principal="alice"))
+    for f in TOPOLOGY.facts:
+        docs.append(Document(doc_id=f.fact_id, text=f.text,
+                             timestamp=CLOCK_START, principal="alice"))
+    for reg in REGULARITIES:
+        for i, inst in enumerate(reg.seen):
+            docs.append(Document(doc_id=f"{reg.category}#{i}",
+                                 text=inst.statement(reg.prop),
+                                 timestamp=CLOCK_START, principal="alice"))
+    return docs
+
+
 def suites(rebuild=None, world_handle=None) -> list:
     return [
         RetrievalSuite(QUERIES),
@@ -112,6 +162,20 @@ def suites(rebuild=None, world_handle=None) -> list:
         *([] if rebuild is None else [
             GovernanceSuite(DELETION_PROBES, rebuild, world_handle),
         ]),
+        ReasoningSuite(FACT_GRAPH, questions_from(FACT_GRAPH)),
+        ObservedRetentionSuite(probes_from(EVENT_STREAM, NEED_CURVE,
+                                           now_s=86_400 * 30.0)),
+        SelfReportedRetentionSuite(probes_from(EVENT_STREAM, NEED_CURVE,
+                                               now_s=86_400 * 30.0)),
+        StructureSuite(TOPOLOGY),
+        CalibrationSuite([
+            CalibrationItem(f"c{i}", q, g, salient=(i % 2 == 0))
+            for i, (q, g) in enumerate([
+                ("哪个脑结构学得慢？", ("新皮层",)),
+                ("一次暴露就能记住靠哪个结构？", ("海马",)),
+            ])
+        ]),
+        InductionSuite(REGULARITIES),
     ]
 
 

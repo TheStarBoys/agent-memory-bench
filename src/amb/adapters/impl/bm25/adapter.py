@@ -12,7 +12,7 @@ import re
 from collections import Counter
 
 from amb.adapters.chunking import Chunk, chunk
-from amb.adapters.worldcheck import WorldReader
+from amb.adapters.worldcheck import WorldReader, looks_like_world_ref
 from amb.adapters.answerable import Answerable
 from amb.core import (
     BASELINE, AdapterBase, AuditEvent, Capability, Claim, DeleteResult, Document,
@@ -131,7 +131,12 @@ class BM25Adapter(Answerable, AdapterBase):
         if ref in cache:
             return cache[ref]
         assert self._reader is not None
-        r = self._reader.file(ref) if "/" in ref else self._reader.fact(ref)
+        if not looks_like_world_ref(ref):
+            # ⛔ 这是记忆系统内部的 id，不是世界引用——
+            # 查不到不等于「世界里没有」，⚠️ 判不了就报 unknown
+            cache[ref] = "unknown"
+            return "unknown"
+        r = (self._reader.file(ref) if "/" in ref else self._reader.fact(ref))
         if not r.exists:
             state = "broken"                                   # 消失
         elif ref not in self._snapshot:

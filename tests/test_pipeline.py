@@ -18,8 +18,8 @@ OFFLINE = ("null", "host_default", "bm25", "full_context")
 
 
 def plan() -> Plan:
-    return Plan(manifest=toy.MANIFEST, documents=toy.DOCUMENTS,
-                changes=toy.CHANGES, suites=toy.suites())
+    return Plan(manifest=toy.MANIFEST, documents=toy.all_documents(),
+                changes=toy.CHANGES, suites_for=toy.suites)
 
 
 @pytest.mark.parametrize("arm", OFFLINE)
@@ -27,9 +27,9 @@ def test_five_phases_complete(arm: str, tmp_path: Path) -> None:
     result, world_digest = run_one(arm, build(arm), plan(), tmp_path / arm,
                                    is_control=True)
     assert world_digest.startswith("sha256:")
-    assert set(result.scores) == {
-        "retrieval", "n2_provenance", "n1_prompted", "n1_spontaneous", "qa",
-    }
+    # ⚠️ 套件加多了不该让这条测试失效——它验的是「跑完了」，不是「跑了哪几个」
+    assert {"retrieval", "n2_provenance", "n1_prompted", "n1_spontaneous", "qa"} \
+        <= set(result.scores)
     assert result.cost, "⚠️ 墙钟必须记账（原则⑥）"
 
 

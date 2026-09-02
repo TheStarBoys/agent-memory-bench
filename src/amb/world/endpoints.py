@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import threading
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from amb.world.mutate import WorldState
@@ -31,7 +32,8 @@ def _handler(state: WorldState):
             if self.path == "/clock":
                 self._send(200, {"now": state.now})
             elif self.path.startswith("/facts/"):
-                key = self.path.removeprefix("/facts/")
+                # ⚠️ 客户端做了百分号编码，这里解回来
+                key = urllib.parse.unquote(self.path.removeprefix("/facts/"))
                 if key in state.facts:
                     self._send(200, {"key": key, "value": state.facts[key]})
                 else:
