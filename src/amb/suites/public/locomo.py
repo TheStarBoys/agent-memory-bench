@@ -143,7 +143,8 @@ class LocomoRetrievalSuite:
 
 def pick(data: LocomoData, spec: SampleSpec,
          max_conversations: int | None = None,
-         max_turns: int | None = None) -> SampleResult:
+         max_turns: int | None = None,
+         conversations: tuple[str, ...] = ()) -> SampleResult:
     """抽题。⚠️ 结果的 provenance 要进报告。
 
     ⛔ `max_conversations` 控的是**语料量**，与题数是两件事：
@@ -166,12 +167,24 @@ def pick(data: LocomoData, spec: SampleSpec,
     notes: list[str] = []
     kept_turns: dict[str, set[str]] | None = None
 
-    if max_conversations is not None:
+    if conversations:
+        # ⭐ 点名。⚠️ 各对话的**题目产出差 2.5 倍**（conv-30 给 105 题，
+        # conv-42 给 258 题），随机抽会白付摄入成本。
+        # ⛔ 这是抽样决定，不是挑结果：选的依据是「每份摄入能判多少题」，
+        # ⚠️ 在看到任何分数之前就定了，且必须进 provenance。
+        unknown = sorted(set(conversations) - set(data.turns))
+        if unknown:
+            raise KeyError(f"没有这些对话：{unknown}。"
+                           f"已知：{sorted(data.turns)}")
+        keep = set(conversations)
+        questions = [q for q in questions if q.conversation_id in keep]
+        notes.append(f"conversations={','.join(sorted(keep))}")
+    elif max_conversations is not None:
         convs = sorted(data.turns)
         keep = set(_r.Random(spec.seed).sample(
             convs, k=min(max_conversations, len(convs))))
         questions = [q for q in questions if q.conversation_id in keep]
-        notes.append(f"max_conversations={max_conversations}")
+        notes.append(f"max_conversations={max_conversations}（随机抽）")
 
     if max_turns is not None:
         # 每个对话只留前 max_turns 轮

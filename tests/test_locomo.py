@@ -132,10 +132,36 @@ def test_corpus_size_is_bounded_separately_from_question_count(data) -> None:
 
 
 def test_conversation_limit_is_recorded_in_provenance(data) -> None:
-    """⛔ 限了语料也要进报告——不然两次跑不可比。"""
+    """⛔ 限了语料也要进报告——不然两次跑不可比。
+
+    ⚠️ 随机抽与点名要能区分：⭐ 各对话的题目产出差 2.5 倍
+    （conv-30 给 105 题，conv-42 给 258 题），
+    读者要能看出这次的语料是**抽中的**还是**选的**。
+    """
     p = pick(data, SampleSpec(Strategy.STRATIFIED, 20, seed=42),
              max_conversations=2).provenance()
-    assert p["note"] == "max_conversations=2"
+    assert p["note"] == "max_conversations=2（随机抽）"
+
+
+def test_named_conversations_are_recorded_too(data) -> None:
+    """⭐ 点名跑哪个对话是**抽样决定**，⛔ 必须进 provenance。
+
+    ⚠️ 依据是「每份摄入能判多少题」，在看到任何分数之前就定了——
+    ⛔ 但读者有权知道我们选了，而不是抽到的。
+    """
+    cid = sorted(data.turns)[0]
+    got = pick(data, SampleSpec(Strategy.ALL, 0, seed=1), conversations=(cid,))
+    assert got.provenance()["note"] == f"conversations={cid}"
+    assert {q.conversation_id for q in got.items} == {cid}
+
+
+def test_an_unknown_conversation_is_refused(data) -> None:
+    """⛔ 打错对话名要当场报错——⚠️ 静默跑出 0 题比报错糟得多。"""
+    import pytest
+
+    with pytest.raises(KeyError, match="没有这些对话"):
+        pick(data, SampleSpec(Strategy.ALL, 0, seed=1),
+             conversations=("conv-不存在",))
 
 
 def test_questions_always_have_their_corpus(data) -> None:
