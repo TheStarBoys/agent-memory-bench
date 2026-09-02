@@ -15,6 +15,7 @@ HEADLINE = {
     "n5_observed": "保留追踪度",
     "n6_structure": "扇形退化斜率",
     "n7_calibration": "ECE",
+    "n8_induction": "全对",
     "n5_self_reported": "保留追踪度",
     "n1_prompted": "检出率",
     "n1_spontaneous": "检出率",

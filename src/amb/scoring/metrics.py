@@ -429,8 +429,49 @@ def score_calibration(run: SuiteRun) -> Score:
     return _finish(s, run)
 
 
+def score_induction(run: SuiteRun) -> Score:
+    """⛔ 四种行为分列，不许汇总成一个准确率。
+
+    「过度修正」（一个反例就把规律扔了）与「过度泛化」（规律压过明确的例外）
+    是两种**相反**的毛病，改进方向也相反。
+    ⚠️ 在只判对错的表里它们都是「答错一道题」，
+    合并之后读者看不出该往哪个方向修。
+    """
+    s = Score(run.suite, run.status, run.reason)
+    if run.status != "scored":
+        return s
+
+    behaviour = {"全对": 0, "过度修正": 0, "过度泛化": 0, "未归纳": 0}
+    rates: list[float] = []
+    applied: list[float] = []
+    for obs in run.observations:
+        p = obs.payload
+        if not p["generalises"]:
+            behaviour["未归纳"] += 1
+        elif not p["handles_exception"]:
+            behaviour["过度泛化"] += 1      # 规律压过了明确的例外
+        elif not p["rule_survives"]:
+            behaviour["过度修正"] += 1      # 一个反例就把规律扔了
+        else:
+            behaviour["全对"] += 1
+        rates.append(p["rate"])
+        applied.append(float(p["generalises"]))
+
+    n = len(run.observations) or 1
+    metrics = {k: v / n for k, v in behaviour.items()}
+    metrics |= {f"计数_{k}": float(v) for k, v in behaviour.items()}
+    # ⚠️ 判分口径是单调性不是绝对值：
+    # 「95% 的规律比 60% 的更常被应用」可判，「60% 该被应用多少次」不可判
+    metrics["规律强度单调性"] = _spearman(rates, applied)
+    metrics["未解析率"] = sum(
+        1 for o in run.observations if o.payload["unparsed"]) / n
+    s.metrics = metrics
+    return _finish(s, run)
+
+
 SCORERS: dict[str, Any] = {
     "n4_governance": score_governance,
+    "n8_induction": score_induction,
     "n7_calibration": score_calibration,
     "n6_structure": score_structure,
     "n5_observed": score_retention,
