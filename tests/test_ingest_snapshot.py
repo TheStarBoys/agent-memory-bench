@@ -393,3 +393,64 @@ def test_the_snapshot_footnote_never_goes_silent() -> None:
          _arm("naive_rag", "未启用")],
         ["locomo_retrieval"], "Qwen/Qwen3-8B"))
     assert "†" in text and "存快照那次实测" in text
+
+
+# ── ⑧ 坏快照必须被**验出来**，⛔ 不能静默出假分 ────────────────
+def test_canary_catches_bookkeeping_left_outside_the_store(tmp_path: Path) -> None:
+    """⛔ 实测最危险的一次：a_mem 把「记忆 id → doc id」的映射放在 worker
+    内存里，⚠️ 快照只拷了 chroma 目录。命中快照 → 映射为空 →
+    检索结果全都没有 doc_id → **recall 从 0.526 静默变成 0.000**，不报错。
+
+    ⭐ 所以指纹**不能只数条数**：那个 bug 里 chroma 的 30 条全都在，
+    错的是判分真正依赖的 doc_ids。指纹必须真跑一次检索。
+    """
+    from amb.runner.phases import Plan, _canary
+
+    class _Arm:
+        """模拟命中快照后的 a_mem：条数对，⛔ 但给不出 doc_ids。"""
+
+        def __init__(self, with_doc_ids: bool) -> None:
+            self._ok = with_doc_ids
+
+        def search(self, query, k, **kw):
+            from amb.core import Entry
+            return [Entry(id="m1", digest="x",
+                          doc_ids=["d0"] if self._ok else [])]
+
+        def count(self):
+            return 30
+
+    plan = Plan(manifest=None, documents=[Document(doc_id="d0", text="李雷入职")])
+    healthy = _canary(_Arm(True), plan)
+    broken = _canary(_Arm(False), plan)
+
+    assert healthy["count"] == broken["count"] == 30   # ⚠️ 条数一样
+    assert healthy != broken                           # ⭐ 但指纹不同
+    assert healthy["with_doc_ids"] == 1 and broken["with_doc_ids"] == 0
+
+
+def test_a_snapshot_without_a_canary_is_not_trusted(tmp_path: Path) -> None:
+    """⛔ 老快照没存指纹——⚠️ 验不了就不敢用，重新摄入。
+
+    ⭐ 失败方向必须是「多花一次时间」，不是「出一个假分」。
+    """
+    from amb.runner.snapshot import SnapshotKey, save, saved_canary
+
+    key = SnapshotKey("a_mem", "0.2.6", "b", "abc")
+    store = tmp_path / "s"
+    store.mkdir()
+    (store / "db").write_text("x")
+    save(key, store, root=tmp_path / "snaps")          # ⚠️ 不带 canary
+    assert saved_canary(key, root=tmp_path / "snaps") is None
+
+
+def test_a_canary_round_trips(tmp_path: Path) -> None:
+    from amb.runner.snapshot import SnapshotKey, save, saved_canary
+
+    key = SnapshotKey("a_mem", "0.2.6", "b", "abc")
+    store = tmp_path / "s"
+    store.mkdir()
+    (store / "db").write_text("x")
+    save(key, store, root=tmp_path / "snaps",
+         canary={"count": 30, "hits": 3, "with_doc_ids": 3})
+    assert saved_canary(key, root=tmp_path / "snaps")["with_doc_ids"] == 3

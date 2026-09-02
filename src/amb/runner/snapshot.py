@@ -86,8 +86,20 @@ def saved_cost(key: SnapshotKey, root: Path = ROOT) -> dict | None:
     return got if isinstance(got, dict) else None
 
 
+def saved_canary(key: SnapshotKey, root: Path = ROOT) -> dict | None:
+    """存快照那次摄入完的**行为**指纹。⛔ 没有就返回 None——验不了就别用。"""
+    if not (key.path(root) / ".complete").is_file():
+        return None
+    try:
+        meta = json.loads((key.path(root) / "meta.json").read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    got = meta.get("canary")
+    return got if isinstance(got, dict) and got else None
+
+
 def save(key: SnapshotKey, store: Path, root: Path = ROOT,
-         cost: dict | None = None) -> None:
+         cost: dict | None = None, canary: dict | None = None) -> None:
     """摄入完存一份。⚠️ 写完才落 .complete——⛔ 半截快照比没有更糟。
 
     `cost`：⭐ 这一次**实测**的摄入成本，一起存进去，
@@ -102,6 +114,9 @@ def save(key: SnapshotKey, store: Path, root: Path = ROOT,
     meta = key.as_dict()
     if cost:
         meta["ingest_cost"] = cost
+    if canary:
+        # ⭐ 恢复之后拿它对账：⛔ 行为对不上就丢弃快照，不出假分
+        meta["canary"] = canary
     (dst / "meta.json").write_text(
         json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
     # ⛔ 最后一步：只有它在，快照才算数

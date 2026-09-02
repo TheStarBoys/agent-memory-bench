@@ -20,7 +20,12 @@ def log(msg: str) -> None:
 class Runner:
     def __init__(self) -> None:
         self.system = None
+        #: 记忆 id → 它来自哪个 doc。⚠️ A-mem 自己不保留这个映射。
+        #: ⛔ **必须跟 chroma 存在同一个目录里**：摄入快照拷的是那个目录，
+        #: 映射留在内存里的话，命中快照 = 映射为空 = 检索结果全都没有 doc_id
+        #: = recall 静默归零。踩过，0.526 变成 0.000 而且不报错。
         self.doc_of: dict[str, str] = {}
+        self.map_path = None
 
     def init(self, *, llm_model: str, llm_base_url: str, api_key: str,
              storage_dir: str, embed_model: str = "all-MiniLM-L6-v2",
@@ -41,6 +46,16 @@ class Runner:
             storage_path=storage_dir,
         )
         self._pin_temperature()
+        # ⭐ 跟 chroma 同一个目录，这样它会被摄入快照一起拷走
+        self.map_path = os.path.join(storage_dir, "amb-doc-map.json")
+        if os.path.exists(self.map_path):
+            try:
+                with open(self.map_path, encoding="utf-8") as fh:
+                    self.doc_of = json.load(fh)
+                log(f"载入 doc 映射 {len(self.doc_of)} 条（快照恢复）")
+            except (OSError, ValueError) as exc:
+                # ⛔ 读不出来就报错，不静默跑下去——⚠️ 那会产出一个 recall=0 的假分
+                raise RuntimeError(f"doc 映射损坏：{exc}") from None
         import agentic_memory
 
         return {"version": getattr(agentic_memory, "__version__", "?"),
@@ -88,7 +103,16 @@ class Runner:
         memory_id = self.system.add_note(text)
         if memory_id:
             self.doc_of[str(memory_id)] = doc_id
+            self._flush_map()
         return {"memory_id": str(memory_id) if memory_id else None}
+
+    def _flush_map(self) -> None:
+        """⚠️ 每条都写：文件很小，⛔ 而崩在半路时留下不完整的映射
+        比多写几次糟得多。"""
+        if not self.map_path:
+            return
+        with open(self.map_path, "w", encoding="utf-8") as fh:
+            json.dump(self.doc_of, fh, ensure_ascii=False)
 
     def search(self, *, query: str, k: int) -> dict:
         rows = self.system.search(query, k=k) or []
@@ -125,6 +149,7 @@ class Runner:
             if ok:
                 deleted.append(eid)
                 self.doc_of.pop(eid, None)
+                self._flush_map()
             else:
                 refused[eid] = "delete() 返回 False"
         return {"deleted": deleted, "refused": refused}

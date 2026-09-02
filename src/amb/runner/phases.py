@@ -68,11 +68,19 @@ def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
         # 是确定的。⚠️ 命中就整段跳过。
         snap = _snapshot_key(name, adapter, plan, backbone)
         restored = _try_restore(snap, adapter)
+        if restored and not _restore_is_sound(snap, adapter, plan):
+            # ⛔ 恢复出来的库跟存的时候**不一样**——不信它，重新摄入。
+            # ⚠️ 踩过：a_mem 把 doc 映射放在 worker 内存里，快照只拷了 chroma，
+            # 于是命中快照 = 映射为空 = 检索结果全没有 doc_id = recall 静默归零
+            # （0.526 变 0.000，不报错）。⭐ 宁可慢一次，⛔ 不可出假分。
+            restored = False
         with ledger.measure("ingest"):
             if not restored:
                 for doc in plan.documents:
                     adapter.ingest(doc)
                 adapter.finalize()
+        # ⭐ 摄入后的指纹：存快照时一起写进去，下次恢复后拿它对账
+        canary = _canary(adapter, plan)
         result.ingest_snapshot = (
             "命中" if restored else ("已存" if snap else "未启用"))
         guard.check(Phase.INGEST)   # ⛔ 摄入期间也不许碰世界
@@ -111,7 +119,7 @@ def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
     # ⚠️ 存快照必须在 close **之后**：子进程还开着 qdrant/chroma 时拷目录
     # 会拷到半截。⛔ 半截快照比没有更糟——它会静默给出别的系统的分。
     if snap is not None and not restored:
-        _try_save(snap, adapter, cost={
+        _try_save(snap, adapter, canary=canary, cost={
             "ingest_ms": ledger.wall_ms_harness.get("ingest", 0),
             "items": len(plan.documents),
             **({} if isinstance(usage, (Unsupported, Failed)) or not usage else {
@@ -198,12 +206,57 @@ def _try_restore(key, adapter: Adapter) -> bool:
     return bool(store and restore(key, store))
 
 
-def _try_save(key, adapter: Adapter, cost: dict | None = None) -> None:
+def _try_save(key, adapter: Adapter, cost: dict | None = None,
+              canary: dict | None = None) -> None:
     from amb.runner.snapshot import save
 
     store = _store_of(adapter)
     if store is not None:
-        save(key, store, cost=cost)
+        save(key, store, cost=cost, canary=canary)
+
+
+def _canary(adapter: Adapter, plan: Plan) -> dict:
+    """摄入后的**行为**指纹。⛔ 不只数条数。
+
+    ⚠️ a_mem 那个 bug 里条数是**对的**（chroma 里 30 条都在），
+    错的是 doc 映射。所以指纹必须真跑一次检索，看它给不给得出 `doc_ids`——
+    ⭐ 那才是判分真正依赖的东西。
+    """
+    if not plan.documents:
+        return {}
+    try:
+        hits = adapter.search(plan.documents[0].text[:200], 3)
+        return {"count": adapter.count(), "hits": len(hits),
+                "with_doc_ids": sum(1 for h in hits if h.doc_ids)}
+    except Exception:  # noqa: BLE001 —— ⚠️ 取不到指纹就不存，⛔ 但别拖垮这一跑
+        return {}
+
+
+def _restore_is_sound(key, adapter: Adapter, plan: Plan) -> bool:
+    """恢复出来的库，行为跟存的时候一样吗。
+
+    ⛔ **不一致就当没恢复**，重新摄入。⚠️ 反过来（信任一个坏快照）
+    会产出一个看起来正常的错分——那比慢糟得多。
+    """
+    from amb.runner.snapshot import saved_canary
+
+    want = saved_canary(key)
+    if not want:
+        # ⚠️ 老快照没存指纹——⛔ 验不了就不敢用
+        _warn(f"{key.arm}：快照没有行为指纹，验不了 → 重新摄入")
+        return False
+    got = _canary(adapter, plan)
+    if got == want:
+        return True
+    _warn(f"{key.arm}：⛔ 快照恢复后行为对不上（存时 {want}，现在 {got}）"
+          f" → 丢弃快照，重新摄入")
+    return False
+
+
+def _warn(message: str) -> None:
+    import sys
+
+    print(f"⚠️ {message}", file=sys.stderr, flush=True)
 
 
 def _carried_cost(key) -> dict | None:
