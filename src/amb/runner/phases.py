@@ -73,7 +73,20 @@ def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
             # ⚠️ 踩过：a_mem 把 doc 映射放在 worker 内存里，快照只拷了 chroma，
             # 于是命中快照 = 映射为空 = 检索结果全没有 doc_id = recall 静默归零
             # （0.526 变 0.000，不报错）。⭐ 宁可慢一次，⛔ 不可出假分。
+            # ⛔ 但「不信它」不等于「当它不存在」：恢复出来的那份**已经落到
+            # 盘上**了。⚠️ 早先直接往下摄入，于是库里是「恢复的 30 条 +
+            # 新摄入的 30 条」= 每条两份——实测 recall 0.789 → 0.474。
+            # ⭐ 先清空再重摄。
+            adapter.reset()
             restored = False
+        # ⛔ 摄入前库必须是空的。⚠️ 这是那个 bug 的检测网：
+        # 残留可以来自快照，也可以来自**上一跑留在盘上的库**（reset() 曾是
+        # 空操作）。⭐ 进报告，⛔ 不静默——一个装了两份语料的库
+        # 给得出一个看上去很正常的分。
+        pre_count = None if restored else _count_or_none(adapter)
+        if pre_count:
+            _warn(f"{name}：⛔ 摄入前库里已有 {pre_count} 条——"
+                  f"⚠️ 这一跑的语料是重的，分数不可信")
         with ledger.measure("ingest"):
             if not restored:
                 for doc in plan.documents:
@@ -173,6 +186,9 @@ def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
     # ⭐ 两次跑的指纹一对，漂移就看得见了。
     if canary:
         profile["canary"] = canary
+    # ⭐ 摄入**前**的条数：⛔ 不是 0 就说明库脏了，这一跑的分不能要。
+    # ⚠️ 命中快照时不适用（那时库里本来就该有东西），记 None。
+    profile["pre_ingest_count"] = pre_count
     result.cost_profile = profile
     return result, guard.expected
 
@@ -228,6 +244,14 @@ def _try_save(key, adapter: Adapter, cost: dict | None = None,
     store = _store_of(adapter)
     if store is not None:
         save(key, store, cost=cost, canary=canary)
+
+
+def _count_or_none(adapter: Adapter) -> int | None:
+    """库里现在有多少条。⛔ 报不出来就是 None，⚠️ 不拿 0 冒充「空的」。"""
+    try:
+        return int(adapter.count())
+    except Exception:  # noqa: BLE001 —— ⚠️ 不支持 count 的臂不该因此跑挂
+        return None
 
 
 def _canary(adapter: Adapter, plan: Plan) -> dict:

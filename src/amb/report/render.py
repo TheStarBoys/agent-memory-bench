@@ -318,17 +318,24 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
     out += _render_cost(arms, suites, report.backbone.get("model"))
     # ⭐ 行为指纹：⛔ 不是分数，是「这一跑正不正常」的凭据。
     # ⚠️ 两次跑同一语料同一臂，指纹应当一致——不一致就先别信分数。
-    prints = [(a.arm, a.cost_profile["canary"]) for a in arms
+    prints = [(a.arm, a.cost_profile["canary"], a.cost_profile)
+              for a in arms
               if isinstance(a.cost_profile, dict) and a.cost_profile.get("canary")]
     if prints:
         out += ["## 行为指纹　（⛔ 不是分数）", "",
                 "⚠️ 摄入完立刻做一次固定检索，记下它给不给得出 `doc_ids` / `spans`。"
                 "⭐ 同一语料重跑时指纹应当一致——⛔ 不一致说明这一跑不正常，"
                 "先别信它的分数。", "",
-                "| | 库中条数 | 命中 | 有 doc_id | 有区间 |", "|---|---:|---:|---:|---:|"]
-        out += [f"| {arm} | {c.get('count','—')} | {c.get('hits','—')} | "
-                f"{c.get('with_doc_ids','—')} | {c.get('with_spans','—')} |"
-                for arm, c in sorted(prints)]
+                "⛔ **摄入前**那一列必须是 0：不是 0 就说明库里有残留，"
+                "这一跑的语料是重的。⚠️ 实测后果——`mem0_raw` 库中每条两份，"
+                "top-10 去重后只剩一半不同文档，evidence_recall **0.789 → 0.474**，"
+                "全程无告警。", "",
+                "| | 摄入前 | 库中条数 | 命中 | 有 doc_id | 有区间 |",
+                "|---|---:|---:|---:|---:|---:|"]
+        out += [f"| {arm} | {_pre_ingest(prof)} | {c.get('count','—')} | "
+                f"{c.get('hits','—')} | {c.get('with_doc_ids','—')} | "
+                f"{c.get('with_spans','—')} |"
+                for arm, c, prof in sorted(prints)]
         out.append("")
     out += ["## 声明与参与", "", "| | 声明 | 参与题数 | 成本 |", "|---|---|---|---|"]
     for arm in arms:
@@ -338,3 +345,11 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
                    f"| {p.get('items', 0)} | {cost} |")
     out.append("")
     return "\n".join(out)
+
+
+def _pre_ingest(profile: dict) -> str:
+    """摄入前库里有多少条。⛔ 0 才正常；⚠️ 命中快照时不适用。"""
+    got = profile.get("pre_ingest_count")
+    if got is None:
+        return "—"
+    return "0 ✓" if got == 0 else f"⛔ {got}"

@@ -67,7 +67,17 @@ class AMemAdapter(Answerable, AdapterBase):
         return self._bridge
 
     def reset(self) -> None:
+        """⛔ 关掉子进程**并且**清空盘上的库。
+
+        ⚠️ 早先只 `close()`：桥没了，但 `.external/a_mem-store` 里
+        上一跑的 chroma 还在——⛔ 下一跑会摄入到同一个库上，
+        每条存两份。见 [`mem0` 的同一处](../mem0/adapter.py) 与
+        `docs/runs/2026-09-03-duplicate-store.md`。
+        """
         self.close()
+        import shutil
+
+        shutil.rmtree(self._config["storage_dir"], ignore_errors=True)
 
     def close(self) -> None:
         if self._bridge is not None:

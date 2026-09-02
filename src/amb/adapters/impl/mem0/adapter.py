@@ -101,8 +101,23 @@ class Mem0Adapter(Answerable, AdapterBase):
         return self._bridge
 
     def reset(self) -> None:
-        if self._bridge is not None:
-            self._bridge.call("reset")
+        """⛔ 必须真的把盘上的库清空——⚠️ 不只是「桥起着的时候清一下」。
+
+        ⛔ 踩过（这就是「同一条臂两个分数」的成因）：桥是**懒起**的，
+        `reset()` 在 setup 阶段调用时 `self._bridge is None`，于是它
+        什么都没做——⚠️ 而 `.external/mem0_raw-store/qdrant` 里
+        **上一跑摄入的 30 条还在盘上**。这一跑再摄入 30 条，
+        库里就是**每条两份共 60 条**。
+
+        ⭐ 实测后果：top-10 里一半是重复条目，去重后只剩 5 篇不同文档，
+        evidence_recall **0.789 → 0.471**（离线复算）／**0.474**（真跑）。
+        ⛔ 全程无异常、无告警，分数看上去完全正常。
+        """
+        # ⛔ 先关子进程再删目录：qdrant 还开着的时候删，删不干净且会留锁
+        self.close()
+        import shutil
+
+        shutil.rmtree(self._storage_dir, ignore_errors=True)
         self._raw.clear()
 
     def close(self) -> None:
@@ -126,6 +141,16 @@ class Mem0Adapter(Answerable, AdapterBase):
                           principal=doc.principal)
         if not self._infer:
             self._raw[doc.doc_id] = doc.text
+
+    def finalize(self) -> None:
+        """⛔ 原文表必须落进 store——⚠️ 它是判 `spans` 的唯一依据。
+
+        ⛔ 踩过（a_mem 那次的同一类）：记账放在进程内存里，
+        命中快照时恢复的只有向量库，原文表是空的 → `spans` 全没了 →
+        ⚠️ 行为指纹对不上 → 快照被判不可信 → **每一跑都重新摄入**。
+        ⭐ 放进 store，快照才真的能用。
+        """
+        self._dump_raw()
 
     def search(self, query: str, k: int, *,
                principal: str | None = None) -> list[Entry]:
@@ -189,11 +214,47 @@ class Mem0Adapter(Answerable, AdapterBase):
         """⭐ 申报持久层，让带外取证那一步能做。"""
         return [self._storage_dir]
 
+    #: 原文表落盘的位置。⛔ 必须在 store 里——快照拷的就是这个目录。
+    _RAW_FILE = "amb-raw.json"
+
+    def _raw_path(self):
+        from pathlib import Path
+
+        return Path(self._storage_dir) / self._RAW_FILE
+
+    def _dump_raw(self) -> None:
+        if self._infer or not self._raw:
+            return
+        import json
+
+        path = self._raw_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(self._raw, ensure_ascii=False),
+                        encoding="utf-8")
+
+    def _raw_table(self) -> dict[str, str]:
+        """内存里没有就从 store 读——⭐ 那正是「命中快照」的情形。"""
+        if self._raw or self._infer:
+            return self._raw
+        import json
+
+        path = self._raw_path()
+        if not path.is_file():
+            return self._raw
+        try:
+            got = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            # ⚠️ 读不出来就当没有——⛔ 不猜区间
+            return self._raw
+        if isinstance(got, dict):
+            self._raw = {str(k): str(v) for k, v in got.items()}
+        return self._raw
+
     def _span_for(self, doc_id: str | None, memory: str) -> list:
         """⭐ 只在 infer=False 时给得出区间——存的就是原文。"""
         if self._infer or not doc_id:
             return []
-        original = self._raw.get(doc_id)
+        original = self._raw_table().get(doc_id)
         if not original:
             return []
         start = original.find(memory)
