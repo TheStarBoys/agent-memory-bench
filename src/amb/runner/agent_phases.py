@@ -120,8 +120,14 @@ def run_one_agent(name: str, spec: HostSpec, plan: AgentPlan, workdir: Path,
     result.participation = {
         "declared": len(result.declared), "total_caps": 2, "items": items,
     }
-    result.cost = {**ledger.wall_ms_harness,
-                   "memory_calls": memory_calls, "agent_steps": steps}
+    result.cost = dict(ledger.wall_ms_harness)
+    result.cost_profile = {
+        "items_ingested": len(plan.documents),
+        "items_probed": items,
+        # ⭐ agent 档独有：它主动查了几次记忆、走了几步
+        "memory_calls": memory_calls,
+        "agent_steps": steps,
+    }
     return result, guard.expected
 
 

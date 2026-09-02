@@ -30,6 +30,9 @@ class ArmResult:
     participation: dict[str, int] = field(default_factory=dict)
     #: 墙钟，评测器从外部独立计时。⚠️ 适配器自报的那份另计（原则⑥）。
     cost: dict[str, int] = field(default_factory=dict)
+    #: ⭐ 完整成本画像：每条摄入多久、每次回答多久、token、钱。
+    #: ⛔ 成本是一个**维度**，不是脚注——一个慢得要死的系统记得住也没用。
+    cost_profile: dict[str, Any] = field(default_factory=dict)
 
 
 #: 两档。⛔ 数不可互比——一档喂的是干净语料，一档喂的是 agent 搅出来的现场。

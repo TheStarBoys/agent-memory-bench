@@ -60,6 +60,73 @@ def render(report: Report) -> str:
     return "\n".join(parts)
 
 
+def _render_cost(arms: list, suites: list[str]) -> list[str]:
+    """⭐ 成本与质量并排判——⛔ 不给总分，给帕累托关系。
+
+    「又快又好」才是好。一个什么都记得住但慢得要死的系统没有用：
+    用户要个东西等半天，那还不如不记。
+    """
+    from amb.scoring import CostProfile, judge_cost
+
+    profiles = {
+        a.arm: CostProfile(
+            arm=a.arm,
+            wall_ms=dict(a.cost or {}),
+            **{k: v for k, v in (a.cost_profile or {}).items()
+               if k in ("tokens_in", "tokens_out", "llm_calls",
+                        "items_ingested", "items_probed", "money_usd")},
+        )
+        for a in arms
+    }
+    # ⭐ 质量取**参与面最广**的那个套件——⛔ 不合成总分。
+    # ⚠️ 挑一个大多数臂都不支持的套件，成本表就只剩一行，比较不起来。
+    def scored_count(name: str) -> int:
+        return sum(1 for a in arms
+                   if (sc := a.scores.get(name)) and sc.status == "scored")
+
+    candidates = [s for s in suites if s in HEADLINE and scored_count(s) > 0]
+    if not candidates:
+        return []
+    # 并列时取名字靠前的，⚠️ 保证同一批数据两次跑挑的是同一个
+    chosen = max(sorted(candidates), key=scored_count)
+
+    quality: dict[str, float] = {}
+    for a in arms:
+        sc = a.scores.get(chosen)
+        if sc and sc.status == "scored":
+            quality[a.arm] = sc.metrics.get(HEADLINE[chosen], 0.0)
+    if not quality:
+        return []
+
+    floor = max(quality, key=lambda k: quality[k])
+    for a in arms:                       # 地板取对照组里最强的
+        if a.is_control and a.arm in quality:
+            floor = max((x.arm for x in arms if x.is_control and x.arm in quality),
+                        key=lambda k: quality[k])
+            break
+
+    out = [f"## 成本 × 质量　（质量看 `{chosen}` 的 {HEADLINE[chosen]}，"
+           f"{len(quality)}/{len(arms)} 条臂参与）", "",
+           "⛔ **不给总分**——快与准的权衡因用途而异，"
+           "合成一个数就等于替使用者做了那个取舍。", "",
+           "| | 质量 | Δ vs 地板 | 总耗时 | 每条摄入 | 每次回答 | 判定 |",
+           "|---|---:|---:|---:|---:|---:|---|"]
+    for v in judge_cost(quality, profiles, floor):
+        p = profiles[v.arm]
+        d = "—" if v.quality_delta is None else f"{v.quality_delta:+.3f}"
+        ratio = "—" if v.cost_ratio is None else f"{v.cost_ratio:.1f}x"
+        ing = ("—" if p.ingest_ms_per_item is None
+               else f"{p.ingest_ms_per_item / 1000:.2f}s")
+        prb = ("—" if p.probe_ms_per_item is None
+               else f"{p.probe_ms_per_item / 1000:.2f}s")
+        out.append(f"| {v.arm} | {v.quality:.3f} | {d} | {ratio} | {ing} | {prb} "
+                   f"| {v.label} |")
+        if v.note:
+            out.append(f"| | | | | | | ⚠️ {v.note} |")
+    out.append("")
+    return out
+
+
 def _render_lane(lane: str, arms: list, report: Report) -> str:
     out: list[str] = [f"# 档：{LANE_LABEL[lane]}", ""]
     suites = sorted({s for a in arms for s in a.scores})
@@ -111,6 +178,7 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
                 out.append(f"- `{arm.arm}` {detail}")
         out.append("")
 
+    out += _render_cost(arms, suites)
     out += ["## 声明与参与", "", "| | 声明 | 参与题数 | 成本 |", "|---|---|---|---|"]
     for arm in arms:
         p, c = arm.participation, arm.cost

@@ -17,7 +17,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from amb.core import (
-    Adapter, Capability, Document, Phase, SuiteRun, WorldHandle,
+    Adapter, Capability, Document, Failed, Phase, SuiteRun, Unsupported,
+    WorldHandle,
 )
 from amb.report import ArmResult
 from amb.scoring import score
@@ -99,6 +100,20 @@ def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
         "items": items,
     }
     result.cost = dict(ledger.wall_ms_harness)
+    # ⭐ 成本画像：⚠️ token 只有适配器报得出来，没声明 ACCOUNTING 就是 None，
+    # ⛔ 不拿 0 冒充「没花钱」。
+    usage = adapter.usage()
+    profile: dict[str, object] = {
+        "items_ingested": len(plan.documents),
+        "items_probed": items,
+    }
+    if not isinstance(usage, (Unsupported, Failed)) and usage:
+        profile |= {
+            "tokens_in": sum(u.tokens_in for u in usage),
+            "tokens_out": sum(u.tokens_out for u in usage),
+            "llm_calls": sum(u.llm_calls for u in usage),
+        }
+    result.cost_profile = profile
     return result, guard.expected
 
 
