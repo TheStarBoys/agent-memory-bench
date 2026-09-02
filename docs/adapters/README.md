@@ -214,7 +214,12 @@ ask(question) -> str            retrieve_entries(question)   memory_count()
 | ⛔ 没声明什么 | `PROVENANCE`（它返回抽出来的事实，给不出原文区间）· `REALITY`（不对外部世界求值） |
 | ⚠️ 实测发现 | 输入中文，抽出来的记忆是英文——它的抽取提示做了语言归一 |
 
-⚠️ 它的 `ingest` 每条都调 LLM，所以**语料量是硬约束**——
-跑公开题库时用 `--max-convs` 限住，⛔ 那与题数是两件事。
+⭐ **实测摄入 36.7 秒/轮**（Qwen3-8B，15–86 秒波动）：
+LoCoMo 全量 5882 轮要 ⛔ **60 小时**。
+它每次 `add()` 要多轮 LLM 调用（抽取 → 比对 → 裁决 ADD/UPDATE/DELETE）——
+⚠️ 这不是 bug，是「事实抽取 + 增量归并」的设计代价。
+
+所以跑公开题库时**必须**用 `--max-turns` 限住语料，
+⛔ 那与题数是两件事。⭐ 这正是原则⑥ 存在的理由。
 
 接口定义见 [`protocol.md`](protocol.md)。
