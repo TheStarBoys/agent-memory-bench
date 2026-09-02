@@ -9,6 +9,7 @@
 | [`suites/README.md`](suites/README.md) | **我们的题**：四类，以及为什么只有四类 |
 | [`adapters/README.md`](adapters/README.md) | **接入协议**：为什么要新接口，六条原则 |
 | [`baselines.md`](baselines.md) | **对照组**：不装记忆系统是多少分——⛔ 没有它，所有分数都读不出意义 |
+| [`../src/amb/setup/README.md`](../src/amb/setup/README.md) | **一键 setup**：外部依赖怎么装、版本怎么记 |
 | [`report.md`](report.md) | **报告格式**：三态怎么落到表上，利益关系怎么标 |
 
 **实现的架构不在 docs/**，在仓库根的 [`ARCHITECTURE.md`](../ARCHITECTURE.md)——

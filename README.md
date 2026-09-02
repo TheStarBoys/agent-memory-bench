@@ -2,9 +2,8 @@
 
 给「AI 的记忆能力」做一套公平的考试。
 
-> **⚠️ 当前状态：机制打通，题库未接。**
-> 自研八类两档都跑得起来，需求概率曲线已从真实语料拟合，
-> ⛔ 但公开题库（`suites/public`）还没接——那是「用别人的尺子」那一半。
+> **⚠️ 当前状态：两档八类跑得通，接了第一个真系统和第一个公开题库。**
+> ⛔ 但题量还小，被测系统只有一个——现在的数字证明机制，不是评测结果。
 
 ## 为什么要做
 
@@ -120,9 +119,16 @@ tests/    226 项断言，全绿
 ```
 
 ```sh
-python -m amb.cli                          # 直接调库那一档，五条对照组
+python -m amb.cli setup                    # ⭐ 一键装外部依赖，钉死版本
+python -m amb.cli                          # 直接调库，五条对照组
 python -m amb.cli --lane agent --arms bm25 # 装进 agent 跑
+python -m amb.cli --bench locomo --sample stratified:50 --max-convs 2 \
+                  --arms bm25,mem0         # 公开题库 + 抽题
 ```
+
+**抽题**：`all` · `first:N` · `random:N` · **`stratified:N`** · `ids:a,b`，
+⚠️ `--max-convs` 另外控**语料量**——⛔ 与题数是两件事
+（对每条都调 LLM 的系统，语料量才是那个约束）。
 
 **目录结构是写死的，依赖关系是测试断言，不是文档约定。**
 [`architecture.toml`](architecture.toml) 说了算，
