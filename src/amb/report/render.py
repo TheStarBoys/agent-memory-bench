@@ -12,6 +12,8 @@ HEADLINE = {
     "n2_provenance_agent": "来源正确率",
     "qa": "准确率",
     "n4_governance": "彻底删除率",
+    "n5_observed": "保留追踪度",
+    "n5_self_reported": "保留追踪度",
     "n1_prompted": "检出率",
     "n1_spontaneous": "检出率",
 }

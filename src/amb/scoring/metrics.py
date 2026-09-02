@@ -254,8 +254,83 @@ def score_agent_provenance(run: SuiteRun) -> Score:
     return _finish(s, run)
 
 
+def _spearman(xs: list[float], ys: list[float]) -> float:
+    """秩相关。⚠️ 用秩而不是原值——需求概率的绝对刻度没有意义，单调性才有。"""
+    n = len(xs)
+    if n < 2:
+        return 0.0
+
+    def ranks(values: list[float]) -> list[float]:
+        order = sorted(range(n), key=lambda i: values[i])
+        out = [0.0] * n
+        i = 0
+        while i < n:                      # ⚠️ 并列取平均秩
+            j = i
+            while j + 1 < n and values[order[j + 1]] == values[order[i]]:
+                j += 1
+            avg = (i + j) / 2.0 + 1.0
+            for k in range(i, j + 1):
+                out[order[k]] = avg
+            i = j + 1
+        return out
+
+    rx, ry = ranks(xs), ranks(ys)
+    mx, my = sum(rx) / n, sum(ry) / n
+    num = sum((a - mx) * (b - my) for a, b in zip(rx, ry, strict=True))
+    dx = sum((a - mx) ** 2 for a in rx) ** 0.5
+    dy = sum((b - my) ** 2 for b in ry) ** 0.5
+    return num / (dx * dy) if dx and dy else 0.0
+
+
+def score_retention(run: SuiteRun) -> Score:
+    """⛔ 四格 + 三因子必须一起报。
+
+    只报「该留的留了」的话，一个从不丢弃任何东西的系统永远满分——
+    ⭐ 只有把它和「该丢的丢了没有」并排放，这一类才有意义。
+    """
+    s = Score(run.suite, run.status, run.reason)
+    if run.status != "scored":
+        return s
+
+    cell = {"该留-留了": 0, "该留-丢了": 0, "该丢-留了": 0, "该丢-丢了": 0}
+    for obs in run.observations:
+        keep, kept = obs.payload["should_keep"], obs.payload["retained"]
+        cell[f"{'该留' if keep else '该丢'}-{'留了' if kept else '丢了'}"] += 1
+
+    keep_side = cell["该留-留了"] + cell["该留-丢了"] or 1
+    drop_side = cell["该丢-留了"] + cell["该丢-丢了"] or 1
+
+    payloads = [o.payload for o in run.observations]
+    metrics: dict[str, float] = {
+        **{k: float(v) for k, v in cell.items()},
+        "正确保留率": cell["该留-留了"] / keep_side,
+        # ⭐ 这一个不报，从不遗忘的系统就满分了
+        "正确遗忘率": cell["该丢-丢了"] / drop_side,
+        "囤积率": cell["该丢-留了"] / drop_side,
+        "误删率": cell["该留-丢了"] / keep_side,
+        # 保留行为是否追踪需求概率
+        "保留追踪度": _spearman([p["need"] for p in payloads],
+                                 [float(p["retained"]) for p in payloads]),
+    }
+
+    # ⭐ 三个因子各自的贡献——正交设计就是为了这三行
+    metrics["因子_频率"] = _spearman([float(p["frequency"]) for p in payloads],
+                                     [float(p["retained"]) for p in payloads])
+    spaced = [p for p in payloads if p["spacing"] in ("massed", "distributed")]
+    if spaced:
+        metrics["因子_间隔"] = _spearman(
+            [float(p["spacing"] == "distributed") for p in spaced],
+            [float(p["retained"]) for p in spaced])
+    metrics["因子_显著性"] = _spearman([float(p["salient"]) for p in payloads],
+                                       [float(p["retained"]) for p in payloads])
+    s.metrics = metrics
+    return _finish(s, run)
+
+
 SCORERS: dict[str, Any] = {
     "n4_governance": score_governance,
+    "n5_observed": score_retention,
+    "n5_self_reported": score_retention,
     "n2_provenance_agent": score_agent_provenance,
     "qa": score_qa,
     "retrieval": score_retrieval,
