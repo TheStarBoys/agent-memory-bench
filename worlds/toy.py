@@ -218,8 +218,11 @@ def agent_suites(verdict_sink) -> list:
         AgentPromptedRealitySuite,
         AgentProvenanceSuite,
         AgentQASuite,
+        AgentRecallSuite,
         AgentSpontaneousRealitySuite,
         CitationProbe,
+        retention_items,
+        structure_items,
     )
 
     return [
@@ -230,4 +233,10 @@ def agent_suites(verdict_sink) -> list:
         AgentProvenanceSuite([
             CitationProbe(i, q, gold, dis) for i, q, gold, dis in CITATION_PROBES
         ]),
+        # ⭐ N5/N6 共用通用召回探针——判分口径与直接调库那一档同源
+        # ⚠️ agent 档每题一轮会话，很慢；这里只取一小撮验机制
+        AgentRecallSuite("n5_agent", retention_items(
+            probes_from(EVENT_STREAM, NEED_CURVE, now_s=86_400 * 30.0)[:4])),
+        AgentRecallSuite("n6_agent", structure_items(TOPOLOGY)[:2],
+                         cues_key="cues_list"),
     ]
