@@ -44,6 +44,15 @@ def render(report: Report) -> str:
             for n, row in sorted(report.externals.items()) if row.get("ok")
         )
         head.append(f"外部依赖 {pins or '（无）'}")
+    if report.cache:
+        # ⛔ 命中率高的跑测出来的「延迟」不是真延迟——必须显眼
+        c = report.cache
+        if c.get("hits"):
+            head.append(f"⚠️ **LLM 缓存命中 {c['hits']}/"
+                        f"{c['hits'] + c.get('misses', 0)}**"
+                        f"——⛔ 这次的延迟数不是独立测量")
+        elif c.get("skipped"):
+            head.append(f"缓存 {c.get('diagnosis', '')}")
     if report.sampling:
         sp = report.sampling
         # ⛔ 抽样方式变了分数就不可比——种子也要在

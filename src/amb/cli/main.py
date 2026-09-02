@@ -16,7 +16,8 @@ from pathlib import Path
 from amb.core import load_dotenv
 from amb.report import ArmResult, Report, render
 from amb.runner import (
-    backbone, build, build_plan, control_arms, now_rfc3339, run_one,
+    backbone, build, build_plan, cache_report, control_arms, now_rfc3339,
+    run_one,
 )
 
 
@@ -116,6 +117,9 @@ def main(argv: list[str] | None = None) -> int:
                 continue
             report.world["digest"] = world_digest
             report.lanes.setdefault('library', []).append(result)
+
+    # ⭐ 缓存状况进报告——⚠️ 包括「为什么没生效」
+    report.cache = cache_report()
 
     _emit(report, args)
     return 0

@@ -70,3 +70,16 @@ def host_spec(patches: tuple[str, ...] = ()):
     from amb.agent import spec_from_env
 
     return spec_from_env(patches)
+
+
+def cache_report() -> dict[str, object]:
+    """LLM 缓存状况，含「为什么没生效」的诊断。
+
+    ⚠️ 经 runner 转出，⛔ cli 不直接依赖 adapters。
+    """
+    from amb.adapters.llm_cache import global_cache
+
+    stats = global_cache().stats
+    if not (stats.hits or stats.misses or stats.skipped):
+        return {}
+    return stats.as_dict()

@@ -18,10 +18,21 @@ import json
 import os
 import sqlite3
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
 
 DEFAULT_PATH = Path(".external/llm-cache.sqlite")
+
+
+#: 跳过缓存的原因。⛔ 每一种都要计数——
+#: ⚠️ 「命中率 0」有很多种原因，不分开记就查不出是哪一种（踩过：
+#: mem0 默认 temperature=0.1，缓存静默失效，**连异常都没抛**）。
+class Skip(StrEnum):
+    DISABLED = "未启用"                    # AMB_LLM_CACHE 没开
+    SAMPLING = "temperature>0"             # ⛔ 采样时不缓存
+    READ_ERROR = "读取出错"
+    WRITE_ERROR = "写入出错"
 
 
 @dataclass(slots=True)
@@ -30,15 +41,58 @@ class CacheStats:
     misses: int = 0
     #: ⭐ 省下的墙钟（毫秒）——按未命中时的实测均值估
     saved_ms: int = 0
+    #: ⭐ 跳过的原因分布。⛔ 这一栏是「为什么没生效」的答案。
+    skipped: dict[str, int] = field(default_factory=dict)
+
+    def skip(self, why: "Skip") -> None:
+        self.skipped[str(why)] = self.skipped.get(str(why), 0) + 1
 
     @property
     def hit_rate(self) -> float:
         total = self.hits + self.misses
         return self.hits / total if total else 0.0
 
-    def as_dict(self) -> dict[str, float | int]:
+    @property
+    def total_skipped(self) -> int:
+        return sum(self.skipped.values())
+
+    def diagnosis(self) -> str:
+        """⭐ 一句话说清「缓存为什么没生效」。
+
+        ⛔ 这是这一层存在的理由——命中率为 0 时，
+        它必须答得出「因为什么」，⚠️ 而不是让人去猜。
+        """
+        looked = self.hits + self.misses
+        if looked and self.hit_rate > 0:
+            return (f"✓ 命中 {self.hits}/{looked}（{self.hit_rate:.0%}）"
+                    f"，省下 {self.saved_ms / 1000:.0f}s")
+        if not looked and not self.skipped:
+            return "⚠️ 一次 LLM 调用都没发生——缓存无从谈起"
+        if self.skipped:
+            top = max(self.skipped, key=lambda k: self.skipped[k])
+            detail = " · ".join(f"{k}×{v}" for k, v in sorted(self.skipped.items()))
+            hint = _HINTS.get(top, "")
+            return (f"⛔ {self.total_skipped} 次调用跳过了缓存（{detail}）"
+                    + (f"——{hint}" if hint else ""))
+        return (f"⚠️ 查了 {looked} 次一次没中——"
+                f"⛔ 请求内容每次都不同（提示里带了时间戳？随机 id？）")
+
+    def as_dict(self) -> dict[str, object]:
         return {"hits": self.hits, "misses": self.misses,
-                "hit_rate": self.hit_rate, "saved_ms": self.saved_ms}
+                "hit_rate": self.hit_rate, "saved_ms": self.saved_ms,
+                "skipped": dict(self.skipped),
+                "diagnosis": self.diagnosis()}
+
+
+#: 每种跳过原因该怎么办。⚠️ 光说「跳过了」不够，要说**下一步做什么**。
+_HINTS: dict[str, str] = {
+    str(Skip.DISABLED): "设 AMB_LLM_CACHE=1 打开",
+    str(Skip.SAMPLING): (
+        "⭐ 被测系统在用采样温度。判分要可复现，"
+        "把它的 temperature 钉成 0（mem0 默认是 0.1）"),
+    str(Skip.READ_ERROR): "缓存库可能损坏，删掉 .external/llm-cache.sqlite 重来",
+    str(Skip.WRITE_ERROR): "检查 .external/ 的写权限与磁盘空间",
+}
 
 
 class LLMCache:
@@ -68,7 +122,12 @@ class LLMCache:
         return hashlib.sha256(canonical.encode()).hexdigest()
 
     def get(self, payload: dict) -> dict | None:
-        if not self.enabled or not _cacheable(payload):
+        # ⛔ 每条跳过路径都记原因——⚠️ 静默返回 None 会让「没生效」查不出来
+        if not self.enabled:
+            self.stats.skip(Skip.DISABLED)
+            return None
+        if not _cacheable(payload):
+            self.stats.skip(Skip.SAMPLING)
             return None
         with self._lock:
             row = self._db().execute(
@@ -82,6 +141,7 @@ class LLMCache:
         return json.loads(row[0])
 
     def put(self, payload: dict, body: dict, wall_ms: int) -> None:
+        # ⚠️ get 那边已经记过原因了，这里不重复计数
         if not self.enabled or not _cacheable(payload):
             return
         with self._lock:

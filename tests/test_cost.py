@@ -222,3 +222,75 @@ def test_a_nonzero_temperature_payload_is_never_cached(tmp_path) -> None:
     zero = {"model": "m", "temperature": 0.0, "messages": []}
     c.put(zero, {"a": 1}, 100)
     assert c.get(zero) is not None
+
+
+# ── ⭐ 「缓存为什么没生效」的可观测性 ─────────────────────────────
+def test_every_skip_reason_is_counted(tmp_path) -> None:
+    """⛔ 「命中率 0」有很多种原因，不分开记就查不出是哪一种。
+
+    ⚠️ 实测踩过：mem0 默认 temperature=0.1，缓存静默失效，
+    **连异常都没抛**——查了很久才定位。
+    """
+    from amb.adapters.llm_cache import LLMCache, Skip
+
+    off = LLMCache(tmp_path / "a.db", enabled=False)
+    off.get({"temperature": 0.0})
+    assert off.stats.skipped[str(Skip.DISABLED)] == 1
+
+    hot = LLMCache(tmp_path / "b.db")
+    hot.get({"temperature": 0.1})
+    assert hot.stats.skipped[str(Skip.SAMPLING)] == 1
+
+
+def test_diagnosis_names_the_cause_and_the_next_step(tmp_path) -> None:
+    """⭐ 光说「跳过了」不够——要说**下一步做什么**。"""
+    from amb.adapters.llm_cache import LLMCache
+
+    hot = LLMCache(tmp_path / "b.db")
+    hot.get({"temperature": 0.1})
+    d = hot.stats.diagnosis()
+    assert "temperature>0" in d
+    assert "钉成 0" in d, "⛔ 要给出下一步，不能只报现象"
+    assert "mem0 默认是 0.1" in d, "⚠️ 把踩过的坑写进提示"
+
+
+def test_diagnosis_distinguishes_never_called_from_never_hit(tmp_path) -> None:
+    """⚠️ 「一次都没调 LLM」与「调了但没命中」是两件事。"""
+    from amb.adapters.llm_cache import LLMCache
+
+    idle = LLMCache(tmp_path / "c.db")
+    assert "一次 LLM 调用都没发生" in idle.stats.diagnosis()
+
+    never = LLMCache(tmp_path / "d.db")
+    for i in range(3):                       # 每次内容都不同 → 永不命中
+        never.get({"temperature": 0.0, "messages": [{"c": i}]})
+    d = never.stats.diagnosis()
+    assert "一次没中" in d and "每次都不同" in d
+
+
+def test_a_working_cache_reports_what_it_saved(tmp_path) -> None:
+    from amb.adapters.llm_cache import LLMCache
+
+    c = LLMCache(tmp_path / "e.db")
+    p = {"temperature": 0.0, "messages": []}
+    c.get(p)
+    c.put(p, {"x": 1}, 78_000)
+    c.get(p)
+    d = c.stats.diagnosis()
+    assert "命中 1/2" in d and "78s" in d
+
+
+def test_report_flags_a_cached_run_as_not_a_latency_measurement() -> None:
+    """⛔ 命中率高的跑测出来的「延迟」不是真延迟——必须显眼。"""
+    from amb.report import ArmResult, Report, render
+
+    report = Report(run_id="t", at="t",
+                    world={"name": "x", "seed": 1, "digest": "d"},
+                    backbone={"model": "m"},
+                    cache={"hits": 9, "misses": 1, "hit_rate": 0.9,
+                           "saved_ms": 700_000, "skipped": {},
+                           "diagnosis": "✓ 命中 9/10"},
+                    lanes={"library": [ArmResult(arm="a", is_control=True)]})
+    text = render(report)
+    assert "缓存命中 9/10" in text
+    assert "不是独立测量" in text
