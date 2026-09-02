@@ -190,7 +190,7 @@ python -m amb.cli --bench locomo --sample stratified:50 --max-convs 2 \
 
 | | 读 |
 |---|---|
-| ⭐ **该用哪个 LLM 跑** | [`docs/backbone.md`](docs/backbone.md) —— 实测对照表，⭐ 关思考是 15 倍 |
+| ⭐ **该用哪个 LLM 跑** | [`docs/backbone.md`](docs/backbone.md) —— 速度与价格实测表，⭐ 关思考省 15 倍时间、5.3 倍钱 |
 | ⭐ **一个系统对模型要求多高** | [`docs/llm-demand.md`](docs/llm-demand.md) —— ⛔ 只看提示预算会得出反的结论 |
 | ⭐ **贵的系统怎么跑得起来** | [`docs/cost-control.md`](docs/cost-control.md) —— ⛔ 不关 LLM 的三条路 |
 | ⭐ **看实际跑出来什么** | [`docs/runs/`](docs/runs/README.md) —— 每次跑的存档，含版本 / 抽样 / 成本 |

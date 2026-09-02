@@ -28,6 +28,37 @@ class Pricing:
                 + tokens_out * self.output_per_mtok) / 1_000_000
 
 
+#: 挂牌价，美元/百万 token。⚠️ 抄自 siliconflow **国际站**（api.siliconflow.com），
+#: 2026-09-02 查。⛔ 别跟 .cn 站混——那边计价用人民币，数字对不上。
+#:
+#: ⭐ 值得注意的是**输入输出价差**：Qwen3-8B 是 0.06/0.06（对称），
+#: 而「更快」的那几个输出贵 5～14 倍。⚠️ 抽取型记忆系统的输出 token
+#: 是大头，所以输出那一栏才是决定性的。
+#:
+#: ⛔ 价格会变，且各家上下架很快。⚠️ 报告里印的是**这里的数字 + 查询日期**，
+#: 不是「当前价格」——读者要自己核。
+PRICES: dict[str, Pricing] = {
+    "Qwen/Qwen2.5-7B-Instruct":         Pricing("Qwen/Qwen2.5-7B-Instruct", 0.05, 0.05),
+    "Qwen/Qwen3-8B":                    Pricing("Qwen/Qwen3-8B", 0.06, 0.06),
+    "Qwen/Qwen3-30B-A3B-Instruct-2507": Pricing("Qwen/Qwen3-30B-A3B-Instruct-2507", 0.09, 0.30),
+    "Qwen/Qwen3.5-9B":                  Pricing("Qwen/Qwen3.5-9B", 0.10, 0.15),
+    "deepseek-ai/DeepSeek-V4-Flash":    Pricing("deepseek-ai/DeepSeek-V4-Flash", 0.13, 0.28),
+    "inclusionAI/Ling-flash-2.0":       Pricing("inclusionAI/Ling-flash-2.0", 0.14, 0.57),
+    "zai-org/GLM-4.5-Air":              Pricing("zai-org/GLM-4.5-Air", 0.14, 0.86),
+    # ⚠️ embedding 只有输入价
+    "Qwen/Qwen3-Embedding-4B":          Pricing("Qwen/Qwen3-Embedding-4B", 0.02, 0.0),
+}
+
+#: ⚠️ 价格是哪天抄的。⛔ 进报告——没有日期的价格等于没有价格。
+PRICES_AS_OF = "2026-09-02"
+PRICES_SOURCE = "siliconflow 国际站 https://www.siliconflow.com/models/<模型名>"
+
+
+def pricing_for(model: str) -> Pricing:
+    """查不到就返回**空价格**——⛔ 只报时间与 token，不瞎估钱。"""
+    return PRICES.get(model, Pricing(model))
+
+
 @dataclass(slots=True)
 class CostProfile:
     """一条臂的成本画像。⚠️ 每一项都可能缺——⛔ 缺就是 None，不是 0。"""

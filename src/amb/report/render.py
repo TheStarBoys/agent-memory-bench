@@ -109,24 +109,32 @@ def _delta_text(value: float, ci, floor, floor_ci) -> str:
     return f"**{d:+.3f} ⚠️帮倒忙**" if d <= 0 else f"{d:+.3f}"
 
 
-def _render_cost(arms: list, suites: list[str]) -> list[str]:
+def _render_cost(arms: list, suites: list[str],
+                 backbone_model: str | None = None) -> list[str]:
     """⭐ 成本与质量并排判——⛔ 不给总分，给帕累托关系。
 
     「又快又好」才是好。一个什么都记得住但慢得要死的系统没有用：
     用户要个东西等半天，那还不如不记。
     """
-    from amb.scoring import CostProfile, judge_cost
+    from amb.scoring import CostProfile, judge_cost, pricing_for
 
-    profiles = {
-        a.arm: CostProfile(
-            arm=a.arm,
-            wall_ms=dict(a.cost or {}),
-            **{k: v for k, v in (a.cost_profile or {}).items()
-               if k in ("tokens_in", "tokens_out", "llm_calls",
-                        "items_ingested", "items_probed", "money_usd")},
-        )
-        for a in arms
-    }
+    # ⭐ 钱：挂牌价 × 实测 token。⛔ 查不到价格就留空，不瞎估。
+    # ⚠️ 算的是**这次跑**的钱，不是「这个系统的成本」——
+    # 成本随库大小变的系统（如 A-mem），小样本会系统性偏低。
+    price = pricing_for(backbone_model or "")
+
+    def _profile(a) -> CostProfile:
+        fields = {k: v for k, v in (a.cost_profile or {}).items()
+                  if k in ("tokens_in", "tokens_out", "llm_calls",
+                           "items_ingested", "items_probed", "money_usd")}
+        if (fields.get("money_usd") is None
+                and fields.get("tokens_in") is not None
+                and fields.get("tokens_out") is not None):
+            fields["money_usd"] = price.money(int(fields["tokens_in"]),
+                                              int(fields["tokens_out"]))
+        return CostProfile(arm=a.arm, wall_ms=dict(a.cost or {}), **fields)
+
+    profiles = {a.arm: _profile(a) for a in arms}
     # ⭐ 质量取**参与面最广**的那个套件——⛔ 不合成总分。
     # ⚠️ 挑一个大多数臂都不支持的套件，成本表就只剩一行，比较不起来。
     def scored_count(name: str) -> int:
@@ -248,7 +256,7 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
                 out.append(f"- `{arm.arm}` " + " · ".join(parts))
         out.append("")
 
-    out += _render_cost(arms, suites)
+    out += _render_cost(arms, suites, report.backbone.get("model"))
     out += ["## 声明与参与", "", "| | 声明 | 参与题数 | 成本 |", "|---|---|---|---|"]
     for arm in arms:
         p, c = arm.participation, arm.cost
