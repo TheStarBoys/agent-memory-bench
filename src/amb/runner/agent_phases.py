@@ -23,6 +23,7 @@ from amb.report import ArmResult
 from amb.runner.accounting import Ledger
 from amb.runner.guard import WorldGuard
 from amb.scoring import score
+from amb.suites.agent_spec import AgentSuite
 from amb.world import Change, WorldState, materialize, pin_mtimes
 from amb.world.manifest import WorldManifest
 
@@ -32,7 +33,7 @@ class AgentPlan:
     manifest: WorldManifest
     documents: list[Document]
     changes: list[Change] = field(default_factory=list)
-    suites: list = field(default_factory=list)
+    suites: list[AgentSuite] = field(default_factory=list)
     #: 喂语料的说法。⚠️ 所有臂一致——⛔ 说法不同就不只是记忆层的差别了。
     ingest_prompt: str = (
         "请用 remember 工具把下面这条信息记下来，然后只回复『好』：\n\n{text}"

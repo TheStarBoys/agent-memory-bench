@@ -28,14 +28,6 @@ class AgentDriver(Protocol):
     def ask(self, prompt: str) -> AgentTurn: ...
 
 
-@dataclass(slots=True)
-class AgentSuiteRun(SuiteRun):
-    """比直接调库那一档多两样：调了几次记忆、走了几步。"""
-
-    memory_calls: int = 0
-    total_steps: int = 0
-
-
 class AgentSuite(Protocol):
     name: str
 

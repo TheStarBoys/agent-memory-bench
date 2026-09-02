@@ -70,3 +70,22 @@ def test_commits_are_pinned_or_explicitly_empty() -> None:
     assert unpinned == sorted(REGISTRY), (
         "有的填了有的没填？⛔ 要么全都钉死，要么这条测试跟着改"
     )
+
+
+def test_missing_upstream_scorer_refuses_rather_than_substituting(tmp_path) -> None:
+    """⛔ 上游判分不可用时**不许自己写一个顶上**——那正是纪律要防的事。"""
+    from amb.suites.public import UpstreamScorerMissing
+
+    suite = PublicSuite(name="x", pin=Pin("r", "c"), data_dir=tmp_path)
+    with pytest.raises(UpstreamScorerMissing, match="不可比性"):
+        suite.require_scorer()
+
+
+def test_a_present_scorer_is_returned_as_is(tmp_path) -> None:
+    class Upstream:
+        def score(self, predictions: dict[str, str]) -> dict[str, float]:
+            return {"f1": 0.5}
+
+    up = Upstream()
+    suite = PublicSuite(name="x", pin=Pin("r", "c"), data_dir=tmp_path, scorer=up)
+    assert suite.require_scorer() is up

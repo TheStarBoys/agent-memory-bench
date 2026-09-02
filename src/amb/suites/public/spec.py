@@ -43,6 +43,12 @@ class Pin:
                 "caveats": list(self.caveats)}
 
 
+class UpstreamScorer(Protocol):
+    """上游的判分。⛔ 我们只调用，不实现。"""
+
+    def score(self, predictions: dict[str, str]) -> dict[str, float]: ...
+
+
 @dataclass
 class PublicSuite:
     """一个公开题库的接入。
@@ -56,9 +62,22 @@ class PublicSuite:
     #: 数据放在哪（corpora/ 或 datasets/），⛔ 不进版本库
     data_dir: Path
     documents: list[Document] = field(default_factory=list)
+    #: ⛔ 上游的判分。None 表示还没接上——那时候该题库记「未接入」，
+    #: ⚠️ 绝不自己写一个顶上。
+    scorer: "UpstreamScorer | None" = None
 
     def available(self) -> bool:
         return self.data_dir.is_dir() and any(self.data_dir.iterdir())
+
+    def require_scorer(self) -> "UpstreamScorer":
+        """⛔ 没有上游判分就不跑——不许自己写一个顶上。"""
+        if self.scorer is None:
+            raise UpstreamScorerMissing(
+                f"{self.name} 还没接上上游的判分代码。"
+                f"⛔ 该题库记「未接入」，⚠️ 绝不自己重写一份顶上——"
+                f"那会引入「我们的判分与别人不同」这个不可比性。"
+            )
+        return self.scorer
 
     def require_available(self) -> None:
         if not self.available():
@@ -67,12 +86,6 @@ class PublicSuite:
                 f"⛔ 该档记「未接入」，不是 0 分。"
                 f"取数据：见 docs/benchmarks.md#怎么获取"
             )
-
-
-class UpstreamScorer(Protocol):
-    """上游的判分。⛔ 我们只调用，不实现。"""
-
-    def score(self, predictions: dict[str, str]) -> dict[str, float]: ...
 
 
 #: 已登记的上游，⛔ 每一个都钉死 commit。
