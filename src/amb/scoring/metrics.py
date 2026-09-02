@@ -370,8 +370,68 @@ def _slope(points: list[tuple[float, float]]) -> float:
     return (sum((x - mx) * (y - my) for x, y in points) / sxx) if sxx else 0.0
 
 
+#: 可靠性图的分桶。⚠️ ECE 对分桶敏感，所以桶边界固定、进报告。
+_BINS = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
+
+
+def score_calibration(run: SuiteRun) -> Score:
+    """⛔ ECE 不能单独报。
+
+    低 ECE 可以靠**把所有置信度压到基准准确率附近**取得——
+    那样的系统校准很好、但完全没有区分能力。
+    所以区分度与可靠性图必须同屏。
+    """
+    s = Score(run.suite, run.status, run.reason)
+    if run.status != "scored":
+        return s
+
+    rows = [o.payload for o in run.observations]
+    n = len(rows) or 1
+
+    # Brier：逐题 (confidence − 对错)²
+    brier = sum((r["confidence"] - float(r["correct"])) ** 2 for r in rows) / n
+
+    # 可靠性图 + ECE
+    ece = 0.0
+    diagram: dict[str, float] = {}
+    for lo, hi in zip(_BINS[:-1], _BINS[1:], strict=True):
+        bucket = [r for r in rows
+                  if lo <= r["confidence"] < hi or (hi == 1.0 and r["confidence"] == 1.0)]
+        if not bucket:
+            continue
+        conf = sum(r["confidence"] for r in bucket) / len(bucket)
+        acc = sum(float(r["correct"]) for r in bucket) / len(bucket)
+        ece += len(bucket) / n * abs(conf - acc)
+        diagram[f"桶{lo:.1f}-{hi:.1f}_置信"] = conf
+        diagram[f"桶{lo:.1f}-{hi:.1f}_准确"] = acc
+
+    # ⭐ 区分度：高置信组与低置信组的准确率差
+    ordered = sorted(rows, key=lambda r: r["confidence"])
+    half = len(ordered) // 2 or 1
+    low = sum(float(r["correct"]) for r in ordered[:half]) / half
+    high = sum(float(r["correct"]) for r in ordered[-half:]) / half
+
+    metrics = {"ECE": ece, "Brier": brier, "区分度": high - low, **diagram}
+
+    # ⭐ 显著性子测：自信但不更准 —— 复现了闪光灯记忆那个已知的人类 bug
+    salient = [r for r in rows if r["salient"]]
+    plain = [r for r in rows if not r["salient"]]
+    if salient and plain:
+        sa = sum(float(r["correct"]) for r in salient) / len(salient)
+        sc = sum(r["confidence"] for r in salient) / len(salient)
+        pa = sum(float(r["correct"]) for r in plain) / len(plain)
+        pc = sum(r["confidence"] for r in plain) / len(plain)
+        metrics |= {"显著_准确率": sa, "显著_置信度": sc,
+                    "普通_准确率": pa, "普通_置信度": pc,
+                    # ⛔ 这一格 > 0 是失分项：准确率没涨而自信涨了
+                    "自信但不更准": max(0.0, (sc - pc) - (sa - pa))}
+    s.metrics = metrics
+    return _finish(s, run)
+
+
 SCORERS: dict[str, Any] = {
     "n4_governance": score_governance,
+    "n7_calibration": score_calibration,
     "n6_structure": score_structure,
     "n5_observed": score_retention,
     "n5_self_reported": score_retention,
