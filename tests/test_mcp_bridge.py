@@ -180,3 +180,61 @@ def test_ignorance_is_not_detection() -> None:
     run = suite.probe(Ignorant(), None)
     assert run.observations[0].payload["reported"] == "unknown", \
         "⛔ 既没说旧值也没说新值 → unknown，不许算检出"
+
+
+# ── agent 档 N2：混淆控制 ────────────────────────────────────────
+def _fake_driver(text: str, tools: list[str]):
+    from amb.agent import AgentTurn
+
+    class Driver:
+        def ask(self, prompt: str):
+            events = [{"type": "tool/call",
+                       "data": {"name": t, "arguments": "{}"}} for t in tools]
+            return AgentTurn(text=text, finish_reason="completed", events=events)
+
+    return Driver()
+
+
+def test_reading_the_file_directly_does_not_count_as_provenance() -> None:
+    """⭐ 混淆控制：agent 自己去读文件答对了来源，与记忆层的回链质量无关。
+
+    ⛔ 不控住这一格，一个会用 read_file 的 agent
+    会让任何记忆系统在 N2 上看起来都很行。
+    """
+    from amb.scoring import score
+    from amb.suites.agent_native import AgentProvenanceSuite, CitationProbe
+
+    probes = [CitationProbe("s1", "问题", "neocortex", ("cat",))]
+    suite = AgentProvenanceSuite(probes)
+
+    # 它答对了来源，但走的是 read_file，⛔ 不是记忆
+    run = suite.probe(_fake_driver("来源：neocortex.md", ["read_file"]), None)
+    m = score(run).metrics
+    assert m["绕过记忆率"] == 1.0
+    assert m["经记忆作答率"] == 0.0
+    assert m["来源正确率"] == 0.0, "⛔ 没经记忆的正确不算记忆层的功劳"
+
+
+def test_provenance_counted_only_when_memory_was_used() -> None:
+    from amb.scoring import score
+    from amb.suites.agent_native import AgentProvenanceSuite, CitationProbe
+
+    run = AgentProvenanceSuite([CitationProbe("s1", "问题", "neocortex", ("cat",))]).probe(
+        _fake_driver("来源：neocortex.md", ["mcp__amb__recall"]), None)
+    m = score(run).metrics
+    assert m["经记忆作答率"] == 1.0 and m["来源正确率"] == 1.0
+
+
+def test_wrong_source_and_no_source_are_separate() -> None:
+    """⛔ 说错来源是编造，说不出是诚实的能力缺失——不许合并。"""
+    from amb.scoring import score
+    from amb.suites.agent_native import AgentProvenanceSuite, CitationProbe
+
+    probe = CitationProbe("s1", "问题", "neocortex", ("cat",))
+    liar = score(AgentProvenanceSuite([probe]).probe(
+        _fake_driver("来源：cat.md", ["mcp__amb__recall"]), None)).metrics
+    silent = score(AgentProvenanceSuite([probe]).probe(
+        _fake_driver("来源：不确定", ["mcp__amb__recall"]), None)).metrics
+
+    assert liar["来源说错率"] == 1.0 and liar["来源说不出率"] == 0.0
+    assert silent["来源说不出率"] == 1.0 and silent["来源说错率"] == 0.0

@@ -225,8 +225,38 @@ def score_governance(run: SuiteRun) -> Score:
     return _finish(s, run)
 
 
+def score_agent_provenance(run: SuiteRun) -> Score:
+    """agent 档的回链。
+
+    ⛔ 「没说来源」与「说错来源」分列——
+    前者是诚实的能力缺失，后者是编造。
+    ⭐ 另外单列「没查记忆就答对了」：那一格的分与记忆层无关，
+    不控住它，一个自己去读文件的 agent 会让任何记忆系统看起来都很行。
+    """
+    s = Score(run.suite, run.status, run.reason)
+    if run.status != "scored":
+        return s
+
+    n = len(run.observations) or 1
+    via_memory = [o.payload for o in run.observations if o.payload["used_memory"]]
+    m = len(via_memory) or 1
+    s.metrics = {
+        "经记忆作答率": len(via_memory) / n,
+        # 下面三个的分母是「经记忆作答的题」——⛔ 不含它自己去读文件的
+        "来源正确率": sum(1 for o in via_memory if o["cited_gold"]) / m,
+        "来源说错率": sum(
+            1 for o in via_memory if o["cited_wrong"] and not o["cited_gold"]) / m,
+        "来源说不出率": sum(1 for o in via_memory if o["said_unsure"]) / m,
+        # ⚠️ 这一格越高，上面三个越不能代表记忆层
+        "绕过记忆率": sum(1 for o in run.observations
+                          if not o.payload["used_memory"]) / n,
+    }
+    return _finish(s, run)
+
+
 SCORERS: dict[str, Any] = {
     "n4_governance": score_governance,
+    "n2_provenance_agent": score_agent_provenance,
     "qa": score_qa,
     "retrieval": score_retrieval,
     "n2_provenance": score_provenance,

@@ -9,6 +9,7 @@ from amb.report.schema import LANE_LABEL, LANES, Report
 HEADLINE = {
     "retrieval": "top1",
     "n2_provenance": "精确匹配率",
+    "n2_provenance_agent": "来源正确率",
     "qa": "准确率",
     "n4_governance": "彻底删除率",
     "n1_prompted": "检出率",

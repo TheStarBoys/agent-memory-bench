@@ -137,6 +137,14 @@ FRESH_MARKERS = {
 }
 
 
+#: agent 档 N2：问一个问题并要求说出来源。
+#: ⚠️ distractors 是「容易被答成的别的文件」——用来分辨「说错」与「没说」。
+CITATION_PROBES = [
+    ("s1", "哪个脑结构学得慢？", "neocortex", ("hippocampus", "cat")),
+    ("s2", "一次暴露就能记住靠哪个结构？", "hippocampus", ("neocortex", "cat")),
+]
+
+
 def agent_suites(verdict_sink) -> list:
     """agent 档：判分口径与直接调库一致，⛔ 探针完全不同。
 
@@ -144,8 +152,10 @@ def agent_suites(verdict_sink) -> list:
     """
     from amb.suites.agent_native import (
         AgentPromptedRealitySuite,
+        AgentProvenanceSuite,
         AgentQASuite,
         AgentSpontaneousRealitySuite,
+        CitationProbe,
     )
 
     return [
@@ -153,4 +163,7 @@ def agent_suites(verdict_sink) -> list:
         AgentSpontaneousRealitySuite(CLAIMS, TRUTH, SPONTANEOUS_QUESTIONS,
                                      STALE_MARKERS, FRESH_MARKERS),
         AgentQASuite(QA_ITEMS),
+        AgentProvenanceSuite([
+            CitationProbe(i, q, gold, dis) for i, q, gold, dis in CITATION_PROBES
+        ]),
     ]
