@@ -316,6 +316,20 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
         out.append("")
 
     out += _render_cost(arms, suites, report.backbone.get("model"))
+    # ⭐ 行为指纹：⛔ 不是分数，是「这一跑正不正常」的凭据。
+    # ⚠️ 两次跑同一语料同一臂，指纹应当一致——不一致就先别信分数。
+    prints = [(a.arm, a.cost_profile["canary"]) for a in arms
+              if isinstance(a.cost_profile, dict) and a.cost_profile.get("canary")]
+    if prints:
+        out += ["## 行为指纹　（⛔ 不是分数）", "",
+                "⚠️ 摄入完立刻做一次固定检索，记下它给不给得出 `doc_ids` / `spans`。"
+                "⭐ 同一语料重跑时指纹应当一致——⛔ 不一致说明这一跑不正常，"
+                "先别信它的分数。", "",
+                "| | 库中条数 | 命中 | 有 doc_id | 有区间 |", "|---|---:|---:|---:|---:|"]
+        out += [f"| {arm} | {c.get('count','—')} | {c.get('hits','—')} | "
+                f"{c.get('with_doc_ids','—')} | {c.get('with_spans','—')} |"
+                for arm, c in sorted(prints)]
+        out.append("")
     out += ["## 声明与参与", "", "| | 声明 | 参与题数 | 成本 |", "|---|---|---|---|"]
     for arm in arms:
         p, c = arm.participation, arm.cost

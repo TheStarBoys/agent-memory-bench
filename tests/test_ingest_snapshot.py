@@ -470,3 +470,30 @@ def test_a_store_the_probes_mutated_is_never_saved() -> None:
     # ⚠️ 这条守的是**顺序**，不是某个函数的返回值——所以看源码
     assert "settled = _canary(adapter, plan) == canary" in src
     assert "not restored and settled" in src, "存快照必须先确认探针没动过 store"
+
+
+def test_the_canary_reaches_the_report() -> None:
+    """⛔ 指纹留在内存里没用——⚠️ 它要能被**下一次跑**拿来对账。
+
+    实测踩到：mem0_raw 在 5 次跑里出现过 1 次 0.474（其余 4 次都是 0.789），
+    同一语料、同一配置、同一 seed。⛔ 当时没有任何机制能发现那一跑不正常，
+    是隔了几个小时人工比对两份存档才看出来的。
+    """
+    from amb.report.render import _render_lane
+    from amb.report.schema import ArmResult, Report, Score
+
+    report = Report(run_id="r", at="t",
+                    world={"name": "w", "seed": 1, "digest": ""},
+                    backbone={}, externals={}, sampling={})
+    text = _render_lane("library", [ArmResult(
+        arm="mem0_raw", is_control=False,
+        scores={"locomo_retrieval": Score(suite="locomo_retrieval",
+                                          status="scored",
+                                          metrics={"evidence_recall": 0.789})},
+        cost_profile={"items_ingested": 30, "items_probed": 17,
+                      "canary": {"count": 30, "hits": 3,
+                                 "with_doc_ids": 3, "with_spans": 3}},
+    )], report)
+
+    assert "行为指纹" in text
+    assert "不是分数" in text          # ⛔ 别被当成又一个可以排名的数

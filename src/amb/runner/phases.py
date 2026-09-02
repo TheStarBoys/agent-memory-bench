@@ -167,6 +167,12 @@ def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
         # ⚠️ 同理：命中快照时本次没发过 LLM 调用，token 也要带回来
         profile |= {k: carried[k] for k in ("tokens_in", "tokens_out",
                                             "llm_calls") if k in carried}
+    # ⭐ 行为指纹进报告：⛔ 它不是分数，是**这一跑是否正常**的凭据。
+    # ⚠️ 实测踩到：mem0_raw 在 5 次跑里出现过 1 次 0.474（其余 4 次 0.789），
+    # 同一语料同一配置——而当时**没有任何机制能发现它异常**。
+    # ⭐ 两次跑的指纹一对，漂移就看得见了。
+    if canary:
+        profile["canary"] = canary
     result.cost_profile = profile
     return result, guard.expected
 
