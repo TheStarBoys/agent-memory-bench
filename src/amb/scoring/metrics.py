@@ -512,6 +512,8 @@ SCORERS: dict[str, Any] = {
     "n7_calibration": score_calibration,
     "n6_structure": score_structure,
     "n5_observed": score_retention,
+    "n5_agent": score_retention,
+    "n6_agent": score_structure,
     "n5_self_reported": score_retention,
     "n2_provenance_agent": score_agent_provenance,
     "qa": score_qa,

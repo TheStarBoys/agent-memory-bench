@@ -319,3 +319,72 @@ def test_still_failed_if_it_never_submits(tmp_path) -> None:
         [Claim("c1", "命题", ["d"])], {"c1": "holds"},
         tmp_path / "v.jsonl").probe(NeverSubmits(), None)
     assert run.failed == 1 and not run.observations
+
+
+# ── agent 档通用召回探针（N5 / N6 共用形状）─────────────────────
+def test_agent_recall_maps_to_the_same_retention_scoring() -> None:
+    """⭐ 「能不能检索到 X」在 agent 档变成「能不能答出关于 X 的问题」。
+
+    ⛔ 判分口径不变——走的还是 score_retention 那一套四格。
+    """
+    from amb.agent import AgentTurn
+    from amb.scoring import score
+    from amb.suites.agent_native import AgentRecallSuite, RecallItem
+
+    items = [
+        RecallItem("a", "问 A", "答A",
+                   {"should_keep": True, "need": 0.9, "frequency": 10,
+                    "spacing": "distributed", "salient": True}),
+        RecallItem("b", "问 B", "答B",
+                   {"should_keep": False, "need": 0.1, "frequency": 1,
+                    "spacing": "once", "salient": False}),
+    ]
+
+    class RemembersOnlyA:
+        def ask(self, prompt: str):
+            text = "答A" if "问 A" in prompt else "记不得"
+            return AgentTurn(text=text, finish_reason="completed", events=[
+                {"type": "tool/call",
+                 "data": {"name": "mcp__amb__recall", "arguments": "{}"}}])
+
+    m = score(AgentRecallSuite("n5_agent", items).probe(RemembersOnlyA(), None)).metrics
+    assert m["正确保留率"] == 1.0 and m["正确遗忘率"] == 1.0
+    assert m["囤积率"] == 0.0 and m["误删率"] == 0.0
+
+
+def test_agent_recall_tracks_whether_memory_was_used() -> None:
+    """⚠️ 混淆控制照旧：自己去读文件答对了，与记忆层无关。"""
+    from amb.agent import AgentTurn
+    from amb.suites.agent_native import AgentRecallSuite, RecallItem
+
+    class ReadsFiles:
+        def ask(self, prompt: str):
+            return AgentTurn(text="答A", finish_reason="completed", events=[
+                {"type": "tool/call", "data": {"name": "read_file",
+                                               "arguments": "{}"}}])
+
+    run = AgentRecallSuite("n5_agent", [
+        RecallItem("a", "问 A", "答A", {"should_keep": True, "need": 0.9,
+                                        "frequency": 1, "spacing": "once",
+                                        "salient": False})
+    ]).probe(ReadsFiles(), None)
+    assert run.observations[0].payload["used_memory"] is False
+
+
+def test_multi_cue_reach_is_measured_per_cue() -> None:
+    """⭐ N6 可达性：同一条目用多个线索分别问，数够得到几个。"""
+    from amb.agent import AgentTurn
+    from amb.suites.agent_native import AgentRecallSuite, RecallItem
+
+    class OnlyKnowsTheFirstCue:
+        def ask(self, prompt: str):
+            return AgentTurn(text="目标" if "线索1" in prompt else "记不得",
+                             finish_reason="completed", events=[])
+
+    run = AgentRecallSuite("n6_agent", [
+        RecallItem("f", "线索1", "目标",
+                   {"fan": 4, "cues_list": ["线索1", "线索2", "线索3"],
+                    "precise": False})
+    ], cues_key="cues_list").probe(OnlyKnowsTheFirstCue(), None)
+    p = run.observations[0].payload
+    assert p["reached"] == 1 and p["cues"] == 3

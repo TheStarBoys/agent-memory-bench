@@ -14,6 +14,8 @@ HEADLINE = {
     "n3_reasoning": "链条完好率",
     "n4_governance": "彻底删除率",
     "n5_observed": "保留追踪度",
+    "n5_agent": "保留追踪度",
+    "n6_agent": "扇形退化斜率",
     "n6_structure": "扇形退化斜率",
     "n7_calibration": "ECE",
     "n8_induction": "全对",
