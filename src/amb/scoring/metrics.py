@@ -327,8 +327,52 @@ def score_retention(run: SuiteRun) -> Score:
     return _finish(s, run)
 
 
+def score_structure(run: SuiteRun) -> Score:
+    """⛔ 两条曲线一起报，⛔ 不设单一总分。
+
+    可达性与精确性的权衡因用途而异，合成一个数就等于替使用者做了取舍。
+    """
+    s = Score(run.suite, run.status, run.reason)
+    if run.status != "scored":
+        return s
+    import math
+
+    by_fan: dict[int, list] = {}
+    for obs in run.observations:
+        by_fan.setdefault(obs.payload["fan"], []).append(obs.payload)
+
+    metrics: dict[str, float] = {}
+    reach_pts: list[tuple[float, float]] = []
+    precise_pts: list[tuple[float, float]] = []
+    for fan in sorted(by_fan):
+        rows = by_fan[fan]
+        reach = sum(r["reached"] / max(1, r["cues"]) for r in rows) / len(rows)
+        precise = sum(float(r["precise"]) for r in rows) / len(rows)
+        metrics[f"可达性_fan{fan}"] = reach
+        metrics[f"精确检索_fan{fan}"] = precise
+        reach_pts.append((math.log(fan), reach))
+        precise_pts.append((math.log(fan), precise))
+
+    # ⭐ 退化斜率：精确检索随 log(扇形度) 的回归斜率，越平越好
+    metrics["扇形退化斜率"] = _slope(precise_pts)
+    metrics["可达性增益"] = _slope(reach_pts)
+    s.metrics = metrics
+    return _finish(s, run)
+
+
+def _slope(points: list[tuple[float, float]]) -> float:
+    n = len(points)
+    if n < 2:
+        return 0.0
+    mx = sum(x for x, _ in points) / n
+    my = sum(y for _, y in points) / n
+    sxx = sum((x - mx) ** 2 for x, _ in points)
+    return (sum((x - mx) * (y - my) for x, y in points) / sxx) if sxx else 0.0
+
+
 SCORERS: dict[str, Any] = {
     "n4_governance": score_governance,
+    "n6_structure": score_structure,
     "n5_observed": score_retention,
     "n5_self_reported": score_retention,
     "n2_provenance_agent": score_agent_provenance,
