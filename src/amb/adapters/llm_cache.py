@@ -231,10 +231,45 @@ class Meter:
                 "llm_calls": self.calls, "cached_calls": self.cached_calls,
                 "retries": RETRIES.retries,
                 # ⚠️ 重试等待单独报——⛔ 那是供应商配额的成本，不是系统的
-                "retry_waited_s": round(RETRIES.waited_s, 1)}
+                "retry_waited_s": round(RETRIES.waited_s, 1),
+                # ⭐ embedding 也要报——⛔ 早先这一层完全不可见
+                **EMBED.as_dict()}
 
 
 METER = Meter()
+
+
+class EmbedMeter:
+    """⭐ 被测系统发出的 **embedding** 调用，我们在包装层实测。
+
+    ⛔ 补的是一个明确的缺口：`wrap_openai_client` 只包了 `chat.completions`，
+    ⚠️ embedding 调用既没有超时钉子、也没有重试、更没有计量——
+    于是它用的是 openai SDK 的默认值（600s 超时 + **静默**重试 2 次），
+    一次卡住的调用能吃掉半小时而日志上一片空白。
+
+    ⚠️ 实测踩到：一次摄入 60478ms，正常 30395ms，**慢一倍且全程无告警**。
+    ⭐ 慢不是罪，慢而没人知道才是。
+    """
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.texts = 0
+        self.wall_ms = 0
+        self.slowest_ms = 0
+
+    def add(self, *, texts: int, ms: float) -> None:
+        self.calls += 1
+        self.texts += texts
+        self.wall_ms += int(ms)
+        self.slowest_ms = max(self.slowest_ms, int(ms))
+
+    def as_dict(self) -> dict:
+        return {"embed_calls": self.calls, "embed_texts": self.texts,
+                "embed_wall_ms": self.wall_ms,
+                "embed_slowest_ms": self.slowest_ms}
+
+
+EMBED = EmbedMeter()
 
 
 class RetryStats:
@@ -373,3 +408,36 @@ def _jsonable(payload: dict) -> dict:
     import json
 
     return json.loads(json.dumps(payload, default=str, sort_keys=True))
+
+
+def wrap_openai_embeddings(client: object) -> bool:
+    """给被测系统的 **embedding** 调用钉超时、套重试、上计量。返回是否打上了。
+
+    ⛔ 为什么必须单独打一层：`wrap_openai_client` 拦的是
+    `chat.completions.create`，⚠️ `embeddings.create` 走的是**另一条路径**，
+    早先完全裸奔——openai SDK 默认 600s 超时 + 静默重试 2 次。
+
+    ⚠️ 这里**不做缓存**：向量是大块二进制，缓存收益小；
+    ⛔ 更要紧的是缓存会把端点的抖动冻住——实测同一句话两次调用
+    余弦 0.99989（不是 1.0），⭐ 冻住它等于把一个真实的不确定性藏起来。
+    """
+    import time
+
+    target = getattr(client, "embeddings", None)
+    if target is None or getattr(target, "_amb_wrapped", False):
+        return False
+
+    original = target.create
+    timeout = float(os.environ.get("AMB_EMBED_TIMEOUT_S", "120"))
+
+    def wrapped(**kwargs):
+        kwargs.setdefault("timeout", timeout)
+        n = len(kwargs.get("input") or [])
+        t0 = time.perf_counter()
+        got = _with_retry(original, kwargs)
+        EMBED.add(texts=n, ms=(time.perf_counter() - t0) * 1000)
+        return got
+
+    target.create = wrapped
+    target._amb_wrapped = True
+    return True

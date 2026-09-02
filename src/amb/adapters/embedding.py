@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import math
+import os
+import sys
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -17,6 +19,51 @@ from amb.core import load_dotenv, require
 
 class EmbeddingError(RuntimeError):
     pass
+
+
+@dataclass(slots=True)
+class EmbedMeter:
+    """embedding 调用的用量与**可见性**。
+
+    ⛔ 补的是一个明确的缺口：早先重试与计量**只包了 chat 调用**，
+    embedding 两样都没有——⚠️ 于是一次跑的摄入慢了一倍（60478ms vs
+    30395ms）而全程无人知晓，查了几个小时。
+
+    ⭐ 慢不是罪，**慢而没人知道**才是。
+    """
+
+    calls: int = 0
+    texts: int = 0
+    wall_ms: int = 0
+    slowest_ms: int = 0
+    retries: int = 0
+    waited_s: float = 0.0
+
+    def add(self, *, texts: int, ms: float) -> None:
+        self.calls += 1
+        self.texts += texts
+        self.wall_ms += int(ms)
+        self.slowest_ms = max(self.slowest_ms, int(ms))
+
+    def as_dict(self) -> dict[str, object]:
+        return {"embed_calls": self.calls, "embed_texts": self.texts,
+                "embed_wall_ms": self.wall_ms,
+                "embed_slowest_ms": self.slowest_ms,
+                "embed_retries": self.retries,
+                # ⚠️ 重试等待单独报——⛔ 那是供应商的成本，不是被测系统的
+                "embed_retry_waited_s": round(self.waited_s, 1)}
+
+
+#: ⚠️ 进程内累计。⛔ 与评测器从外部测的墙钟分开报，两者的差本身就是信息。
+METER = EmbedMeter()
+
+#: 单次调用超过这个倍数的均值就出声。⚠️ 阈值宽一点，⛔ 但不能没有。
+_SLOW_FACTOR = float(os.environ.get("AMB_EMBED_SLOW_FACTOR", "4"))
+_SLOW_FLOOR_MS = float(os.environ.get("AMB_EMBED_SLOW_FLOOR_MS", "8000"))
+
+
+def _say(message: str) -> None:
+    print(f"⚠️ {message}", file=sys.stderr, flush=True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,19 +104,45 @@ class EmbeddingClient:
         return out
 
     def _embed_batch(self, texts: list[str]) -> list[list[float]]:
+        """⚠️ 退避重试 + 计量 + **出声**。
+
+        ⛔ 三件事早先都没有：静默重试、不计量、慢了不说话。
+        ⚠️ 后果实测过——一次摄入慢一倍，查了几小时才发现是这一层。
+        """
         import http.client
+        import random
         import time
 
         last: Exception | None = None
         for attempt in range(self.cfg.max_retries):
+            t0 = time.perf_counter()
             try:
-                return self._post(texts)
+                got = self._post(texts)
             except (urllib.error.URLError, http.client.IncompleteRead,
                     ConnectionError, TimeoutError) as exc:
                 last = exc
-                if attempt + 1 < self.cfg.max_retries:
-                    # ⚠️ 退避后重试；⛔ 不静默返回空向量——那会让分数变成假的
-                    time.sleep(1.5 * (attempt + 1))
+                # ⛔ 只有限流、超时、传输抖动才重试——⚠️ 把 400 重试掉
+                # 比慢更糟：它会把「请求本身就是错的」拖成一次超时
+                if not _retryable(exc) or attempt + 1 >= self.cfg.max_retries:
+                    break
+                # ⚠️ 指数退避 + 抖动。⛔ 429 是按分钟的窗口，1.5s 不够用
+                wait = 2.0 * (2 ** attempt) * (0.5 + random.random())
+                METER.retries += 1
+                METER.waited_s += wait
+                _say(f"embedding {type(exc).__name__} → 退避重试"
+                     f"（第 {attempt + 1}/{self.cfg.max_retries} 次，"
+                     f"等 {wait:.0f}s）——⛔ 这段等待不算被测系统的成本")
+                time.sleep(wait)
+                continue
+            ms = (time.perf_counter() - t0) * 1000
+            mean = METER.wall_ms / METER.calls if METER.calls else ms
+            METER.add(texts=len(texts), ms=ms)
+            # ⭐ 慢不是罪，慢而没人知道才是
+            if ms > _SLOW_FLOOR_MS and ms > _SLOW_FACTOR * mean:
+                _say(f"embedding 单次 {ms / 1000:.1f}s（{len(texts)} 条），"
+                     f"均值 {mean / 1000:.1f}s——⚠️ 端点在抖，"
+                     f"这一跑的耗时不代表被测系统")
+            return got
         raise EmbeddingError(
             f"embedding 调用失败（重试 {self.cfg.max_retries} 次）：{last}")
 
@@ -93,3 +166,14 @@ def cosine(a: list[float], b: list[float]) -> float:
     na = math.sqrt(sum(x * x for x in a))
     nb = math.sqrt(sum(y * y for y in b))
     return 0.0 if na == 0.0 or nb == 0.0 else num / (na * nb)
+
+
+def _retryable(exc: Exception) -> bool:
+    """限流 / 服务端错 / 传输抖动可以重试。⛔ 其余照抛。
+
+    ⚠️ `HTTPError` 是 `URLError` 的子类——⛔ 早先一并重试了，
+    于是一个 400（请求本身就是错的）会被重试三次才报出来。
+    """
+    if isinstance(exc, urllib.error.HTTPError):
+        return exc.code == 429 or exc.code >= 500
+    return True

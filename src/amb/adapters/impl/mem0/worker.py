@@ -46,6 +46,11 @@ class Runner:
 
         self.memory = Memory.from_config(config)
         _wrap_cache(getattr(getattr(self.memory, "llm", None), "client", None))
+        # ⛔ embedding 走的是另一条路径，得单独包一层——
+        # ⚠️ 不包的话它用 SDK 默认值（600s 超时 + 静默重试 2 次），
+        # 慢一倍也不会有任何日志。实测吃过这个亏。
+        _wrap_embeddings(
+            getattr(getattr(self.memory, "embedding_model", None), "client", None))
         import mem0
 
         return {"version": getattr(mem0, "__version__", "?"),
@@ -164,6 +169,23 @@ def _wrap_cache(client) -> None:
         raise RuntimeError(
             f"加载不到宿主的 llm_cache（{exc}），受控变量钉不住") from None
     wrap_openai_client(client)
+
+
+def _wrap_embeddings(client) -> None:
+    """给 embedding 调用钉超时、套重试、上计量。⛔ 缺了它这一层完全不可见。"""
+    if client is None:
+        log("⚠️ 没找到 embedding 客户端——⛔ 这一层没有超时、重试与计量")
+        return
+    shared = os.environ.get("AMB_CACHE_MODULE_DIR")
+    if shared and shared not in sys.path:
+        sys.path.insert(0, shared)
+    try:
+        from llm_cache import wrap_openai_embeddings
+    except ImportError as exc:
+        # ⚠️ 与 chat 那层不同：包不上不至于让分数不可复现，⛔ 但必须出声
+        log(f"⚠️ 加载不到 wrap_openai_embeddings（{exc}）——embedding 层不可见")
+        return
+    wrap_openai_embeddings(client)
 
 
 def main() -> None:
