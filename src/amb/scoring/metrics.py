@@ -415,10 +415,15 @@ def score_calibration(run: SuiteRun) -> Score:
         diagram[f"桶{lo:.1f}-{hi:.1f}_准确"] = acc
 
     # ⭐ 区分度：高置信组与低置信组的准确率差
+    # ⛔ 置信度全部并列时按排序切一半，得到的是**排序稳定性的产物**，
+    # 不是真的区分能力——那时候区分度是 0（说不出高低）。
     ordered = sorted(rows, key=lambda r: r["confidence"])
-    half = len(ordered) // 2 or 1
-    low = sum(float(r["correct"]) for r in ordered[:half]) / half
-    high = sum(float(r["correct"]) for r in ordered[-half:]) / half
+    if len({r["confidence"] for r in rows}) < 2:
+        low = high = 0.0
+    else:
+        half = len(ordered) // 2 or 1
+        low = sum(float(r["correct"]) for r in ordered[:half]) / half
+        high = sum(float(r["correct"]) for r in ordered[-half:]) / half
 
     metrics = {"ECE": ece, "Brier": brier, "区分度": high - low, **diagram}
 

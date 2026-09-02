@@ -93,3 +93,14 @@ def test_declaring_confidence_without_giving_one_is_failed() -> None:
 
     run_ = CalibrationSuite([CalibrationItem("a", "问题", ("答",))]).probe(Silent(), None)
     assert run_.failed == 1 and not run_.observations
+
+
+def test_all_tied_confidences_give_zero_discrimination_not_an_artifact() -> None:
+    """⛔ 置信度全部并列时，按排序切一半得到的是**排序稳定性的产物**。
+
+    ⚠️ 实测撞见的：两题都报 0.9，一对一错，
+    区分度算出 −1.0——那不是「反着分」，是排序碰巧把对的排前面了。
+    并列就说不出高低，区分度该是 0。
+    """
+    assert run([(0.9, True, False), (0.9, False, False)])["区分度"] == 0.0
+    assert run([(0.5, True, False)] * 4)["区分度"] == 0.0
