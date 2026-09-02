@@ -41,7 +41,7 @@ def test_satisfies_adapter_protocol(name: str) -> None:
 #: null / host_default 给不出区间 → 不声明 → N2 记不支持，⛔ 不是 0 分。
 #: host_default 没有记忆层，只能重读世界 → 声明 REALITY（预期正确但昂贵）。
 _EXTRA: dict[str, set] = {
-    "bm25": {Capability.PROVENANCE, Capability.REALITY},
+    "bm25": {Capability.PROVENANCE, Capability.REALITY, Capability.GOVERNANCE},
     "naive_rag": {Capability.PROVENANCE},
     "full_context": {Capability.PROVENANCE},
     "host_default": {Capability.REALITY},

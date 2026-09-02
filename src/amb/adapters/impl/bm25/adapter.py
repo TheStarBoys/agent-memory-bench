@@ -15,8 +15,8 @@ from amb.adapters.chunking import Chunk, chunk
 from amb.adapters.worldcheck import WorldReader
 from amb.adapters.answerable import Answerable
 from amb.core import (
-    BASELINE, AdapterBase, Capability, Claim, Document, Entry, Failed, Verdict,
-    WorldHandle,
+    BASELINE, AdapterBase, AuditEvent, Capability, Claim, DeleteResult, Document,
+    Entry, Failed, Unsupported, Verdict, WorldHandle,
 )
 
 _K1 = 1.5
@@ -36,7 +36,9 @@ class BM25Adapter(Answerable, AdapterBase):
         # ⭐ 切块边界就是真实的原文区间，不用猜——所以 N2 如实声明。
         # ⭐ 摄入时留了原文副本，所以既判得了「还在不在」也判得了「变没变」——
         #    这正是它比 host_default 强的地方。
-        return set(BASELINE) | self._answer_caps() | {Capability.PROVENANCE, Capability.REALITY}
+        return set(BASELINE) | self._answer_caps() | {
+            Capability.PROVENANCE, Capability.REALITY, Capability.GOVERNANCE,
+        }
 
     def setup(self, world: WorldHandle) -> None:
         super().setup(world)
@@ -48,6 +50,7 @@ class BM25Adapter(Answerable, AdapterBase):
         self.reset()
 
     def reset(self) -> None:
+        self._audit: list[AuditEvent] = []
         self._snapshot: dict[str, str] = {}   # 摄入时的原文副本
         self._reader: WorldReader | None = None
         self._chunks: list[Chunk] = []
@@ -58,6 +61,11 @@ class BM25Adapter(Answerable, AdapterBase):
         self._avg_len = 0.0
 
     def ingest(self, doc: Document) -> None:
+        self._audit.append(AuditEvent(
+            event_id=f"e{len(self._audit)}", action="ingest",
+            entry_ids=[], principal=doc.principal, at=doc.timestamp or "",
+            detail=doc.doc_id,
+        ))
         self._snapshot[doc.doc_id] = doc.text
         for c in chunk(doc.doc_id, doc.text, self._chunk_size, self._overlap):
             toks = tokenize(c.text)
@@ -163,3 +171,38 @@ class BM25Adapter(Answerable, AdapterBase):
             else:
                 out.append(Verdict(c.claim_id, state, grounds))
         return out
+
+    # ── N4 ──────────────────────────────────────────────────────
+    def delete(self, entry_ids: list[str]) -> DeleteResult:
+        """真删：从索引里摘掉。⚠️ 纯内存，所以重开必然干净。"""
+        wanted = {int(i.removeprefix("bm25:")) for i in entry_ids
+                  if i.startswith("bm25:") and i.removeprefix("bm25:").isdigit()}
+        keep = [i for i in range(len(self._chunks)) if i not in wanted]
+        gone = [self._chunks[i].doc_id for i in wanted if i < len(self._chunks)]
+
+        self._chunks = [self._chunks[i] for i in keep]
+        self._toks = [self._toks[i] for i in keep]
+        self._tf = [self._tf[i] for i in keep]
+        self._principals = [self._principals[i] for i in keep]
+        self._df = Counter()
+        for toks in self._toks:
+            self._df.update(set(toks))
+        for doc_id in gone:
+            self._snapshot.pop(doc_id, None)   # ⛔ 快照也要清，否则 N1 会拿它作答
+        self.finalize()
+
+        self._audit.append(AuditEvent(
+            event_id=f"e{len(self._audit)}", action="delete",
+            entry_ids=list(entry_ids), principal=None, at="",
+            # ⛔ 只记 doc_id，不记正文——把内容藏进审计日志不算删除
+            detail=",".join(gone),
+        ))
+        return DeleteResult(deleted=[f"bm25:{i}" for i in sorted(wanted)])
+
+    def audit_log(self) -> list[AuditEvent]:
+        return list(self._audit)
+
+    def storage_locations(self) -> list[str] | Unsupported:
+        # ⚠️ 纯内存，没有持久层可申报 → 带外那一步验不了，
+        # ⛔ 该档记「部分支持」，不记通过
+        return Unsupported("纯内存实现，没有持久层")

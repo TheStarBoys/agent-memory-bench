@@ -13,75 +13,59 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import ClassVar
 
+from amb.agent.verdict_server import read_verdicts
 from amb.core import Claim, SuiteRun
 from amb.suites.agent_spec import AgentDriver, TurnRecord
 from amb.world import WorldState
 
-#: 让 agent 表态的固定说法。⚠️ 判分要比对，⛔ 提示改了判分也要改。
-_STATES = {"holds": "仍然成立", "broken": "已经不成立", "unknown": "无法判断"}
-
-#: 宽一点的同义说法。⚠️ 只收明确的，⛔ 不做语义猜测——那就成评委了。
-_SYNONYMS: dict[str, tuple[str, ...]] = {
-    "broken": ("已经不成立", "不成立", "已失效", "不再成立", "已经不存在", "不存在了"),
-    "holds": ("仍然成立", "仍成立", "依然成立", "仍然有效", "成立"),
-    "unknown": ("无法判断", "不确定", "无法确定", "判断不了"),
-}
-
-
-def read_state(text: str) -> str | None:
-    """从回答里读出三态之一。
-
-    ⛔ 读不出返回 None，**不是 unknown**——
-    「没按格式作答」和「说了我不知道」是两回事：
-    前者是这次没做成（Failed，计入分母），后者是诚实弃权。
-    把前者记成 unknown 会让不听话的系统白拿一个弃权。
-    """
-    # ⚠️ 先找最长的说法，避免「不成立」被「成立」抢先命中
-    best: tuple[int, str] | None = None
-    for state, words in _SYNONYMS.items():
-        for w in words:
-            if w in text and (best is None or len(w) > best[0]):
-                best = (len(w), state)
-    return best[1] if best else None
-
-
 class AgentPromptedRealitySuite:
-    """有提示：把命题交过去，让 agent 自己去核当前世界。
+    """有提示：把命题交过去，让 agent 自己去核当前世界，⭐ 用工具提交判定。
 
-    ⚠️ **已知问题（实测）**：要求 8B 模型只回三个固定短语之一，
-    合规率很低——首跑 Failed 率 67%，套件被判 `untrusted` 不进对比表。
-    ⭐ 那是框架该有的行为（拒绝给出一个假数），但探针本身要改：
-    要么放宽读取、要么改成让它调一个「表态工具」。⛔ 改之前这一档的数不可用。
+    ⚠️ 早先的版本要求它「只回三个固定短语之一」，实测 8B 模型合规率约 33%，
+    Failed 率 67% 直接把这一档打成 untrusted。
+    ⭐ 改成调 `report_verdict` 工具之后，输出是结构化的：
+    不用解析自然语言，也不惩罚答得对但话多的模型。
     """
 
     name: ClassVar[str] = "n1_prompted"
 
-    def __init__(self, claims: list[Claim], truth: dict[str, str]) -> None:
+    def __init__(self, claims: list[Claim], truth: dict[str, str],
+                 sink: Path) -> None:
         self._claims = claims
         self._truth = truth
+        self._sink = sink
 
     def probe(self, driver: AgentDriver, world: WorldState) -> SuiteRun:
         run = SuiteRun(self.name, "scored")
+        records: dict[str, TurnRecord] = {}
         for c in self._claims:
             prompt = (
-                f"下面这句话，对**当前**的工作目录还成不成立？\n\n「{c.text}」\n\n"
-                f"先去核实，然后只回答这三个词之一："
-                f"{_STATES['holds']} / {_STATES['broken']} / {_STATES['unknown']}。"
+                f"请核实下面这条命题对**当前**工作目录还成不成立。\n\n"
+                f"命题编号：{c.claim_id}\n命题内容：「{c.text}」\n\n"
+                f"先去看实际情况，然后调用 report_verdict 工具提交判定"
+                f"（claim_id 用上面的编号）。⚠️ 核实不了就提交 unknown，别猜。"
             )
-            record = TurnRecord.of(prompt, driver.ask(prompt))
-            state = read_state(record.text)
-            if state is None:
-                # ⛔ 没按格式作答 = 这次没做成，计入分母记为未答对，
-                #    ⚠️ 不许当成弃权
+            records[c.claim_id] = TurnRecord.of(prompt, driver.ask(prompt))
+
+        # ⭐ 判分只读工具提交的表态，不读它说了什么
+        submitted = {v["claim_id"]: v for v in read_verdicts(self._sink)}
+        for c in self._claims:
+            record = records[c.claim_id]
+            verdict = submitted.get(c.claim_id)
+            if verdict is None:
+                # ⛔ 压根没提交 = 这次没做成（Failed，计入分母），
+                #    ⚠️ 不是弃权——弃权是主动提交 unknown
                 run.failed += 1
                 continue
             run.observations.append(record.as_observation(
                 c.claim_id,
                 truth=self._truth[c.claim_id],
-                reported=state,
-                grounds=list(record.memory_calls) or ["agent:tools"],
+                reported=verdict["state"],
+                grounds=list(verdict.get("grounds") or record.memory_calls),
+                answer=record.text[:200],   # ⚠️ 留原始回答，否则没法诊断
             ))
         return run
 

@@ -36,7 +36,7 @@ def main(argv: list[str] | None = None) -> int:
     from worlds import toy  # 玩具世界；⚠️ 正式跑应由清单文件指定
 
     plan = Plan(manifest=toy.MANIFEST, documents=toy.DOCUMENTS,
-                changes=toy.CHANGES, suites=toy.suites())
+                changes=toy.CHANGES, suites_for=toy.suites)
 
     # ⛔ 全局唯一的 backbone——所有臂必须同一个，否则 answer 档不可比
     llm = None if args.no_answer else backbone()
@@ -62,6 +62,8 @@ def main(argv: list[str] | None = None) -> int:
                 result, world_digest = run_one(
                     name, build(name, context_budget=args.budget, llm=llm), plan, root,
                     is_control=name in control_arms(),
+                    # ⚠️ N4 第 3 步要重开一个同样的适配器
+                    rebuild=lambda n=name: build(n, context_budget=args.budget, llm=llm),
                 )
             except Exception as exc:  # noqa: BLE001
                 print(f"✗ {name}: {type(exc).__name__}: {exc}", file=sys.stderr)
@@ -90,7 +92,7 @@ def _run_agent_lane(report: Report, names: list[str], workdir: Path) -> None:
     spec = host_spec()
     report.host = {"version": spec.version, "profile": spec.profile}
     plan = AgentPlan(manifest=toy.MANIFEST, documents=toy.DOCUMENTS,
-                     changes=toy.CHANGES, suites=toy.agent_suites())
+                     changes=toy.CHANGES, suites_for=toy.agent_suites)
     for name in names:
         try:
             result, digest = run_one_agent(name, spec, plan, workdir / name,

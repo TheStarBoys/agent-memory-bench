@@ -12,6 +12,7 @@ from amb.suites.native.n1_reality import (
     SpontaneousRealitySuite,
 )
 from amb.suites.native.n2_provenance import ProvenanceSuite, SpanProbe
+from amb.suites.native.n4_governance import DeletionProbe, GovernanceSuite
 from amb.suites.native.qa import QAItem, QASuite
 from amb.suites.native.retrieval import Query, RetrievalSuite
 from amb.world import Change, ChangeKind, FileSpec, WorldManifest
@@ -37,6 +38,10 @@ DOCUMENTS = [
     Document(doc_id=path, text=text, timestamp=CLOCK_START, principal="alice",
              kind="document")
     for path, text in _FILES.items()
+] + [
+    # ⚠️ N4 的探针语料：只进记忆，不进世界——它是「被记住的东西」，不是外部现实
+    Document(doc_id="secret/formula.md", text="内部配方编号 K-7391，仅限研发组。",
+             timestamp=CLOCK_START, principal="alice", kind="document"),
 ]
 
 CORPUS = dict(_FILES)
@@ -88,13 +93,25 @@ QA_ITEMS = [
 ]
 
 
-def suites() -> list:
+#: N4：一条要被删掉的记忆，marker 是它独有的特征子串。
+#: ⚠️ 独有很重要——带外搜索搜到别的会误判成「没删干净」。
+DELETION_PROBES = [
+    DeletionProbe(doc_id="secret/formula.md",
+                  text="内部配方编号 K-7391，仅限研发组。",
+                  marker="K-7391", query="配方编号"),
+]
+
+
+def suites(rebuild=None, world_handle=None) -> list:
     return [
         RetrievalSuite(QUERIES),
         ProvenanceSuite(SPAN_PROBES, CORPUS),
         PromptedRealitySuite(CLAIMS, TRUTH),
         SpontaneousRealitySuite(CLAIMS, TRUTH),
         QASuite(QA_ITEMS),
+        *([] if rebuild is None else [
+            GovernanceSuite(DELETION_PROBES, rebuild, world_handle),
+        ]),
     ]
 
 
@@ -120,8 +137,11 @@ FRESH_MARKERS = {
 }
 
 
-def agent_suites() -> list:
-    """agent 档：判分口径与直接调库一致，⛔ 探针完全不同。"""
+def agent_suites(verdict_sink) -> list:
+    """agent 档：判分口径与直接调库一致，⛔ 探针完全不同。
+
+    ⚠️ 收 verdict_sink：有提示那一档靠**工具表态**，表态落盘评测器才读得到。
+    """
     from amb.suites.agent_native import (
         AgentPromptedRealitySuite,
         AgentQASuite,
@@ -129,7 +149,7 @@ def agent_suites() -> list:
     )
 
     return [
-        AgentPromptedRealitySuite(CLAIMS, TRUTH),
+        AgentPromptedRealitySuite(CLAIMS, TRUTH, verdict_sink),
         AgentSpontaneousRealitySuite(CLAIMS, TRUTH, SPONTANEOUS_QUESTIONS,
                                      STALE_MARKERS, FRESH_MARKERS),
         AgentQASuite(QA_ITEMS),

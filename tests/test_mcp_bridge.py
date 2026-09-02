@@ -94,24 +94,67 @@ def test_malformed_arguments_do_not_crash_parsing() -> None:
 
 
 # ── agent 档 N1 的判分口径（离线）────────────────────────────────
-def test_unparseable_answer_is_failed_not_abstention() -> None:
-    """⛔ 「没按格式作答」≠「说了我不知道」。
+def test_verdict_tool_records_structured_state(tmp_path) -> None:
+    """⭐ 表态走工具，不靠自然语言格式合规。
 
-    把前者记成 unknown，会让不听话的系统白拿一个弃权。
+    早先要求「只回三个固定短语」，实测 8B 合规率约 33%，
+    Failed 率 67% 把整档打成 untrusted。
     """
-    from amb.suites.agent_native.n1_reality import read_state
+    from amb.agent.verdict_server import VerdictServer, read_verdicts
 
-    assert read_state("已经不成立") == "broken"
-    assert read_state("这条仍然成立") == "holds"
-    assert read_state("我无法判断") == "unknown"
-    assert read_state("嗯，我看看啊") is None      # ⛔ 不是 unknown
+    sink = tmp_path / "v.jsonl"
+    srv = VerdictServer(sink)
+    srv.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+        "name": "report_verdict",
+        "arguments": {"claim_id": "c1", "state": "broken", "grounds": ["file:a.md"]},
+    }})
+    got = read_verdicts(sink)
+    assert got == [{"claim_id": "c1", "state": "broken", "grounds": ["file:a.md"]}]
 
 
-def test_longest_marker_wins_so_negation_is_not_swallowed() -> None:
-    """⚠️ 「不成立」里含「成立」——必须让长的先命中。"""
-    from amb.suites.agent_native.n1_reality import read_state
+def test_verdict_tool_rejects_a_bad_state_helpfully(tmp_path) -> None:
+    """⚠️ 好好说话，让模型能自己纠正——⛔ 不静默吞掉。"""
+    from amb.agent.verdict_server import VerdictServer, read_verdicts
 
-    assert read_state("这句话不成立") == "broken"
+    sink = tmp_path / "v.jsonl"
+    reply = VerdictServer(sink).handle({
+        "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": {"name": "report_verdict",
+                   "arguments": {"claim_id": "c1", "state": "大概吧"}},
+    })
+    assert "holds / broken / unknown" in reply["result"]["content"][0]["text"]
+    assert read_verdicts(sink) == [], "⛔ 非法表态不该落盘"
+
+
+def test_last_verdict_wins(tmp_path) -> None:
+    """⚠️ 同一命题改口时以最后一次为准。"""
+    from amb.agent.verdict_server import VerdictServer, read_verdicts
+
+    sink = tmp_path / "v.jsonl"
+    srv = VerdictServer(sink)
+    for state in ("holds", "broken"):
+        srv.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+            "name": "report_verdict",
+            "arguments": {"claim_id": "c1", "state": state},
+        }})
+    assert read_verdicts(sink)[0]["state"] == "broken"
+
+
+def test_bare_host_still_gets_the_verdict_tool(tmp_path) -> None:
+    """⛔ 表态工具是判分基础设施，裸 DSH 也必须挂。
+
+    只给有记忆插件的臂挂，裸宿主就参加不了 N1 有提示那一档，
+    而那一档恰恰要拿它当地板线。
+    """
+    import json
+
+    from amb.agent import write_patch
+
+    out = write_patch(None, tmp_path / "p.yml", world_root=tmp_path,
+                      verdict_sink=tmp_path / "v.jsonl")
+    rows = json.loads(out.read_text())[0]["insert"]
+    servers = [r["config"]["serverName"] for r in rows]
+    assert servers == ["amb_verdict"], "裸宿主：只有表态工具，⛔ 没有记忆插件"
 
 
 def test_ignorance_is_not_detection() -> None:

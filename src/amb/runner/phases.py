@@ -34,11 +34,16 @@ class Plan:
     documents: list[Document]
     changes: list[Change] = field(default_factory=list)
     suites: list[Suite] = field(default_factory=list)
+    #: ⚠️ N4 的重开探针要能再造一个适配器，所以收工厂而不是实例。
+    suites_for: object = None
 
 
 def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
-            *, is_control: bool) -> tuple[ArmResult, str]:
-    """把一条臂跑完五阶段。返回结果与最终世界哈希。"""
+            *, is_control: bool, rebuild=None) -> tuple[ArmResult, str]:
+    """把一条臂跑完五阶段。返回结果与最终世界哈希。
+
+    ⚠️ rebuild：N4 的第 3 步要重开适配器，没给就不跑 N4。
+    """
     ledger = Ledger()
     caps = adapter.capabilities()
     result = ArmResult(arm=name, is_control=is_control, declared=sorted(caps))
@@ -70,8 +75,12 @@ def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
 
         # ── probe ────────────────────────────────────────────
         items = 0
+        suites = plan.suites
+        if plan.suites_for is not None:
+            suites = plan.suites_for(rebuild, lambda: WorldHandle(
+                str(root), server.clock_url, server.facts_url))
         with ledger.measure("probe"):
-            for suite in plan.suites:
+            for suite in suites:
                 if not suite.requires <= caps:
                     missing = sorted(suite.requires - caps)
                     # ⛔ 未声明 → 不支持，进独立列，不计分母，不记 0

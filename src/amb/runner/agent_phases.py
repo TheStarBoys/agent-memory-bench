@@ -37,6 +37,8 @@ class AgentPlan:
     ingest_prompt: str = (
         "请用 remember 工具把下面这条信息记下来，然后只回复『好』：\n\n{text}"
     )
+    #: 套件工厂。⚠️ 收 verdict_sink——表态要落盘评测器才读得到。
+    suites_for: object = None
 
 
 def _plugin_env(spec: HostSpec) -> dict[str, str]:
@@ -62,16 +64,21 @@ def run_one_agent(name: str, spec: HostSpec, plan: AgentPlan, workdir: Path,
 
     world_root = workdir / "world"
     home = workdir / "home"
+    # ⭐ agent 通过表态工具提交判定，写到这里；⛔ 所有臂都有，裸宿主也有
+    verdict_sink = workdir / "verdicts.jsonl"
 
     with ledger.measure("setup"):
         materialize(plan.manifest, world_root)
         state = WorldState(root=world_root, now=plan.manifest.clock_start,
                            facts=dict(plan.manifest.facts))
-        patches: tuple[str, ...] = ()
-        if not arm_plan.is_bare_host:      # ⭐ 裸宿主不挂插件，那正是它的定义
-            patch = write_patch(arm_plan.plugin or name, workdir / "amb.cordis.yml",
-                                world_root=world_root, env=_plugin_env(spec))
-            patches = (str(patch),)
+        # ⭐ 裸宿主不挂记忆插件（那正是它的定义），⛔ 但表态工具照挂
+        patch = write_patch(
+            None if arm_plan.is_bare_host else (arm_plan.plugin or name),
+            workdir / "amb.cordis.yml",
+            world_root=world_root, env=_plugin_env(spec),
+            verdict_sink=verdict_sink,
+        )
+        patches = (str(patch),)
         # ⚠️ HostSpec 是 frozen+slots，用 replace 而不是 __dict__
         host = Host(replace(spec, patches=patches), world_root, home)
         host.start()
@@ -95,8 +102,10 @@ def run_one_agent(name: str, spec: HostSpec, plan: AgentPlan, workdir: Path,
         guard.rebaseline()
 
         # ── probe ─────────────────────────────────────────────
+        suites = (plan.suites_for(verdict_sink) if plan.suites_for
+                  else plan.suites)
         with ledger.measure("probe"):
-            for suite in plan.suites:
+            for suite in suites:
                 run = suite.probe(host, state)
                 result.scores[suite.name] = score(run)
                 items += len(run.observations)

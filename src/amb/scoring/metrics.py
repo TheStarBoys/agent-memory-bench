@@ -176,7 +176,57 @@ def score_qa(run: SuiteRun) -> Score:
     return _finish(s, run)
 
 
+#: 四步探针，⚠️ 顺序即加压顺序——报到哪一步为止。
+_DELETE_STEPS = ("none", "deleted", "filtered", "survives_restart",
+                 "gone_from_storage")
+
+
+def score_governance(run: SuiteRun) -> Score:
+    """⛔ 三组交叉判，任一组不合格就不是合格。
+
+    ⭐ 删除那一组报「走到第几步」的分布，不报一个通过率——
+    「删得掉但重启就回来」和「查不到但盘上还在」是两种不同的不合格，
+    合并成一个数就分不出该往哪修。
+    """
+    s = Score(run.suite, run.status, run.reason)
+    if run.status != "scored":
+        return s
+
+    by_group: dict[str, list] = {}
+    for obs in run.observations:
+        by_group.setdefault(obs.payload["group"], []).append(obs.payload)
+
+    metrics: dict[str, float] = {}
+
+    attribution = by_group.get("attribution") or []
+    if attribution:
+        total = attribution[0]["total"] or 1
+        metrics["归属率"] = attribution[0]["with_principal"] / total
+
+    isolation = by_group.get("isolation") or []
+    if isolation:
+        level = isolation[0]["level"]
+        # ⚠️ 三级：无隔离 < 过滤级 < 授权级。⛔ 未申报最高只到「过滤级(未验证)」
+        metrics["隔离_无"] = float(level == "none")
+        metrics["隔离_过滤级"] = float(level in ("filter", "filter_unverified"))
+        metrics["隔离_授权级"] = float(level == "authz")
+        metrics["隔离_未验证"] = float(level == "filter_unverified")
+
+    deletion = by_group.get("deletion") or []
+    if deletion:
+        n = len(deletion)
+        for step in _DELETE_STEPS:
+            metrics[f"删除_{step}"] = sum(
+                1 for d in deletion if d["reached"] == step) / n
+        # ⛔ 只有走完第四步才算彻底删除
+        metrics["彻底删除率"] = metrics["删除_gone_from_storage"]
+
+    s.metrics = metrics
+    return _finish(s, run)
+
+
 SCORERS: dict[str, Any] = {
+    "n4_governance": score_governance,
     "qa": score_qa,
     "retrieval": score_retrieval,
     "n2_provenance": score_provenance,
