@@ -76,6 +76,24 @@ def build(name: str, *, context_budget: int = 24_000,
     return arm
 
 
+def ingest_identity() -> str:
+    """**影响摄入结果**的那套 LLM 配置，摄入快照的键之一。
+
+    ⛔ 不是回答档的 backbone——那是两件事：
+    `--no-answer` 时没有回答用的 backbone，⚠️ 但被测系统**摄入时照样调 LLM**
+    （mem0 抽事实、A-mem 演化链接），用的是它自己配的 `AMB_LLM_MODEL`。
+    早先把键绑在回答 backbone 上，结果 `--no-answer` 的跑一律不存快照。
+
+    ⭐ 思考开关也算进来：它把输出 token 变 25 倍，抽出来的东西**不一样**。
+    """
+    model = os.environ.get("AMB_LLM_MODEL", "")
+    if not model:
+        return ""            # ⛔ 说不清摄入用了什么，就不敢复用快照
+    thinking = os.environ.get("AMB_LLM_THINKING", "").lower() in (
+        "1", "true", "yes", "on")
+    return f"{model}|thinking={int(thinking)}"
+
+
 def context_overflow() -> type[Exception]:
     """「语料塞不下窗口」那个信号的类型。
 

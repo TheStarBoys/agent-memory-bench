@@ -190,3 +190,38 @@ def test_not_applicable_is_not_crashed() -> None:
     # ⛔ 两者不许混为一谈
     na_at, crash_at = text.index("不适用"), text.index("没跑完")
     assert na_at != crash_at
+
+
+# ── ⑤ 快照的键绑的是**摄入**用的 LLM，不是回答用的 backbone ──────
+def test_snapshot_survives_no_answer_runs(monkeypatch) -> None:
+    """⛔ 实测踩点：`--no-answer` 时没有回答用的 backbone，
+    键绑在它上面就恒为空 → **快照一律不存**（跑完 419 条才发现没存上）。
+
+    ⚠️ 但被测系统**摄入时照样调 LLM**（mem0 抽事实、A-mem 演化链接），
+    用的是它自己配的 `AMB_LLM_MODEL`——那才是影响摄入结果的东西。
+    """
+    from amb.runner import ingest_identity
+
+    monkeypatch.setenv("AMB_LLM_MODEL", "Qwen/Qwen3-8B")
+    monkeypatch.delenv("AMB_LLM_THINKING", raising=False)
+    assert ingest_identity()          # ⭐ 没有回答 backbone 也拿得到身份
+
+
+def test_thinking_is_part_of_the_ingest_identity(monkeypatch) -> None:
+    """⭐ 思考开关把输出 token 变 25 倍——⛔ 抽出来的东西**不一样**，
+    ⚠️ 不能共用一份快照。"""
+    from amb.runner import ingest_identity
+
+    monkeypatch.setenv("AMB_LLM_MODEL", "Qwen/Qwen3-8B")
+    monkeypatch.delenv("AMB_LLM_THINKING", raising=False)
+    off = ingest_identity()
+    monkeypatch.setenv("AMB_LLM_THINKING", "1")
+    assert ingest_identity() != off
+
+
+def test_unknown_ingest_model_disables_the_snapshot(monkeypatch) -> None:
+    """⛔ 说不清摄入用了什么，就不敢复用——⚠️ 宁可慢，不可拿错。"""
+    from amb.runner import ingest_identity
+
+    monkeypatch.delenv("AMB_LLM_MODEL", raising=False)
+    assert ingest_identity() == ""

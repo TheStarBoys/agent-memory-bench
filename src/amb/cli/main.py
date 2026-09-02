@@ -18,7 +18,7 @@ from amb.core import load_dotenv
 from amb.report import ArmResult, Report, render
 from amb.runner import (
     backbone, build, build_plan, cache_report, context_overflow, control_arms,
-    now_rfc3339, run_one,
+    ingest_identity, now_rfc3339, run_one,
 )
 
 
@@ -115,9 +115,10 @@ def main(argv: list[str] | None = None) -> int:
                     is_control=name in control_arms(),
                     # ⚠️ N4 第 3 步要重开一个同样的适配器
                     rebuild=lambda n=name: build(n, context_budget=args.budget, llm=llm),
-                    # ⭐ 摄入快照的键之一。⛔ 没挂 backbone 就不用快照——
-                    # 摄入结果会因 backbone 而异，键漏了它就会拿错。
-                    backbone=(llm.model if llm else ""),
+                    # ⭐ 摄入快照的键之一：**影响摄入的**那套 LLM 配置。
+                    # ⛔ 不是 llm.model——`--no-answer` 时它是 None，
+                    # 但被测系统摄入时照样调自己配的 LLM。
+                    backbone=ingest_identity(),
                 )
             except context_overflow() as exc:
                 # ⭐ 这不是故障，是**这条臂在这个语料上不适用**。
