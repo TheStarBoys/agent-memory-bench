@@ -190,10 +190,15 @@ RETRY_MAX = int(os.environ.get("AMB_LLM_RETRY", "6"))
 RETRY_BASE_S = float(os.environ.get("AMB_LLM_RETRY_BASE_S", "8"))
 
 
-def _is_rate_limit(exc: Exception) -> bool:
-    """⛔ 只重试限流，别的错误照抛——⚠️ 把真 bug 重试掉比慢更糟。"""
+def _is_transient(exc: Exception) -> bool:
+    """限流与超时可以重试；⛔ 别的错误照抛——⚠️ 把真 bug 重试掉比慢更糟。"""
     status = getattr(exc, "status_code", None) or getattr(exc, "code", None)
     if status == 429 or str(status) == "429":
+        return True
+    name = type(exc).__name__
+    # ⚠️ 超时跟限流一样是暂时的。⭐ 但我们的重试**会说话**，
+    # SDK 自己那 2 次静默重试不会——那正是 19 分钟空档查不出来的原因。
+    if name in ("APITimeoutError", "APIConnectionError", "Timeout"):
         return True
     text = str(exc)
     return "429" in text and ("rate limit" in text.lower()
@@ -259,7 +264,13 @@ def backbone_overrides() -> dict:
     """
     thinking = os.environ.get("AMB_LLM_THINKING", "").lower() in (
         "1", "true", "yes", "on")
-    out: dict = {"temperature": 0.0}
+    # ⛔ 单次调用超时。⚠️ openai SDK 默认 read=600s **且自带 2 次重试**，
+    # 一次卡住的调用能吃掉 30 分钟——实测 A-mem 摄入中间空了 19 分钟，
+    # 没有任何日志（SDK 的重试是静默的）。
+    # ⭐ 关思考后输出都在 500 token 以内，120s 已经很宽。超了就让**我们的**
+    # 退避重试接手——那个会说话。
+    out: dict = {"temperature": 0.0,
+                 "timeout": float(os.environ.get("AMB_LLM_TIMEOUT_S", "120"))}
     if not thinking:
         out["extra_body"] = {"enable_thinking": False}
     return out
@@ -345,14 +356,15 @@ def _with_retry(call, kwargs: dict):
         try:
             return call(**kwargs)
         except Exception as exc:  # noqa: BLE001
-            if attempt >= RETRY_MAX or not _is_rate_limit(exc):
+            if attempt >= RETRY_MAX or not _is_transient(exc):
                 raise
             # ⚠️ 指数退避 + 抖动：TPM 是按分钟的窗口，退到分钟级才有意义
             wait = RETRY_BASE_S * (2 ** attempt) * (0.5 + random.random())
             RETRIES.retries += 1
             RETRIES.waited_s += wait
-            warn_once(f"撞到限流，退避重试（第 {attempt + 1}/{RETRY_MAX} 次，"
-                      f"等 {wait:.0f}s）——⚠️ 这段等待不算被测系统的成本")
+            warn_once(f"{type(exc).__name__} → 退避重试"
+                      f"（第 {attempt + 1}/{RETRY_MAX} 次，等 {wait:.0f}s）"
+                      f"——⚠️ 这段等待不算被测系统的成本")
             _time.sleep(wait)
     raise RuntimeError("不可达")
 

@@ -297,3 +297,40 @@ def test_retry_wait_is_accounted_separately() -> None:
     from amb.adapters.llm_cache import RETRIES
 
     assert hasattr(RETRIES, "waited_s") and hasattr(RETRIES, "retries")
+
+
+def test_a_hung_request_cannot_eat_thirty_minutes(monkeypatch) -> None:
+    """⛔ 实测踩点：A-mem 摄入中间空了 **19 分钟**，没有任何日志。
+
+    原因是 openai SDK 的默认值：read 超时 600s，**且自带 2 次静默重试**
+    → 一次卡住的调用最坏吃掉 30 分钟，而且查不出来。
+
+    ⭐ 关思考后输出都在 500 token 以内，120s 已经很宽。
+    """
+    monkeypatch.delenv("AMB_LLM_THINKING", raising=False)
+    monkeypatch.delenv("AMB_LLM_TIMEOUT_S", raising=False)
+    from amb.adapters.llm_cache import backbone_overrides
+
+    assert backbone_overrides()["timeout"] == 120.0
+
+
+def test_timeouts_are_retried_but_loudly(monkeypatch) -> None:
+    """⚠️ 超时跟限流一样是暂时的，值得重试——
+    ⭐ 但要走**我们的**退避（它会说话），⛔ 不是 SDK 那 2 次静默重试。
+    """
+    from amb.adapters import llm_cache
+
+    monkeypatch.setattr(llm_cache, "RETRY_BASE_S", 0.0)
+    tries = []
+
+    class APITimeoutError(Exception):
+        pass
+
+    def slow(**kw):
+        tries.append(1)
+        if len(tries) < 2:
+            raise APITimeoutError("请求超时")
+        return "好了"
+
+    assert llm_cache._with_retry(slow, {}) == "好了"
+    assert llm_cache.RETRIES.retries >= 1     # ⭐ 记了账，不是静默的
