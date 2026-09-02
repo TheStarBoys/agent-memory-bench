@@ -48,6 +48,10 @@ def names() -> list[str]:
     return sorted(_REGISTRY)
 
 
+#: 真被测系统（不是对照组）。⚠️ 它们需要 setup 装好外部依赖。
+SYSTEMS: tuple[str, ...] = ("mem0",)
+
+
 def _install_control_arms() -> None:
     from amb.adapters.impl.bm25 import BM25Adapter
     from amb.adapters.impl.full_context import FullContextAdapter
@@ -62,4 +66,13 @@ def _install_control_arms() -> None:
     register("full_context", FullContextAdapter)
 
 
+def _install_systems() -> None:
+    """被测系统。⚠️ 延迟到真正构造时才 import 它们的依赖——
+    ⛔ 没装 mem0 的机器也要能跑对照组。"""
+    from amb.adapters.impl.mem0 import Mem0Adapter
+
+    register("mem0", Mem0Adapter)
+
+
 _install_control_arms()
+_install_systems()

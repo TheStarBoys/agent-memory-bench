@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from amb.adapters import CONTROL_ARMS, create
 from amb.adapters.embedding import EmbeddingConfig
@@ -29,6 +30,21 @@ def build(name: str, *, context_budget: int = 24_000,
             base_url=require("AMB_EMBED_BASE_URL"),
             api_key_env=os.environ.get("AMB_EMBED_API_KEY_ENV", "SILICONFLOW_API_KEY"),
         ))
+    elif name == "mem0":
+        # ⛔ 没 setup 就拒绝，不静默跑出一个分
+        from amb.setup import require_installed
+
+        require_installed("mem0")
+        arm = create(name,
+                     llm_model=require("AMB_LLM_MODEL"),
+                     llm_base_url=require("AMB_LLM_BASE_URL"),
+                     embed_model=require("AMB_EMBED_MODEL"),
+                     embed_base_url=require("AMB_EMBED_BASE_URL"),
+                     embed_dims=int(os.environ.get("AMB_EMBED_DIMS", "2560")),
+                     api_key_env=os.environ.get("AMB_EMBED_API_KEY_ENV",
+                                                "SILICONFLOW_API_KEY"),
+                     storage_dir=os.environ.get(
+                         "AMB_MEM0_DIR", str(Path(".external") / "mem0-store")))
     else:
         arm = create(name)
     attach = getattr(arm, "attach_llm", None)
