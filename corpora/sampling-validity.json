@@ -1,0 +1,77 @@
+{
+  "truth": 0.5105740181268882,
+  "population": 1986,
+  "by_stratum": {
+    "2-时间推理": 321,
+    "3-开放域推断": 96,
+    "1-多跳": 282,
+    "4-单跳事实": 841,
+    "5-弃权": 446
+  },
+  "results": [
+    {
+      "n": 20,
+      "trials": 200,
+      "stratified": false,
+      "coverage": 0.975,
+      "mean_half_width": 0.19663225454146224,
+      "bias": -0.003074018126888234
+    },
+    {
+      "n": 20,
+      "trials": 200,
+      "stratified": true,
+      "coverage": 0.855,
+      "mean_half_width": 0.18227431330857471,
+      "bias": 0.0015690388273470468
+    },
+    {
+      "n": 63,
+      "trials": 200,
+      "stratified": false,
+      "coverage": 0.925,
+      "mean_half_width": 0.11901293318569722,
+      "bias": -0.003907351460221586
+    },
+    {
+      "n": 63,
+      "trials": 200,
+      "stratified": true,
+      "coverage": 0.93,
+      "mean_half_width": 0.11458495706924347,
+      "bias": -0.003979788413071339
+    },
+    {
+      "n": 100,
+      "trials": 200,
+      "stratified": false,
+      "coverage": 0.945,
+      "mean_half_width": 0.09571922874152179,
+      "bias": -0.00347401812688819
+    },
+    {
+      "n": 100,
+      "trials": 200,
+      "stratified": true,
+      "coverage": 0.95,
+      "mean_half_width": 0.09172145478704515,
+      "bias": 0.004455945041369369
+    },
+    {
+      "n": 400,
+      "trials": 200,
+      "stratified": false,
+      "coverage": 0.985,
+      "mean_half_width": 0.048706189379690075,
+      "bias": 0.0004634818731118484
+    },
+    {
+      "n": 400,
+      "trials": 200,
+      "stratified": true,
+      "coverage": 0.95,
+      "mean_half_width": 0.0427486795240201,
+      "bias": -0.0006504102718126736
+    }
+  ]
+}

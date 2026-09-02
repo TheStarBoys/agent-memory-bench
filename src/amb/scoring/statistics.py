@@ -22,6 +22,11 @@ from dataclasses import dataclass
 Z95 = 1.959963984540054
 
 
+#: 一层至少要抽这么多，层内方差才估得出来。
+#: ⚠️ 只抽 1 题时那层的 p 只能是 0 或 1，⛔ 方差估计失真、区间算得过窄。
+MIN_PER_STRATUM = 3
+
+
 @dataclass(frozen=True, slots=True)
 class Interval:
     """一个比例的点估计与置信区间。"""
@@ -32,6 +37,12 @@ class Interval:
     n: int
     #: ⚠️ 分层抽样的有效样本量可能大于名义 n（方差更小）
     effective_n: float | None = None
+    #: ⛔ 区间不可信时说清为什么——⚠️ 不是把区间调宽蒙混过去
+    caveat: str | None = None
+
+    @property
+    def trustworthy(self) -> bool:
+        return self.caveat is None
 
     @property
     def half_width(self) -> float:
@@ -95,11 +106,19 @@ def stratified(counts: dict[str, tuple[float, int]],
         n_total += n
 
     se = math.sqrt(variance)
+    # ⛔ 有层抽得太少 → 层内方差估不出来，区间会**算得过窄**。
+    # ⚠️ 实测：n=20 时开放域那层只配到 1 题，覆盖率掉到 85.5%（名义 95%）。
+    thin = sorted(st for st, (_, n) in counts.items()
+                  if 0 < n < MIN_PER_STRATUM)
+    caveat = (f"⛔ 这些层样本 <{MIN_PER_STRATUM} 题：{'、'.join(thin)}——"
+              f"层内方差估不出来，区间偏窄，⚠️ 不可当真"
+              if thin else None)
     return Interval(point, max(0.0, point - z * se), min(1.0, point + z * se),
                     n_total,
                     # 等价的简单随机样本量：⭐ 分层「相当于」抽了多少
                     effective_n=(point * (1 - point) / variance if variance > 0
-                                 else float(n_total)))
+                                 else float(n_total)),
+                    caveat=caveat)
 
 
 def required_n(baseline: float, detect: float, z: float = Z95,
@@ -223,3 +242,18 @@ PROPORTION_HINTS = (
 
 def looks_like_proportion(metric: str) -> bool:
     return any(h in metric for h in PROPORTION_HINTS)
+
+
+def min_n_for_strata(population: dict[str, int],
+                     per_stratum: int = MIN_PER_STRATUM) -> int:
+    """分层抽样至少要抽多少题，才能让**每一层**都够 `per_stratum` 条。
+
+    ⭐ 这是「分层该抽多少」的下界，⛔ 低于它就别用分层——
+    用简单随机反而更诚实（它不假装自己按层估计过）。
+    """
+    total = sum(population.values())
+    if total == 0:
+        return 0
+    smallest = min(population.values())
+    # 最小的那层要占到 per_stratum 条，总量得这么大
+    return math.ceil(per_stratum * total / smallest)
