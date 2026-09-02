@@ -7,29 +7,85 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from amb.adapters.llm import LLMClient
 from amb.core import Answer, Entry, Usage
 
 #: ⚠️ 提示是判分口径的一部分。改它等于换尺子，两次跑不可比。
-SYSTEM = (
-    "你是一个问答助手。只依据给出的资料回答，用最简短的词或短语作答，"
-    "不要解释、不要复述问题。"
-    "如果资料里没有答案，只回答四个字：资料未提及。"
+#: ⛔ 但**一次跑里所有臂必须用同一个**——那才是「差别只来自记忆层」的前提。
+
+
+@dataclass(frozen=True, slots=True)
+class Prompt:
+    """一套答题口径：提示 + 弃权词 + 无资料时的占位。
+
+    ⛔ 语言必须跟题库走。⚠️ 实测踩过：中文提示 + 英文题库（LoCoMo），
+    模型一律用中文答——`by dancing` 答成「跳舞」、`19 January, 2023`
+    答成「昨天」，逐字比对全判错。⭐ 那不是记忆层不行，是**尺子在量语言**。
+    ⛔ 加一句「用问题的语言作答」没用，实测反而更差（0.077 → 0.077，
+    中文答案变多了）——⭐ 得换成英文提示才行（0.077 → 0.154）。
+    """
+
+    system: str
+    #: ⛔ 判分要逐字认的那个弃权词
+    abstain: str
+    no_context: str
+    #: 资料 / 问题 / 答案三个标签——⚠️ 也得跟着语言走
+    labels: tuple[str, str, str]
+
+
+ZH = Prompt(
+    system=(
+        "你是一个问答助手。只依据给出的资料回答，用最简短的词或短语作答，"
+        "不要解释、不要复述问题。"
+        "如果资料里没有答案，只回答四个字：资料未提及。"
+    ),
+    abstain="资料未提及",
+    no_context="（没有可用资料）",
+    labels=("资料", "问题", "答案"),
 )
 
-NO_CONTEXT = "（没有可用资料）"
+EN = Prompt(
+    system=(
+        "You are a question-answering assistant. Answer ONLY from the material "
+        "below. Reply with the shortest possible word or phrase — no "
+        "explanation, no restating the question. If the material does not "
+        "contain the answer, reply exactly: NOT IN THE MATERIAL."
+    ),
+    abstain="NOT IN THE MATERIAL",
+    no_context="(no material available)",
+    labels=("Material", "Question", "Answer"),
+)
+
+#: 题库 → 口径。⛔ 一次跑里所有臂共用同一个，⚠️ 且必须进报告。
+BY_BENCH = {"locomo": EN, "toy": ZH}
 
 
-def build_prompt(question: str, entries: list[Entry]) -> str:
+def for_bench(bench: str) -> Prompt:
+    """⚠️ 认不出的题库退回中文那套——⛔ 不猜语言。"""
+    return BY_BENCH.get(bench, ZH)
+
+
+#: ⚠️ 兼容旧调用点：不传 prompt 时用中文那套
+SYSTEM = ZH.system
+NO_CONTEXT = ZH.no_context
+
+
+def build_prompt(question: str, entries: list[Entry],
+                 prompt: Prompt = ZH) -> str:
     if not entries:
-        body = NO_CONTEXT
+        body = prompt.no_context
     else:
         body = "\n".join(f"[{i + 1}] {e.digest}" for i, e in enumerate(entries))
-    return f"资料：\n{body}\n\n问题：{question}\n答案："
+    material, question_label, answer_label = prompt.labels
+    return (f"{material}:\n{body}\n\n"
+            f"{question_label}: {question}\n{answer_label}:")
 
 
-def answer_with(client: LLMClient, question: str, entries: list[Entry]) -> Answer:
-    text = client.complete(SYSTEM, build_prompt(question, entries))
+def answer_with(client: LLMClient, question: str, entries: list[Entry],
+                prompt: Prompt = ZH) -> Answer:
+    text = client.complete(prompt.system, build_prompt(question, entries, prompt))
     return Answer(text=text, used=[e.id for e in entries])
 
 

@@ -202,3 +202,121 @@ def test_documents_and_questions_use_the_same_truncation(data) -> None:
     docs = {d.doc_id.split("/", 1)[-1] for d in documents_for(data, convs, 50)}
     for q in got.items:
         assert set(q.evidence) <= docs
+
+
+# ── 回答档：⛔ 检索到证据 ≠ 答得对 ──────────────────────────────
+def _answer_run(rows: list[dict]):
+    """按 `LocomoAnswerSuite` 的 payload 形状造一次跑。"""
+    from amb.core import Observation, SuiteRun
+
+    run = SuiteRun("locomo_answer", "scored")
+    for i, r in enumerate(rows):
+        run.observations.append(Observation(f"q{i}", r))
+    return run
+
+
+def _row(text: str, gold: list[str], *, unanswerable: bool = False,
+         category: int = 4) -> dict:
+    from amb.suites.public.locomo import CATEGORIES
+
+    return {"text": text, "gold": gold, "unanswerable": unanswerable,
+            "category": category,
+            "stratum": f"{category}-{CATEGORIES[category]}", "used": 3}
+
+
+def test_answer_abstention_is_not_scored_as_wrong() -> None:
+    """⭐ 拒答不是加分项，也不该被记成答错——⛔ 单列。
+
+    ⚠️ 只报准确率的话，一个见题就编的系统会比诚实弃权的系统好看。
+    """
+    from amb.scoring.metrics import score_locomo_answer
+
+    s = score_locomo_answer(_answer_run([
+        _row("Pomodoro technique", ["Pomodoro technique"]),
+        _row("资料未提及", ["House of MinaLima"]),          # 该答却弃权
+        _row("资料未提及", [], unanswerable=True, category=5),
+        _row("He signed with Barcelona", [], unanswerable=True, category=5),
+    ]))
+    assert s.metrics["准确率"] == 0.5, "⛔ 该答却弃权不该算进准确率的分子"
+    assert s.metrics["该答却弃权"] == 0.5
+    assert s.metrics["正确弃权率"] == 0.5
+    assert s.metrics["编造率"] == 0.5, "⛔ 该弃权却答了 = 编造"
+
+
+def test_loose_accuracy_is_the_ruler_uncertainty_not_the_score() -> None:
+    """⭐ 实测踩到：gold `September, 2023`，答 `September`——严格比对判**错**。
+
+    ⛔ 不因此把尺子放宽（那是靠判分宽松度刷分），
+    ⭐ 而是把这把尺的不确定度**量出来**：严格与宽松的差就是它。
+    """
+    from amb.scoring.metrics import score_locomo_answer
+
+    s = score_locomo_answer(_answer_run([
+        _row("September", ["September, 2023"]),
+        _row("Pomodoro technique", ["Pomodoro technique"]),
+    ]))
+    assert s.metrics["准确率"] == 0.5, "⛔ 严格那把尺不许放宽"
+    assert s.metrics["宽松准确率"] == 1.0, "⭐ 上界要能看见漏判"
+
+
+def test_answer_reports_每类_separately() -> None:
+    """⛔ 22% 是弃权题，总分会把那一类糊掉——逐类必须分开报。"""
+    from amb.scoring.metrics import score_locomo_answer
+
+    s = score_locomo_answer(_answer_run([
+        _row("Barcelona", ["Barcelona"], category=4),
+        _row("wrong", ["Madrid"], category=4),
+        _row("资料未提及", [], unanswerable=True, category=5),
+    ]))
+    assert s.metrics["准确率_4-单跳事实"] == 0.5
+    assert s.metrics["题数_4-单跳事实"] == 2.0
+    # ⛔ 弃权类没有 gold，「准确率」在那一类无意义
+    assert "准确率_5-弃权" not in s.metrics
+    assert s.metrics["正确弃权率_5-弃权"] == 1.0
+
+
+def test_answer_suite_is_only_planned_when_a_backbone_is_attached() -> None:
+    """⛔ 没挂 backbone 就别放回答档进去——⚠️ 否则每条臂多一行「未声明 ANSWER」。"""
+    from amb.runner.benchmarks import build_plan
+
+    off, _, _ = build_plan("locomo", conversations=("conv-30",), max_turns=5,
+                           with_answer=False)
+    on, _, _ = build_plan("locomo", conversations=("conv-30",), max_turns=5,
+                          with_answer=True)
+    assert [s.name for s in off.suites] == ["locomo_retrieval"]
+    assert [s.name for s in on.suites] == ["locomo_retrieval", "locomo_answer"]
+
+
+def test_answer_prompt_language_follows_the_benchmark() -> None:
+    """⛔ 中文提示 + 英文题库 = 尺子在量语言，不是在量记忆层。
+
+    ⚠️ 实测：`by dancing` 被答成「跳舞」、`19 January, 2023` 被答成「昨天」，
+    逐字比对全判错。⭐ 换英文提示后严格准确率 0.077 → 0.154。
+    """
+    from amb.runner import answer_prompt
+
+    assert answer_prompt("locomo").abstain == "NOT IN THE MATERIAL"
+    assert answer_prompt("toy").abstain == "资料未提及"
+    # ⛔ 认不出的题库不猜语言，退回中文那套
+    assert answer_prompt("没见过的题库").abstain == "资料未提及"
+
+
+def test_english_abstention_is_recognised_by_the_scorer() -> None:
+    """⛔ 判分认少了一种弃权词，「诚实弃权」会被整列记成「编造」。"""
+    from amb.scoring.metrics import score_locomo_answer
+
+    s = score_locomo_answer(_answer_run([
+        _row("NOT IN THE MATERIAL.", [], unanswerable=True, category=5),
+        _row("资料未提及", [], unanswerable=True, category=5),
+    ]))
+    assert s.metrics["正确弃权率"] == 1.0
+    assert s.metrics["编造率"] == 0.0
+
+
+def test_all_arms_share_one_answer_prompt() -> None:
+    """⛔ 一次跑里口径必须统一——⚠️ 否则比的是提示，不是记忆层。"""
+    from amb.adapters.answering import EN
+    from amb.runner import build
+
+    arms = [build(n, prompt=EN) for n in ("bm25", "naive_rag")]
+    assert all(a._prompt is EN for a in arms)

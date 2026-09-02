@@ -12,6 +12,7 @@ HEADLINE = {
     "n2_provenance_agent": "来源正确率",
     "qa": "准确率",
     "locomo_retrieval": "evidence_recall",
+    "locomo_answer": "准确率",
     "n3_reasoning": "链条完好率",
     "n3_reasoning_agent": "链条完好率",
     "n4_governance_agent": "删除_gone_from_answers",

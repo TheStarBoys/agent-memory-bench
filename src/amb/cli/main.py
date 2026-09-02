@@ -18,7 +18,8 @@ from pathlib import Path
 from amb.core import load_dotenv
 from amb.report import ArmResult, Report, render
 from amb.runner import (
-    backbone, build, build_plan, cache_report, context_overflow, control_arms,
+    answer_prompt, backbone, build, build_plan, cache_report, context_overflow,
+    control_arms,
     ingest_identity, now_rfc3339, run_one,
 )
 
@@ -75,13 +76,19 @@ def main(argv: list[str] | None = None) -> int:
                     help="不挂 backbone，只跑检索档（省钱、离线可跑）")
     args = ap.parse_args(argv)
 
+    # ⛔ 全局唯一的 backbone——所有臂必须同一个，否则 answer 档不可比。
+    # ⚠️ 要在造 plan 之前定下来：没挂 backbone 就不放回答档进去。
+    llm = None if args.no_answer else backbone()
+
     plan, sampling, world_name = build_plan(
         args.bench, sample=args.sample, seed=args.sample_seed,
         max_conversations=args.max_convs, max_turns=args.max_turns,
-        conversations=tuple(c for c in args.convs.split(",") if c))
+        conversations=tuple(c for c in args.convs.split(",") if c),
+        with_answer=llm is not None)
 
-    # ⛔ 全局唯一的 backbone——所有臂必须同一个，否则 answer 档不可比
-    llm = None if args.no_answer else backbone()
+    # ⛔ 答题口径的语言必须跟题库走。⚠️ 实测踩过：中文提示 + 英文题库，
+    # 模型一律用中文答，逐字比对全判错——⭐ 那不是记忆层不行，是尺子在量语言。
+    prompt = answer_prompt(args.bench)
 
     from amb.setup import snapshot
 
@@ -97,7 +104,9 @@ def main(argv: list[str] | None = None) -> int:
                   # ⭐ 摄入用的那个模型。⛔ 与回答 backbone 是两件事：
                   # `--no-answer` 时没有回答 backbone，⚠️ 但被测系统摄入时
                   # 照样调 LLM——钱那一列要靠它才算得出来。
-                  "ingest_model": os.environ.get("AMB_LLM_MODEL", "")},
+                  "ingest_model": os.environ.get("AMB_LLM_MODEL", ""),
+                  # ⛔ 换提示等于换尺子，两次跑不可比——必须进报告
+                  "answer_prompt": prompt.system if llm else None},
         # ⭐ 外部依赖的实际版本，⛔ 没有它这次跑不算数
         externals=snapshot(),
         # ⚠️ 抽样方式进报告——⛔ 抽样变了分数就不可比
@@ -120,10 +129,12 @@ def main(argv: list[str] | None = None) -> int:
             started = time.perf_counter()
             try:
                 result, world_digest = run_one(
-                    name, build(name, context_budget=args.budget, llm=llm), plan, root,
+                    name, build(name, context_budget=args.budget, llm=llm,
+                                prompt=prompt), plan, root,
                     is_control=name in control_arms(),
                     # ⚠️ N4 第 3 步要重开一个同样的适配器
-                    rebuild=lambda n=name: build(n, context_budget=args.budget, llm=llm),
+                    rebuild=lambda n=name: build(n, context_budget=args.budget,
+                                                 llm=llm, prompt=prompt),
                     # ⭐ 摄入快照的键之一：**影响摄入的**那套 LLM 配置。
                     # ⛔ 不是 llm.model——`--no-answer` 时它是 None，
                     # 但被测系统摄入时照样调自己配的 LLM。

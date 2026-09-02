@@ -28,14 +28,17 @@ def build_plan(bench: str, *, sample: str = "all", seed: int = 42,
                max_conversations: int | None = None,
                max_turns: int | None = None,
                conversations: tuple[str, ...] = (),
+               with_answer: bool = False,
                ) -> tuple[Plan, dict[str, Any], str]:
     """返回 (plan, 抽样 provenance, 世界名)。
 
     ⚠️ max_conversations 控语料量——⛔ 与题数是两件事。
+    ⚠️ with_answer：没挂 backbone 就不放回答档——⛔ 否则报告里
+    每条臂都多一行「未声明 ANSWER」的噪声。
     """
     if bench == "locomo":
         return _locomo(sample, seed, max_conversations, max_turns,
-                       conversations)
+                       conversations, with_answer)
     if bench == "toy":
         from worlds import toy
 
@@ -46,9 +49,11 @@ def build_plan(bench: str, *, sample: str = "all", seed: int = 42,
 
 def _locomo(sample: str, seed: int, max_conversations: int | None,
             max_turns: int | None,
-            conversations: tuple[str, ...] = ()) -> tuple[Plan, dict[str, Any], str]:
+            conversations: tuple[str, ...] = (),
+            with_answer: bool = False) -> tuple[Plan, dict[str, Any], str]:
     """⛔ 数据没取下来会抛 DatasetMissing——不是给 0 分。"""
     from amb.suites.public import (
+        LocomoAnswerSuite,
         LocomoRetrievalSuite,
         documents_for,
         load,
@@ -64,6 +69,9 @@ def _locomo(sample: str, seed: int, max_conversations: int | None,
         manifest=WorldManifest(name="locomo", seed=seed,
                                clock_start="2023-01-01T00:00:00Z"),
         documents=documents_for(data, convs, max_turns),
-        suites=[LocomoRetrievalSuite(picked.items)],
+        # ⛔ 两档量的不是同一件事，也不可互比：
+        # 一个问「证据捞到没有」，一个问「捞到之后答对没有」。
+        suites=[LocomoRetrievalSuite(picked.items),
+                *([LocomoAnswerSuite(picked.items)] if with_answer else [])],
     )
     return plan, picked.provenance(), "locomo"

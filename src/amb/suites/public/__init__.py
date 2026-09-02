@@ -1,6 +1,7 @@
 """公开题库：⛔ 调它们的判分代码，不自己重写。"""
 
 from amb.suites.public.locomo import (
+    LocomoAnswerSuite,
     LocomoData,
     LocomoQA,
     LocomoRetrievalSuite,
@@ -19,7 +20,8 @@ from amb.suites.public.spec import (
 )
 
 __all__ = [
-    "LocomoData", "LocomoQA", "LocomoRetrievalSuite", "SampleResult",
+    "LocomoAnswerSuite", "LocomoData", "LocomoQA", "LocomoRetrievalSuite",
+    "SampleResult",
     "SampleSpec", "Strategy", "documents_for", "load", "pick", "sample",
     "DatasetMissing", "Pin", "PublicSuite", "REGISTRY",
     "UpstreamScorerMissing", "pin_for",

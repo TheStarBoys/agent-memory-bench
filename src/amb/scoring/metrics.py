@@ -142,6 +142,14 @@ def score_reality(run: SuiteRun) -> Score:
 #: 弃权的标准说法。⚠️ 与 adapters/answering.py 的提示对齐——
 #: 提示改了这里也要改，否则弃权会被判成答错。
 ABSTAIN = "资料未提及"
+#: ⛔ 英文题库用英文口径（见 adapters/answering.py）——判分要两种都认。
+#: ⚠️ 认少了的后果是「诚实弃权」被记成「编造」，那一列会整个反过来。
+ABSTAIN_WORDS = (ABSTAIN, "NOT IN THE MATERIAL")
+
+
+def _said_abstain(text: str) -> bool:
+    got = _normalize(text)
+    return any(_normalize(w) in got for w in ABSTAIN_WORDS)
 
 
 def _normalize(text: str) -> str:
@@ -167,7 +175,7 @@ def score_qa(run: SuiteRun) -> Score:
     correct = abstained_right = abstained_wrong = fabricated = 0
     for obs in run.observations:
         text = _normalize(obs.payload["text"])
-        said_abstain = _normalize(ABSTAIN) in text
+        said_abstain = _said_abstain(obs.payload["text"])
         if obs.payload["unanswerable"]:
             # 该弃权的题
             abstained_right += said_abstain
@@ -521,6 +529,102 @@ def score_reasoning(run: SuiteRun) -> Score:
     return _finish(s, run)
 
 
+#: 宽松判定里认为「答到了」的 gold 词覆盖比例。⚠️ 阈值是拍的，⛔ 所以它只当上界。
+_LOOSE_COVERAGE = 0.6
+
+
+def _loose_hit(text: str, gold: list) -> bool:
+    """⚠️ 判分**上界**：⛔ 不用来排名，只用来量这把尺的不确定度。
+
+    两条都算中：
+    ① 谁包含谁——⭐ 实测 gold `September, 2023`、答 `September`，
+       严格比对判错，而那是个对的答案。
+    ② gold 的词被答案覆盖了 ≥60%——⭐ 实测 gold
+       `Winning first place at a regionals dance competition`、
+       答 `... her team won first place at a regionals at age fifteen`，
+       ⛔ 两边互不包含，但那显然答对了。
+
+    ⚠️ 反过来，答 `S` 或者答一大段废话都可能被这两条算中——
+    ⛔ 所以它是**上界**，不是分数。严格与它的差 = 这把尺的不确定度。
+    """
+    got = _normalize(text)
+    for g in gold:
+        ng = _normalize(str(g))
+        # ⚠️ 太短的片段两边都能包住，⛔ 3 字符以下不认
+        if len(ng) >= 3 and len(got) >= 3 and (ng in got or got in ng):
+            return True
+        words = [w for w in _words(str(g)) if len(w) > 2]
+        if words:
+            hit = sum(1 for w in words if w in _words(text))
+            if hit / len(words) >= _LOOSE_COVERAGE:
+                return True
+    return False
+
+
+def _words(text: str) -> set:
+    """切词。⛔ 只做最保守的一步：小写 + 去标点 + 按空白切。"""
+    drop = "。，、；：！？「」『』（）《》.,;:!?\"'()"
+    cleaned = "".join(" " if c in drop else c for c in text.lower())
+    return set(cleaned.split())
+
+
+def score_locomo_answer(run: SuiteRun) -> Score:
+    """LoCoMo 回答档。⛔ 检索到证据 ≠ 答得对。
+
+    ⚠️ 报分必须写成「<系统> + <backbone>」——这一档含答案生成器。
+    ⛔ 与 `locomo_retrieval` 的数**不可互比**：一个问证据捞到没有，
+    一个问答对没有。
+    """
+    s = Score(run.suite, run.status, run.reason)
+    if run.status != "scored":
+        return s
+
+    rows = [o.payload for o in run.observations]
+    correct = loose = abstained_wrong = abstained_right = fabricated = 0
+    for r in rows:
+        text = _normalize(r["text"])
+        said_abstain = _said_abstain(r["text"])
+        if r["unanswerable"]:
+            abstained_right += said_abstain
+            fabricated += not said_abstain        # ⛔ 编造
+        elif said_abstain:
+            abstained_wrong += 1                  # 该答却弃权——单列，不算错
+        else:
+            correct += any(_normalize(str(g)) in text for g in r["gold"])
+            loose += _loose_hit(r["text"], r["gold"])
+
+    answerable = sum(1 for r in rows if not r["unanswerable"]) or 1
+    unanswerable = sum(1 for r in rows if r["unanswerable"]) or 1
+    s.metrics = {
+        "准确率": correct / answerable,
+        # ⭐ 判分上界。⛔ 不是分数——它与准确率的差就是这把尺的不确定度
+        "宽松准确率": loose / answerable,
+        "该答却弃权": abstained_wrong / answerable,
+        # ⭐ 这两个必须与准确率同屏：只报准确率的话，
+        #    一个见题就编的系统会比一个诚实弃权的系统好看
+        "正确弃权率": abstained_right / unanswerable,
+        "编造率": fabricated / unanswerable,
+        "题数": float(len(rows)),
+    }
+    # ⭐ 逐类分开——⛔ 22% 是弃权题，总分会把那一类糊掉
+    by_cat: dict[str, list] = {}
+    for r in rows:
+        by_cat.setdefault(r["stratum"], []).append(r)
+    for stratum in sorted(by_cat):
+        subset = by_cat[stratum]
+        if subset[0]["unanswerable"]:
+            # ⛔ 弃权类没有 gold，「准确率」在这一类无意义——报正确弃权率
+            right = sum(1 for r in subset if _said_abstain(r["text"]))
+            s.metrics[f"正确弃权率_{stratum}"] = right / len(subset)
+        else:
+            ok = sum(1 for r in subset
+                     if any(_normalize(str(g)) in _normalize(r["text"])
+                            for g in r["gold"]))
+            s.metrics[f"准确率_{stratum}"] = ok / len(subset)
+        s.metrics[f"题数_{stratum}"] = float(len(subset))
+    return _finish(s, run)
+
+
 def score_locomo_retrieval(run: SuiteRun) -> Score:
     """LoCoMo 检索质量：靠 evidence 对账，⛔ 不生成答案。
 
@@ -573,6 +677,7 @@ SCORERS: dict[str, Any] = {
     "n5_self_reported": score_retention,
     "n2_provenance_agent": score_agent_provenance,
     "qa": score_qa,
+    "locomo_answer": score_locomo_answer,
     "retrieval": score_retrieval,
     "n2_provenance": score_provenance,
     # ⛔ 两种模式各判各的，永不合并成一个 N1 分数

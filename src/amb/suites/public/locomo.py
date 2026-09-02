@@ -141,6 +141,51 @@ class LocomoRetrievalSuite:
         return run
 
 
+class LocomoAnswerSuite:
+    """⭐ 回答档：检索到证据 ≠ 答得对。
+
+    ⛔ 与 [`LocomoRetrievalSuite`](#) 量的**不是同一件事**：
+    那一档只问「证据捞到没有」，这一档问「捞到之后答对没有」。
+    ⚠️ 两档的数不可互比，报分时必须写成「<系统> + <backbone>」——
+    这一档含答案生成器，只报系统名等于把别人的生成器算进自己的成绩。
+
+    ⛔ 判分沿用 [`qa` 那把尺](../../scoring/metrics.py)：逐字比对，不用评委。
+    ⚠️ 它会**系统性漏判**——LoCoMo 的 gold 有 35% 长过 25 字符
+    （实测：gold `September, 2023`，答 `September`，严格比对判错）。
+    ⭐ 所以额外报一个**宽松准确率**当判分上界，两者的差就是这把尺的不确定度。
+    ⛔ 但排名一律看严格那个：宁可漏判成错，不靠判分的宽松度刷分。
+    """
+
+    name: ClassVar[str] = "locomo_answer"
+    requires: ClassVar[frozenset[Capability]] = frozenset({Capability.ANSWER})
+
+    def __init__(self, questions: list[LocomoQA]) -> None:
+        self._questions = questions
+
+    def probe(self, adapter: Adapter, world: WorldState) -> SuiteRun:
+        from amb.core import Answer, Failed, Unsupported
+
+        run = SuiteRun(self.name, "scored")
+        for q in self._questions:
+            got = adapter.answer(q.question)
+            if isinstance(got, Unsupported):
+                return SuiteRun(self.name, "unsupported", reason=got.reason)
+            if isinstance(got, Failed):
+                run.failed += 1        # ⛔ 计入分母，记为未答对
+                continue
+            assert isinstance(got, Answer)
+            run.observations.append(Observation(q.qa_id, {
+                "text": got.text,
+                # ⛔ 弃权题没有 gold，只有 adversarial_answer——这里给空
+                "gold": [q.answer] if q.answer else [],
+                "unanswerable": q.unanswerable,
+                "category": q.category,
+                "stratum": q.stratum,
+                "used": len(got.used),
+            }))
+        return run
+
+
 def pick(data: LocomoData, spec: SampleSpec,
          max_conversations: int | None = None,
          max_turns: int | None = None,

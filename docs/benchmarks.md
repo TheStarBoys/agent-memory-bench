@@ -84,6 +84,54 @@ python -m amb.cli --bench locomo --sample stratified:50 --arms bm25
 ⚠️ **22% 是弃权题，比多跳还多。** 只会返回 top-k 的系统在这一类上必然全错——
 **拒答不是加分项，是四分之一的卷面。**
 
+#### 回答档：⛔ 检索到证据 ≠ 答得对
+
+```sh
+# 检索档：不挂 backbone，只问「证据捞到没有」
+python -m amb.cli --bench locomo --convs conv-30 --max-turns 30 --no-answer
+# 回答档：挂 backbone，问「捞到之后答对没有」
+python -m amb.cli --bench locomo --convs conv-30 --max-turns 30
+```
+
+⛔ **两档的数不可互比**，报分时回答档必须写成「<系统> + <backbone>」——
+这一档含答案生成器，只报系统名等于把别人的生成器算进自己的成绩。
+
+| 这一档报什么 | |
+|---|---|
+| `准确率` | ⭐ 主指标。⛔ 逐字比对，[不用评委](adapters/README.md#p5) |
+| `宽松准确率` | ⚠️ **判分上界，不是分数**——它与准确率的差就是这把尺的不确定度 |
+| `该答却弃权` | 单列。⛔ 不算错——⚠️ 拒答与答错是两件事 |
+| `正确弃权率` / `编造率` | ⭐ 必须与准确率同屏，否则见题就编的系统会更好看 |
+| 逐类 | ⛔ 22% 是弃权题，总分会把那一类糊掉 |
+
+⚠️ **LoCoMo 官方判分是 LLM 评委，我们不用**（[原则⑤](adapters/README.md#p5)）。
+⛔ 所以这一档的数**不可与已发表的 LoCoMo 分数并列**——尺子不同。
+
+##### ⛔ 两个已知的、会压低这一档绝对分的东西
+
+**① 逐字比对判不了自由文本的 gold。** LoCoMo 的 gold 中位 20 字符，
+但有 35% 长过 25 字符。实测：
+
+| gold | 系统答的 | 严格 | 宽松 |
+|---|---|---|---|
+| `September, 2023` | `September` | ✗ | ✓ |
+| `Winning first place at a regionals dance competition` | `… her team won first place at a regionals at age fifteen` | ✗ | ✓ |
+| `They are performing at the festival` | `Festival performers.` | ✗ | ✗ |
+
+⭐ 所以看这一档要**同时看两个数**，⛔ 排名一律看严格那个：
+宁可漏判成错，不靠判分的宽松度刷分。
+
+**② ⛔ 时间推理那一类是构造性不可答的。**
+[`documents_for()`](../src/amb/suites/public/locomo.py) 把每一轮变成
+`"<说话人>: <正文>"`，⚠️ **会话日期没有进摄入单元**。
+于是问 `When did Jon go to a fair?`（gold `24 April, 2023`），
+所有臂拿到的资料里根本没有日期，只能答 `Yesterday`——
+⛔ **这一类所有臂都是 0.000，那是语料的性质，不是系统的**。
+
+⚠️ 要修就得把日期拼进摄入单元，⛔ 代价是**语料指纹变了**：
+全部摄入快照作废，已有存档的检索分不可再与新跑并列
+（`mem0` 那条重摄一次 73 分钟 / $0.22）。⭐ 没做，留着这条记录。
+
 ### MemoryAgentBench —— 四能力
 
 精确检索（LongMemEval / EventQA / RULER-QA）· **冲突消解**（FactConsolidation）·

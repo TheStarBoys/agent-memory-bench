@@ -9,7 +9,7 @@
 
 from __future__ import annotations
 
-from amb.adapters.answering import answer_with, usage_of
+from amb.adapters.answering import Prompt, ZH, answer_with, usage_of
 from amb.adapters.llm import LLMClient, LLMConfig
 from amb.core import Answer, Capability, Failed, Unsupported, Usage
 
@@ -22,6 +22,13 @@ class Answerable:
 
     #: 类级默认——没挂 backbone 的臂照样能构造、能跑基线档。
     _llm: LLMClient | None = None
+
+    #: 答题口径。⛔ 一次跑里所有臂必须是同一个，⚠️ 语言跟题库走。
+    _prompt: Prompt = ZH
+
+    def attach_prompt(self, prompt: Prompt) -> None:
+        """⛔ 只有 runner 调这个。所有臂必须收到同一份口径。"""
+        self._prompt = prompt
 
     def attach_llm(self, cfg: LLMConfig | None) -> None:
         """⛔ 只有 runner 调这个。所有臂必须收到同一份 cfg。"""
@@ -36,7 +43,7 @@ class Answerable:
             # ⛔ 没配 backbone = 压根没这能力，不是这次没做成
             return Unsupported("未配置 backbone")
         hits = self.search(query, self.answer_k, principal=principal)  # type: ignore[attr-defined]
-        return answer_with(self._llm, query, hits)
+        return answer_with(self._llm, query, hits, self._prompt)
 
     def usage(self) -> list[Usage] | Unsupported:
         if self._llm is None:

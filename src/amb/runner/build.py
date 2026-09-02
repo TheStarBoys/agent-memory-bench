@@ -23,7 +23,7 @@ def _env_dir(name: str, default: str) -> str:
 
 
 def build(name: str, *, context_budget: int = 24_000,
-          llm: LLMConfig | None = None) -> Adapter:
+          llm: LLMConfig | None = None, prompt=None) -> Adapter:
     """构造参数按名字分派，然后统一挂上 backbone。
 
     ⚠️ 这是唯一一处「认识具体臂」的地方。
@@ -73,6 +73,11 @@ def build(name: str, *, context_budget: int = 24_000,
     attach = getattr(arm, "attach_llm", None)
     if attach is not None:
         attach(llm)
+    # ⛔ 答题口径也由这里统一挂：⚠️ 语言跟题库走，
+    # 而一次跑里所有臂必须是同一个——否则比的是提示，不是记忆层。
+    attach_prompt = getattr(arm, "attach_prompt", None)
+    if prompt is not None and attach_prompt is not None:
+        attach_prompt(prompt)
     return arm
 
 
@@ -92,6 +97,17 @@ def ingest_identity() -> str:
     thinking = os.environ.get("AMB_LLM_THINKING", "").lower() in (
         "1", "true", "yes", "on")
     return f"{model}|thinking={int(thinking)}"
+
+
+def answer_prompt(bench: str):
+    """这个题库该用哪套答题口径。⚠️ 经 runner 转出，⛔ cli 不直接依赖 adapters。
+
+    ⛔ 语言必须跟题库走——实测踩过：中文提示 + 英文题库，
+    模型一律用中文答，逐字比对全判错。⭐ 那不是记忆层不行，是尺子在量语言。
+    """
+    from amb.adapters.answering import for_bench
+
+    return for_bench(bench)
 
 
 def context_overflow() -> type[Exception]:
