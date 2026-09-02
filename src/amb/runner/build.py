@@ -24,7 +24,7 @@ def build(name: str, *, context_budget: int = 24_000,
     """
     if name == "full_context":
         arm = create(name, budget_chars=context_budget)
-    elif name == "naive_rag":
+    elif name in ("naive_rag", "hybrid"):
         arm = create(name, embedding=EmbeddingConfig(
             model=require("AMB_EMBED_MODEL"),
             base_url=require("AMB_EMBED_BASE_URL"),

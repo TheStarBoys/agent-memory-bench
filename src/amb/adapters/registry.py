@@ -64,6 +64,11 @@ def _install_control_arms() -> None:
     register("bm25", BM25Adapter)
     register("naive_rag", NaiveRagAdapter)
     register("full_context", FullContextAdapter)
+    # ⭐ 混合检索：不是「对照组」也不是第三方系统，
+    # 是一条用来检验「两种检索各有主场」那个观察的臂。
+    from amb.adapters.impl.hybrid import HybridAdapter
+
+    register("hybrid", HybridAdapter)
 
 
 def _install_systems() -> None:

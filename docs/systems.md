@@ -40,6 +40,32 @@
 | [MemoryLLM](https://github.com/wangyu-ustc/MemoryLLM) | 322 | MIT | 2025-07-28 | **参数化记忆**，把记忆塞进权重而非外部库 |
 | [MemoChat](https://github.com/LuJunru/MemoChat) | 30 | MIT | 2024-04-18 | 早期对话记忆分片检索 |
 
+## ⭐ 接入成本调研（2026-09-02）
+
+⚠️ 挑「便宜的先接」时逐个查过。**结论是个负面发现，但很清楚**：
+
+| 系统 | 摄入要 LLM 吗 | 接入障碍 |
+|---|---|---|
+| **mem0** | ⛔ 要（36.7 秒/条）| ⭐ 已接。⚠️ 有 `infer=False` 开关 → 1.7 秒/条 |
+| A-mem | ⛔ 要 | LLM 生成笔记与链接 |
+| MemoryOS | ⛔ 要 | LLM 摘要 |
+| cognee · langmem | ⛔ 要 | 管道里就有 LLM |
+| **Memori** | ⛔ 要 | ⛔ 还要**云端 API key**——外部服务不可复现 |
+| graphiti / Zep | ⛔ 要 | 还要 Neo4j |
+| txtai | ✅ 不要 | ⚠️ 242 个依赖，而且它是**框架不是记忆系统** |
+
+⭐ **这不是巧合——「LLM 抽取」就是这类系统的定义特征。**
+所以「便宜的记忆系统」基本等于「RAG 变体」，
+而那正是[对照组](baselines.md)已经覆盖的。
+
+⚠️ 对评测的两个含义：
+
+1. ⛔ **成本不是可选维度。** 一整类系统的定义特征就是「贵」，
+   不把成本纳入判定，等于假装那个代价不存在（[原则⑥](adapters/README.md#p6)）。
+2. ⭐ **同一系统的开关比换系统更干净。** `mem0` vs `mem0_raw` 差别**只在**
+   那一个开关上——backbone、embedding、存储全一样。
+   换第三方系统时，差异里会混进实现质量、依赖版本、适配器写法一堆东西。
+
 ## Agent 宿主生态（新增，核实 2026-09-01）
 
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（★207k · MIT）
