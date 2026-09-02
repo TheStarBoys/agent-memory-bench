@@ -143,3 +143,36 @@ def test_questions_always_have_their_corpus(data) -> None:
     got = pick(data, SampleSpec(Strategy.STRATIFIED, 30, seed=5),
                max_conversations=2)
     assert len({q.conversation_id for q in got.items}) <= 2
+
+
+def test_truncating_turns_drops_questions_whose_evidence_is_gone(data) -> None:
+    """⛔ 截了语料就必须丢掉 evidence 落在被截部分的题。
+
+    ⚠️ 留着它们必然全错——那个分数是假的，
+    而且会让一个系统看起来比实际差。
+    """
+    spec = SampleSpec(Strategy.STRATIFIED, 12, seed=42)
+    got = pick(data, spec, max_conversations=1, max_turns=60)
+    kept = set(data.order[next(iter({q.conversation_id for q in got.items}))][:60])
+    for q in got.items:
+        assert set(q.evidence) <= kept, f"{q.qa_id} 的 evidence 不在保留语料里"
+
+
+def test_dropped_question_count_is_recorded(data) -> None:
+    """⚠️ 丢了几道要进报告——不然读者不知道题池被削过。"""
+    p = pick(data, SampleSpec(Strategy.STRATIFIED, 12, seed=42),
+             max_conversations=1, max_turns=60).provenance()
+    assert "dropped_no_evidence=" in p["note"]
+    assert "max_turns=60" in p["note"]
+
+
+def test_documents_and_questions_use_the_same_truncation(data) -> None:
+    """⛔ 两边的 max_turns 不一致，题会指向不存在的语料。"""
+    from amb.suites.public.locomo import documents_for
+
+    got = pick(data, SampleSpec(Strategy.STRATIFIED, 10, seed=1),
+               max_conversations=1, max_turns=50)
+    convs = {q.conversation_id for q in got.items}
+    docs = {d.doc_id.split("/", 1)[-1] for d in documents_for(data, convs, 50)}
+    for q in got.items:
+        assert set(q.evidence) <= docs

@@ -25,14 +25,15 @@ def parse_sample(text: str, seed: int):
 
 
 def build_plan(bench: str, *, sample: str = "all", seed: int = 42,
-               max_conversations: int | None = None
+               max_conversations: int | None = None,
+               max_turns: int | None = None
                ) -> tuple[Plan, dict[str, Any], str]:
     """返回 (plan, 抽样 provenance, 世界名)。
 
     ⚠️ max_conversations 控语料量——⛔ 与题数是两件事。
     """
     if bench == "locomo":
-        return _locomo(sample, seed, max_conversations)
+        return _locomo(sample, seed, max_conversations, max_turns)
     if bench == "toy":
         from worlds import toy
 
@@ -41,8 +42,8 @@ def build_plan(bench: str, *, sample: str = "all", seed: int = 42,
     raise KeyError(f"未知题库 {bench!r}。已知：toy · locomo")
 
 
-def _locomo(sample: str, seed: int,
-            max_conversations: int | None) -> tuple[Plan, dict[str, Any], str]:
+def _locomo(sample: str, seed: int, max_conversations: int | None,
+            max_turns: int | None) -> tuple[Plan, dict[str, Any], str]:
     """⛔ 数据没取下来会抛 DatasetMissing——不是给 0 分。"""
     from amb.suites.public import (
         LocomoRetrievalSuite,
@@ -53,12 +54,12 @@ def _locomo(sample: str, seed: int,
     from amb.world import WorldManifest
 
     data = load()
-    picked = pick(data, parse_sample(sample, seed), max_conversations)
+    picked = pick(data, parse_sample(sample, seed), max_conversations, max_turns)
     convs = {q.conversation_id for q in picked.items}
     plan = Plan(
         manifest=WorldManifest(name="locomo", seed=seed,
                                clock_start="2023-01-01T00:00:00Z"),
-        documents=documents_for(data, convs),
+        documents=documents_for(data, convs, max_turns),
         suites=[LocomoRetrievalSuite(picked.items)],
     )
     return plan, picked.provenance(), "locomo"

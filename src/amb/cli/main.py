@@ -59,6 +59,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="抽题：all | first:N | random:N | stratified:N | ids:a,b")
     ap.add_argument("--max-convs", type=int, default=None,
                     help="限几个对话——⛔ 控的是语料量，与题数是两件事")
+    ap.add_argument("--max-turns", type=int, default=None,
+                    help="每个对话只留前 N 轮——⛔ evidence 落在被截部分的题会被丢掉")
     ap.add_argument("--sample-seed", type=int, default=42,
                     help="⚠️ 随机抽样的种子——⛔ 进报告，不记就不可复现")
     ap.add_argument("--lane", choices=("library", "agent", "both"),
@@ -69,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
 
     plan, sampling, world_name = build_plan(
         args.bench, sample=args.sample, seed=args.sample_seed,
-        max_conversations=args.max_convs)
+        max_conversations=args.max_convs, max_turns=args.max_turns)
 
     # ⛔ 全局唯一的 backbone——所有臂必须同一个，否则 answer 档不可比
     llm = None if args.no_answer else backbone()

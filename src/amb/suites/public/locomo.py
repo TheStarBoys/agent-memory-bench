@@ -97,12 +97,16 @@ def load(path: Path = DATA) -> LocomoData:
     return LocomoData(questions=questions, turns=turns, order=order)
 
 
-def documents_for(data: LocomoData, conversation_ids: set[str]) -> list[Document]:
-    """把对话轮变成摄入单元。⚠️ doc_id 用 `<对话>/<轮次>`，判检索靠它。"""
+def documents_for(data: LocomoData, conversation_ids: set[str],
+                  max_turns: int | None = None) -> list[Document]:
+    """把对话轮变成摄入单元。⚠️ doc_id 用 `<对话>/<轮次>`，判检索靠它。
+
+    ⚠️ max_turns 与 pick() 的必须一致——⛔ 不一致会让题指向不存在的语料。
+    """
     return [
         Document(doc_id=f"{cid}/{dia}", text=data.turns[cid][dia], kind="turn")
         for cid in sorted(conversation_ids)
-        for dia in data.order[cid]
+        for dia in (data.order[cid][:max_turns] if max_turns else data.order[cid])
     ]
 
 
@@ -138,7 +142,8 @@ class LocomoRetrievalSuite:
 
 
 def pick(data: LocomoData, spec: SampleSpec,
-         max_conversations: int | None = None) -> SampleResult:
+         max_conversations: int | None = None,
+         max_turns: int | None = None) -> SampleResult:
     """抽题。⚠️ 结果的 provenance 要进报告。
 
     ⛔ `max_conversations` 控的是**语料量**，与题数是两件事：
@@ -146,19 +151,41 @@ def pick(data: LocomoData, spec: SampleSpec,
     对 mem0 这种每条都调 LLM 的系统，**语料量才是那个约束**
     （实测：不限的话要跑几小时）。
 
-    ⚠️ 先限对话再抽题——⛔ 反过来会抽出没有语料的题。
+    ⚠️ 先限语料再抽题——⛔ 反过来会抽出没有语料的题。
+
+    `max_turns` 比 `max_conversations` 更细：⚠️ mem0 每条 add() 要多轮 LLM
+    调用（抽取+比对+裁决），实测 369 轮要跑几小时——
+    ⭐ 一个对话仍然太大，所以要能按轮数截。
+
+    ⛔ 截了语料就必须**丢掉 evidence 落在被截部分的题**，
+    否则那些题必然全错，分数是假的。丢了几道进 provenance。
     """
     import random as _r
 
     questions = data.questions
+    notes: list[str] = []
+    kept_turns: dict[str, set[str]] | None = None
+
     if max_conversations is not None:
         convs = sorted(data.turns)
         keep = set(_r.Random(spec.seed).sample(
             convs, k=min(max_conversations, len(convs))))
         questions = [q for q in questions if q.conversation_id in keep]
+        notes.append(f"max_conversations={max_conversations}")
+
+    if max_turns is not None:
+        # 每个对话只留前 max_turns 轮
+        kept_turns = {cid: set(order[:max_turns]) for cid, order in data.order.items()}
+        before = len(questions)
+        # ⛔ evidence 不在保留语料里的题必须丢掉——留着它们必然全错
+        questions = [
+            q for q in questions
+            if q.evidence and set(q.evidence) <= kept_turns.get(q.conversation_id, set())
+        ]
+        notes.append(f"max_turns={max_turns}")
+        notes.append(f"dropped_no_evidence={before - len(questions)}")
 
     got = sample(questions, spec, key=lambda q: q.qa_id,
                  stratum=lambda q: q.stratum)
-    if max_conversations is not None:
-        got.spec_note = f"max_conversations={max_conversations}"
+    got.spec_note = " ".join(notes)
     return got
