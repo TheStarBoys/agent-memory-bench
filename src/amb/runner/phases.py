@@ -134,10 +134,16 @@ def _store_of(adapter: Adapter) -> Path | None:
     """适配器申报的持久层。⛔ 只认申报了**唯一一个**目录的——
     ⚠️ 多个目录说明它的状态不止一处，拷一个会拿到不一致的快照。"""
     places = getattr(adapter, "storage_locations", lambda: [])()
-    if isinstance(places, list) and len(places) == 1:
-        path = Path(places[0])
-        return path if path.parent.exists() else None
-    return None
+    if not (isinstance(places, list) and len(places) == 1 and places[0]):
+        return None
+    path = Path(places[0])
+    # ⛔ 安全网：`.`／仓库根／文件系统根一律不认。
+    # ⚠️ 踩过——`AMB_MEM0_DIR=`（空串）会让 storage_dir 变成 `Path("")` 即 `.`，
+    # 那时快照会把**整个仓库**拷进 .external/snapshots。
+    resolved = path.resolve()
+    if resolved == Path.cwd().resolve() or resolved == resolved.parent:
+        return None
+    return path if path.parent.exists() else None
 
 
 def _snapshot_key(name: str, adapter: Adapter, plan: Plan, backbone: str):

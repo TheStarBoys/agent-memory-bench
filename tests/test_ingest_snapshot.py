@@ -137,3 +137,56 @@ def test_wrapping_twice_is_a_no_op() -> None:
     client = _FakeClient()
     assert wrap_openai_client(client) is True
     assert wrap_openai_client(client) is False
+
+
+# ── ③ 快照的安全网：⛔ 别把整个仓库拷进去 ──────────────────────
+def test_an_empty_env_var_never_makes_the_repo_the_store(monkeypatch) -> None:
+    """⛔ 实测踩点：`AMB_MEM0_DIR=`（空串）会让 storage_dir 变成 `""`，
+    而 `Path("")` 是 `.`——⚠️ 那时摄入快照会把**整个仓库**拷进
+    `.external/snapshots`。
+
+    两道防线都要在：① build 把空串当没设 ② `_store_of` 拒绝 `.`。
+    """
+    from amb.runner.phases import _store_of
+
+    assert _store_of(_Arm([""])) is None
+    assert _store_of(_Arm(["."])) is None
+    assert _store_of(_Arm([str(Path.cwd())])) is None
+    assert _store_of(_Arm(["/"])) is None
+
+
+def test_empty_env_var_falls_back_to_the_default_dir(monkeypatch) -> None:
+    """⚠️ `os.environ.get(k, 默认)` 只在**键不存在**时给默认值。"""
+    from amb.runner.build import _env_dir
+
+    monkeypatch.setenv("AMB_TEST_DIR", "")
+    assert _env_dir("AMB_TEST_DIR", "默认") == "默认"
+    monkeypatch.setenv("AMB_TEST_DIR", "给了值")
+    assert _env_dir("AMB_TEST_DIR", "默认") == "给了值"
+
+
+# ── ④ 三态：不适用 ≠ 跑挂了 ≠ 0 分 ─────────────────────────────
+def test_not_applicable_is_not_crashed() -> None:
+    """⛔ 实测踩点：`full_context` 遇到塞不下窗口的语料时抛 `ContextOverflow`，
+    被通用 except 接住记成了 `crashed`。
+
+    ⚠️ 但 docs/baselines.md 明确规定那该记 **N/A**——
+    ⭐ 「不适用 / 失败 / 0 分」是三件事，压成一列这个项目就白做了。
+    """
+    from amb.report.render import _render_lane
+    from amb.report.schema import ArmResult, Report
+
+    report = Report(run_id="r", at="t", world={"name": "w", "seed": 1,
+                                               "digest": ""},
+                    backbone={}, externals={}, sampling={})
+    text = _render_lane("library", [
+        ArmResult(arm="full_context", is_control=True,
+                  not_applicable="语料 55385 码点 > 预算 24000"),
+        ArmResult(arm="mem0", is_control=False, crashed="BridgeError: 挂了"),
+    ], report)
+
+    assert "不适用" in text and "N/A" in text
+    assert "没跑完" in text                       # 崩溃那一段还在
+    # ⛔ 两者不许混为一谈
+    na_at, crash_at = text.index("不适用"), text.index("没跑完")
+    assert na_at != crash_at

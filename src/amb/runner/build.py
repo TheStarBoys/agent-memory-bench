@@ -15,6 +15,13 @@ from amb.adapters.llm import LLMConfig, from_env
 from amb.core import Adapter, require
 
 
+def _env_dir(name: str, default: str) -> str:
+    """⛔ 空串不是路径。⚠️ `os.environ.get(k, 默认)` 只在**键不存在**时给默认，
+    `AMB_MEM0_DIR=` 会让 storage_dir 变成 ""，`Path("")` 是 `.`——
+    那会把整个仓库当成 store（摄入快照会照着拷）。踩点在这里堵住。"""
+    return os.environ.get(name) or default
+
+
 def build(name: str, *, context_budget: int = 24_000,
           llm: LLMConfig | None = None) -> Adapter:
     """构造参数按名字分派，然后统一挂上 backbone。
@@ -44,7 +51,7 @@ def build(name: str, *, context_budget: int = 24_000,
                      api_key_env=os.environ.get("AMB_EMBED_API_KEY_ENV",
                                                 "SILICONFLOW_API_KEY"),
                      # ⛔ 两条臂各用各的库——共用会互相污染
-                     storage_dir=os.environ.get(
+                     storage_dir=_env_dir(
                          "AMB_MEM0_DIR",
                          str(Path(".external") / f"{name}-store")))
     elif name == "a_mem":
@@ -58,7 +65,7 @@ def build(name: str, *, context_budget: int = 24_000,
                      llm_base_url=require("AMB_LLM_BASE_URL"),
                      api_key_env=os.environ.get("AMB_LLM_API_KEY_ENV",
                                                 "SILICONFLOW_API_KEY"),
-                     storage_dir=os.environ.get(
+                     storage_dir=_env_dir(
                          "AMB_AMEM_DIR",
                          str(Path(".external") / "a_mem-store")))
     else:
@@ -67,6 +74,17 @@ def build(name: str, *, context_budget: int = 24_000,
     if attach is not None:
         attach(llm)
     return arm
+
+
+def context_overflow() -> type[Exception]:
+    """「语料塞不下窗口」那个信号的类型。
+
+    ⚠️ 经 runner 转出，⛔ cli 不直接依赖 adapters。
+    ⭐ 它不是故障：按 docs/baselines.md 该记 N/A。
+    """
+    from amb.adapters.impl.full_context.adapter import ContextOverflow
+
+    return ContextOverflow
 
 
 def control_arms() -> tuple[str, ...]:

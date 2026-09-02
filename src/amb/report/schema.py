@@ -31,6 +31,11 @@ class ArmResult:
     #: ⛔ 跑挂了就记在这里——**不许只留在 stderr**。
     #: ⚠️ 一条臂静默消失，读者会以为它没参赛，而实际是它崩了。
     crashed: str | None = None
+    #: ⭐ **不适用**，与「跑挂了」是两件事：这条臂在这个语料上**本来就没法跑**
+    #: （如 full_context 遇到塞不下窗口的语料）。
+    #: ⛔ 按 docs/baselines.md 记 N/A，⚠️ 不记 0、也不算失败——
+    #: 把它并进 crashed 就是把三态压成两态。
+    not_applicable: str | None = None
     #: 墙钟，评测器从外部独立计时。⚠️ 适配器自报的那份另计（原则⑥）。
     cost: dict[str, int] = field(default_factory=dict)
     #: ⭐ 完整成本画像：每条摄入多久、每次回答多久、token、钱。

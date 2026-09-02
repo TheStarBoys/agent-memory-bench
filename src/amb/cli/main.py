@@ -17,8 +17,8 @@ from pathlib import Path
 from amb.core import load_dotenv
 from amb.report import ArmResult, Report, render
 from amb.runner import (
-    backbone, build, build_plan, cache_report, control_arms, now_rfc3339,
-    run_one,
+    backbone, build, build_plan, cache_report, context_overflow, control_arms,
+    now_rfc3339, run_one,
 )
 
 
@@ -119,6 +119,17 @@ def main(argv: list[str] | None = None) -> int:
                     # 摄入结果会因 backbone 而异，键漏了它就会拿错。
                     backbone=(llm.model if llm else ""),
                 )
+            except context_overflow() as exc:
+                # ⭐ 这不是故障，是**这条臂在这个语料上不适用**。
+                # ⛔ 按 docs/baselines.md 记 N/A——⚠️ 记成 crashed 就把
+                # 「不适用 / 失败」两态压成了一态。
+                why = str(exc)[:200]
+                print(f"— [{i}/{len(names)}] {name}: N/A（{why}）",
+                      file=sys.stderr, flush=True)
+                report.lanes.setdefault("library", []).append(
+                    ArmResult(arm=name, is_control=name in control_arms(),
+                              not_applicable=why))
+                continue
             except Exception as exc:  # noqa: BLE001
                 # ⛔ 不只打到 stderr——静默消失会被读成「没参赛」
                 msg = f"{type(exc).__name__}: {exc}"[:200]

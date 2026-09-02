@@ -206,7 +206,17 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
                 "| | 挂在哪 |", "|---|---|"]
         out += [f"| {a.arm} | {a.crashed} |" for a in crashed]
         out.append("")
-    arms = [a for a in arms if not a.crashed]
+    # ⭐ 不适用 ≠ 跑挂了 ≠ 0 分——三态各占一段，⛔ 不许压成一列
+    na = [a for a in arms if a.not_applicable]
+    if na:
+        out += ["## 这些臂不适用（N/A）", "",
+                "⚠️ **不是 0 分，也不是跑挂了**——是这条臂在这个语料上"
+                "本来就没法跑。⛔ 不计入任何比较。", "",
+                "| | 为什么 |", "|---|---|"]
+        out += [f"| {a.arm} | {a.not_applicable} |" for a in na]
+        out.append("")
+
+    arms = [a for a in arms if not (a.crashed or a.not_applicable)]
     if not arms:
         return chr(10).join(out)
 
