@@ -17,6 +17,36 @@
 | 「我们的尺子」与「大家的尺子」 | 各家自己重写判分 | 分数没法跟别人比 |
 | 「记忆层的活」与「生成器的活」 | 只报端到端准确率 | 把别人的 backbone 算进自己的成绩 |
 
+## ⭐ 一条贯穿的方法论：小样本要能给出全量的答案
+
+**抽样检查统计出来的分数，与跑全量的分数，在概率分布上应当一致。**
+
+所以 ⛔ **每一个抽样分都必须带置信区间**——
+一个不带区间的抽样分是在骗人，它假装自己是全量分。
+
+⛔ 「样本小」不等于「没意义」，只等于**区间宽**。同一个真值 0.52：
+
+| 题数 | 95% 区间 | ± |
+|---:|---|---:|
+| 7 | [0.215, 0.810] | 0.297 |
+| 50 | [0.385, 0.652] | 0.133 |
+| 200 | [0.451, 0.588] | 0.069 |
+| 1986（全量） | [0.498, 0.542] | 0.022 |
+
+⭐ **反过来算才真正有用**——要分辨两个系统，需要多少题？
+
+| 要检测的差异 | 每组需要 |
+|---:|---:|
+| 20 个百分点 | **92 题** |
+| 10 个百分点 | 384 题 |
+| 5 个百分点 | 1556 题 |
+
+⭐ **要分辨「明显更好」，92 题就够，不用跑 1986。**
+⛔ 而两条臂的区间一旦重叠，就**不许声称谁更好**——
+那不是「一样好」，是这次跑答不了这个问题。
+
+详见 [`docs/sampling.md`](docs/sampling.md)。
+
 ## 三个核心主张
 
 ### ① 别人考过的，用别人的卷子和判分
@@ -154,6 +184,7 @@ python -m amb.cli --bench locomo --sample stratified:50 --max-convs 2 \
 
 | | 读 |
 |---|---|
+| ⭐ **看懂一个分数能不能信** | [`docs/sampling.md`](docs/sampling.md) —— 抽样方法论、置信区间、样本量 |
 | ⭐ **接一个记忆系统 / 题库 / 运行时进来** | [`docs/integrating.md`](docs/integrating.md) —— 照着做，含检查单 |
 | 快速判断这个项目值不值得看 | [`docs/harnesses.md`](docs/harnesses.md) —— 为什么不 fork 现成框架 |
 | 看懂某一类题在考什么 | [`docs/suites/`](docs/suites/README.md) |
@@ -167,6 +198,7 @@ python -m amb.cli --bench locomo --sample stratified:50 --max-convs 2 \
 | [`docs/cognition.md`](docs/cognition.md) | 从人的记忆反推该考什么——后四类的依据，附证据等级 |
 | [`docs/suites/README.md`](docs/suites/README.md) | 八类题，两条独立推导 |
 | [`docs/baselines.md`](docs/baselines.md) | 五条对照组——⛔ 没有地板线，所有分数都读不出意义 |
+| ⭐ [`docs/sampling.md`](docs/sampling.md) | **抽样方法论**——小样本要能给出全量的答案 |
 
 ### 协议（怎么接进来）
 
@@ -192,6 +224,7 @@ python -m amb.cli --bench locomo --sample stratified:50 --max-convs 2 \
 |---|---|
 | [`docs/report.md`](docs/report.md) | 报告格式：三态怎么落到表上，利益关系怎么标 |
 | [`docs/baselines.md`](docs/baselines.md) | ⛔ 绝对分不单独报，必须给地板线与 Δ |
+| ⭐ [`docs/sampling.md`](docs/sampling.md) | ⛔ 抽样分必须带区间；区间重叠不许声称谁更好 |
 
 完整索引在 [`docs/README.md`](docs/README.md)；
 每个代码包自己的 README 说清「它只干哪一件事」。
