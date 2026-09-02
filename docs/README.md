@@ -2,6 +2,7 @@
 
 | 文档 | 回答什么 |
 |---|---|
+| ⭐ [`llm-demand.md`](llm-demand.md) | **对 LLM 的要求**：提示预算可直接量——mem0 8413 token vs MemoryOS 280 |
 | ⭐ [`cost-control.md`](cost-control.md) | **贵的系统怎么跑得起来**：摄入快照 · LLM 缓存 · ⛔ 为什么不能并发 |
 | ⭐ [`runs/`](runs/README.md) | **运行结果存档**：每次跑留一份，含版本 · 抽样 · 成本 |
 | ⭐ [`sampling.md`](sampling.md) | **抽样方法论**：小样本要能给出全量的答案——置信区间 · 样本量 · ⛔ 区间重叠不许声称谁更好 |
