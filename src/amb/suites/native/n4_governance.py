@@ -121,10 +121,22 @@ class GovernanceSuite:
             return "deleted", detail
 
         # 3. ⭐ 重开——专抓内存里的过滤，重启即现原形
+        # ⛔ 先关掉当前这个：⚠️ 把状态放在**独占锁**存储里的系统（mem0 用
+        # Qdrant 本地模式）不允许两个客户端同时开同一个目录，
+        # 两个实例并存会直接抛
+        # 「Storage folder … is already accessed by another instance」——
+        # ⛔ 整条臂判「跑挂了」，而它其实什么都没做错。
+        # ⭐ 关掉也正合这一步的语义：这一步问的就是「重启之后还在不在」。
+        # ⚠️ 主实例的桥是惰性重建的，后面几步再用它会自动重开。
+        adapter.close()
         fresh = self._rebuild()
-        fresh.setup(self._handle())
-        still_there = any(p.doc_id in h.doc_ids for h in fresh.search(p.query, 10))
-        fresh.close()
+        try:
+            fresh.setup(self._handle())
+            still_there = any(p.doc_id in h.doc_ids
+                              for h in fresh.search(p.query, 10))
+        finally:
+            # ⛔ 必须释放，否则锁留给下一个探针——⚠️ 循环里每个 probe 都要重开
+            fresh.close()
         if still_there:
             return "filtered", detail
 

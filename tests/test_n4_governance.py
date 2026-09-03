@@ -224,3 +224,67 @@ def test_bm25_deletion_also_clears_the_n1_snapshot(tmp_path: Path) -> None:
 def _reached(run) -> str:
     return next(o.payload["reached"] for o in run.observations
                 if o.payload["group"] == "deletion")
+
+
+def test_step3_releases_the_live_store_before_reopening() -> None:
+    """⛔ 第 3 步开第二个实例前必须先关掉当前这个。
+
+    ⚠️ 踩过：mem0 用 Qdrant 本地模式，同一目录**不允许**两个客户端并存——
+    两个实例同时开着直接抛「Storage folder … is already accessed by
+    another instance」，⛔ 整条臂被判「跑挂了」，而它什么都没做错。
+
+    ⭐ 关掉也正合这一步的语义：这一步问的就是「重启之后还在不在」。
+    """
+    from amb.core import DeleteResult, Entry
+    from amb.suites.native.n4_governance import DeletionProbe, GovernanceSuite
+
+    order: list[str] = []
+
+    class _Locked:
+        """一个「同一时刻只允许一个实例打开」的存储——⛔ 违反就抛。"""
+
+        open_now: list[str] = []
+
+        def __init__(self, tag: str) -> None:
+            self.tag = tag
+            self.deleted = False
+
+        def setup(self, world) -> None:
+            if _Locked.open_now:
+                raise RuntimeError(
+                    f"Storage folder is already accessed by {_Locked.open_now}")
+            _Locked.open_now.append(self.tag)
+            order.append(f"open:{self.tag}")
+
+        def close(self) -> None:
+            if self.tag in _Locked.open_now:
+                _Locked.open_now.remove(self.tag)
+            order.append(f"close:{self.tag}")
+
+        def search(self, query, k, *, principal=None):
+            # 删除之后就真的没了 → 第 3 步应当放行到第 4 步
+            return [] if self.deleted else [
+                Entry(id="e1", digest="秘密", doc_ids=["secret/formula.md"])]
+
+        def delete(self, entry_ids):
+            self.deleted = True
+            return DeleteResult(deleted=list(entry_ids), refused={})
+
+        def storage_locations(self):
+            return []
+
+    live = _Locked("live")
+    live.setup(None)                       # 主实例先开着，占住锁
+
+    suite = GovernanceSuite(
+        [DeletionProbe(doc_id="secret/formula.md", text="内部配方编号 K-7391",
+                       marker="K-7391", query="配方")],
+        rebuild=lambda: _Locked("fresh"),
+        world_handle=lambda: None,
+    )
+    reached, _ = suite._four_steps(live, suite._probes[0])
+
+    assert "close:live" in order, "⛔ 没关主实例就重开——锁存储的系统会直接崩"
+    assert order.index("close:live") < order.index("open:fresh"), \
+        "⛔ 顺序反了：必须先释放再重开"
+    assert reached != "none", "⚠️ 修锁冲突不该把这一步的判定改坏"
