@@ -1,0 +1,25 @@
+# 覆盖率口径。⛔ 排除的每一项都要说清**为什么**——
+# 不然「排除」会变成把测不到的东西藏起来。
+[run]
+source = src/amb, worlds
+omit =
+    # ⛔ 子进程里跑：worker 由 bridge 起在**独立 venv** 的解释器里，
+    # 我们这边的 coverage 探针根本进不去。⚠️ 它们不是没测——
+    # tests/test_adapter_conformance.py 会真起子进程跑一遍语义契约，
+    # 只是覆盖率工具看不见。
+    */impl/*/worker.py
+    */adapters/mcp_main.py
+    # 入口 shim，只有一行 main()
+    */cli/__main__.py
+
+[report]
+exclude_also =
+    # 类型检查期才成立的分支
+    if TYPE_CHECKING:
+    # Protocol 的方法体
+    \.\.\.$
+    # ⚠️ 防御性兜底：真跑时才会走到（供应商抖动、磁盘满）
+    except ImportError:
+    raise NotImplementedError
+show_missing = True
+skip_covered = False

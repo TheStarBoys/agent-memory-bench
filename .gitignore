@@ -23,3 +23,7 @@ package-lock.json
 
 # 外部依赖：⛔ 源码不进本仓库（原则④）
 .external/
+
+# 覆盖率数据（二进制，⛔ 不进仓库）
+.coverage
+htmlcov/
