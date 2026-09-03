@@ -94,8 +94,11 @@ class BM25Adapter(Answerable, AdapterBase):
         return out
 
     def search(self, query: str, k: int, *, principal: str | None = None) -> list[Entry]:
-        # ⚠️ 不按 principal 过滤：这条线不声明 GOVERNANCE，
+        # ⚠️ 不按 principal 过滤——⛔ 这是**刻意**的，不是漏了：
         # 过滤会让它看起来像有隔离能力，而那是过滤不是授权。
+        # ⚠️ 注意它**确实声明了** GOVERNANCE（有 delete + audit_log + 归属），
+        # ⭐ 隔离到哪一级由 N4 测出来（这条臂的结果是「无」）——
+        # ⛔ 声明 GOVERNANCE 不等于必须有主体隔离，那是两件事。
         q = tokenize(query)
         ranked = sorted(
             ((self._score(q, i), i) for i in range(len(self._chunks))),
