@@ -1,0 +1,2877 @@
+{
+  "run_id": "toy-2026-09-03T06:59:54Z",
+  "at": "2026-09-03T06:59:54Z",
+  "world": {
+    "name": "toy",
+    "seed": 42,
+    "digest": "sha256:3e487355e169cea84fa8493baae8ba9b612bb82534dd1bd9f9a770d95b7cef6a"
+  },
+  "backbone": {
+    "model": "Qwen/Qwen3-8B",
+    "temperature": 0.0,
+    "thinking": false,
+    "ingest_model": "Qwen/Qwen3-8B",
+    "answer_prompt": "你是一个问答助手。只依据给出的资料回答，用最简短的词或短语作答，不要解释、不要复述问题。如果资料里没有答案，只回答四个字：资料未提及。",
+    "answer_prompt_styles": {
+      "inductive": "你是一个问答助手。资料里是一批同类个体的观察记录。先从这些记录里归纳出这一类通常成立的规律，再回答问题。用最简短的词或短语作答，不要解释、不要复述问题。如果资料里没有直接提到问题问的那个个体，就按归纳出的规律推断作答，不要回答「资料未提及」。但如果资料里明确写了那个个体的情况，以资料写的为准。"
+    }
+  },
+  "lanes": {
+    "library": [
+      {
+        "arm": "null",
+        "is_control": true,
+        "declared": [
+          "accounting",
+          "answer",
+          "ingest",
+          "search"
+        ],
+        "scores": {
+          "retrieval": {
+            "suite": "retrieval",
+            "status": "scored",
+            "reason": null,
+            "denominator": 40,
+            "metrics": {
+              "top1": 0.0,
+              "recall@k": 0.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "top1": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.08762160119728664,
+                "n": 40,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall@k": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.08762160119728664,
+                "n": 40,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          },
+          "n2_provenance": {
+            "suite": "n2_provenance",
+            "status": "unsupported",
+            "reason": "未声明 provenance",
+            "denominator": 0,
+            "metrics": {},
+            "failed_rate": 0.0,
+            "intervals": {},
+            "not_publishable": ""
+          },
+          "n1_prompted": {
+            "suite": "n1_prompted",
+            "status": "unsupported",
+            "reason": "未声明 reality",
+            "denominator": 0,
+            "metrics": {},
+            "failed_rate": 0.0,
+            "intervals": {},
+            "not_publishable": ""
+          },
+          "n1_spontaneous": {
+            "suite": "n1_spontaneous",
+            "status": "unsupported",
+            "reason": "未声明 reality",
+            "denominator": 0,
+            "metrics": {},
+            "failed_rate": 0.0,
+            "intervals": {},
+            "not_publishable": ""
+          },
+          "qa": {
+            "suite": "qa",
+            "status": "scored",
+            "reason": null,
+            "denominator": 42,
+            "metrics": {
+              "准确率": 0.0,
+              "该答却弃权": 1.0,
+              "正确弃权率": 1.0,
+              "编造率": 0.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "准确率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.08379879086570391,
+                "n": 42,
+                "effective_n": null,
+                "caveat": null
+              },
+              "正确弃权率": {
+                "point": 1.0,
+                "low": 0.916201209134296,
+                "high": 0.9999999999999999,
+                "n": 42,
+                "effective_n": null,
+                "caveat": null
+              },
+              "编造率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.08379879086570391,
+                "n": 42,
+                "effective_n": null,
+                "caveat": null
+              },
+              "该答却弃权": {
+                "point": 1.0,
+                "low": 1.0,
+                "high": 1.0,
+                "n": 42,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          },
+          "n4_governance": {
+            "suite": "n4_governance",
+            "status": "unsupported",
+            "reason": "未声明 governance",
+            "denominator": 0,
+            "metrics": {},
+            "failed_rate": 0.0,
+            "intervals": {},
+            "not_publishable": ""
+          },
+          "n3_reasoning": {
+            "suite": "n3_reasoning",
+            "status": "unsupported",
+            "reason": "未声明 reasoning",
+            "denominator": 0,
+            "metrics": {},
+            "failed_rate": 0.0,
+            "intervals": {},
+            "not_publishable": ""
+          },
+          "n5_observed": {
+            "suite": "n5_observed",
+            "status": "scored",
+            "reason": null,
+            "denominator": 30,
+            "metrics": {
+              "该留-留了": 0.0,
+              "该留-丢了": 12.0,
+              "该丢-留了": 0.0,
+              "该丢-丢了": 18.0,
+              "正确保留率": 0.0,
+              "正确遗忘率": 1.0,
+              "囤积率": 0.0,
+              "误删率": 1.0,
+              "保留追踪度": 0.0,
+              "因子_频率": 0.0,
+              "因子_间隔": 0.0,
+              "因子_显著性": 0.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "正确保留率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.11351339317396876,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "正确遗忘率": {
+                "point": 1.0,
+                "low": 0.8864866068260312,
+                "high": 0.9999999999999999,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "囤积率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.11351339317396876,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "误删率": {
+                "point": 1.0,
+                "low": 0.8864866068260312,
+                "high": 0.9999999999999999,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "因子_频率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.11351339317396876,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "保留追踪度": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "因子_间隔": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "因子_显著性": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": "需求概率曲线未从真实语料拟合（source=None）——⛔ 自己拍参数等于自己定义什么叫「该记住」，那是自证。见 docs/adapters/world.md#need-probability"
+          },
+          "n5_self_reported": {
+            "suite": "n5_self_reported",
+            "status": "unsupported",
+            "reason": "未声明 retention",
+            "denominator": 0,
+            "metrics": {},
+            "failed_rate": 0.0,
+            "intervals": {},
+            "not_publishable": ""
+          },
+          "n6_structure": {
+            "suite": "n6_structure",
+            "status": "scored",
+            "reason": null,
+            "denominator": 112,
+            "metrics": {
+              "可达性_fan1": 0.0,
+              "精确检索_fan1": 0.0,
+              "可达性_fan2": 0.0,
+              "精确检索_fan2": 0.0,
+              "可达性_fan4": 0.0,
+              "精确检索_fan4": 0.0,
+              "可达性_fan8": 0.0,
+              "精确检索_fan8": 0.0,
+              "可达性_fan16": 0.0,
+              "精确检索_fan16": 0.0,
+              "可达性_fan32": 0.0,
+              "精确检索_fan32": 0.0,
+              "可达性_fan64": 0.0,
+              "精确检索_fan64": 0.0,
+              "扇形退化斜率": 0.0,
+              "可达性增益": 0.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "扇形退化斜率": {
+                "point": 0.0,
+                "low": 3.469446951953614e-18,
+                "high": 0.033161347066943875,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性_fan1": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan1": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性_fan2": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan2": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性_fan4": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan4": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性_fan8": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan8": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性_fan16": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan16": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性_fan32": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan32": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性_fan64": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan64": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性增益": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          },
+          "n7_calibration": {
+            "suite": "n7_calibration",
+            "status": "unsupported",
+            "reason": "未声明 confidence",
+            "denominator": 0,
+            "metrics": {},
+            "failed_rate": 0.0,
+            "intervals": {},
+            "not_publishable": ""
+          },
+          "n8_induction": {
+            "suite": "n8_induction",
+            "status": "scored",
+            "reason": null,
+            "denominator": 3,
+            "metrics": {
+              "全对": 0.0,
+              "过度修正": 0.0,
+              "过度泛化": 0.0,
+              "未归纳": 1.0,
+              "计数_全对": 0.0,
+              "计数_过度修正": 0.0,
+              "计数_过度泛化": 0.0,
+              "计数_未归纳": 3.0,
+              "规律强度单调性": 0.0,
+              "未解析率": 0.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "全对": {
+                "point": 0.0,
+                "low": 5.551115123125783e-17,
+                "high": 0.5614970317550454,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "未解析率": {
+                "point": 0.0,
+                "low": 5.551115123125783e-17,
+                "high": 0.5614970317550454,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "过度修正": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "过度泛化": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "未归纳": {
+                "point": 1.0,
+                "low": 1.0,
+                "high": 1.0,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "规律强度单调性": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          }
+        },
+        "participation": {
+          "declared": 4,
+          "total_caps": 11,
+          "items": 227
+        },
+        "crashed": null,
+        "not_applicable": null,
+        "harness_fault": null,
+        "cost": {
+          "setup": 0,
+          "ingest": 0,
+          "probe": 108204
+        },
+        "cost_profile": {
+          "items_ingested": 434,
+          "items_probed": 227,
+          "tokens_in": 4820,
+          "tokens_out": 135,
+          "llm_calls": 51,
+          "canary": {
+            "count": 0,
+            "hits": 0,
+            "with_doc_ids": 0,
+            "with_spans": 0
+          },
+          "pre_ingest_count": 0
+        },
+        "ingest_snapshot": "未启用"
+      },
+      {
+        "arm": "bm25",
+        "is_control": true,
+        "declared": [
+          "accounting",
+          "answer",
+          "governance",
+          "ingest",
+          "provenance",
+          "reality",
+          "search"
+        ],
+        "scores": {
+          "retrieval": {
+            "suite": "retrieval",
+            "status": "scored",
+            "reason": null,
+            "denominator": 40,
+            "metrics": {
+              "top1": 0.975,
+              "recall@k": 0.975
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "top1": {
+                "point": 0.975,
+                "low": 0.8711863103652591,
+                "high": 0.9955731684973186,
+                "n": 40,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall@k": {
+                "point": 0.975,
+                "low": 0.8711863103652591,
+                "high": 0.9955731684973186,
+                "n": 40,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          },
+          "n2_provenance": {
+            "suite": "n2_provenance",
+            "status": "scored",
+            "reason": null,
+            "denominator": 38,
+            "metrics": {
+              "回链率": 1.0,
+              "精确匹配率": 0.05263157894736842,
+              "IoU_p50": 0.3333333333333333,
+              "越界率": 0.9473684210526315,
+              "错链率": 0.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "回链率": {
+                "point": 1.0,
+                "low": 0.908190131774416,
+                "high": 0.9999999999999999,
+                "n": 38,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确匹配率": {
+                "point": 0.05263157894736842,
+                "low": 0.014554208147292413,
+                "high": 0.17285462131770377,
+                "n": 38,
+                "effective_n": null,
+                "caveat": null
+              },
+              "越界率": {
+                "point": 0.9473684210526315,
+                "low": 0.8271453786822962,
+                "high": 0.9854457918527075,
+                "n": 38,
+                "effective_n": null,
+                "caveat": null
+              },
+              "错链率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.09180986822558396,
+                "n": 38,
+                "effective_n": null,
+                "caveat": null
+              },
+              "IoU_p50": {
+                "point": 0.3333333333333333,
+                "low": 0.3076923076923077,
+                "high": 0.3333333333333333,
+                "n": 38,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          },
+          "n1_prompted": {
+            "suite": "n1_prompted",
+            "status": "scored",
+            "reason": null,
+            "denominator": 3,
+            "metrics": {
+              "holds→holds": 1.0,
+              "holds→broken": 0.0,
+              "holds→unknown": 0.0,
+              "broken→holds": 0.0,
+              "broken→broken": 2.0,
+              "broken→unknown": 0.0,
+              "检出率": 1.0,
+              "误报率": 0.0,
+              "弃权率": 0.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "检出率": {
+                "point": 1.0,
+                "low": 0.4385029682449546,
+                "high": 1.0,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "误报率": {
+                "point": 0.0,
+                "low": 5.551115123125783e-17,
+                "high": 0.5614970317550454,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "弃权率": {
+                "point": 0.0,
+                "low": 5.551115123125783e-17,
+                "high": 0.5614970317550454,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          },
+          "n1_spontaneous": {
+            "suite": "n1_spontaneous",
+            "status": "scored",
+            "reason": null,
+            "denominator": 3,
+            "metrics": {
+              "holds→holds": 1.0,
+              "holds→broken": 0.0,
+              "holds→unknown": 0.0,
+              "broken→holds": 0.0,
+              "broken→broken": 2.0,
+              "broken→unknown": 0.0,
+              "检出率": 1.0,
+              "误报率": 0.0,
+              "弃权率": 0.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "检出率": {
+                "point": 1.0,
+                "low": 0.4385029682449546,
+                "high": 1.0,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "误报率": {
+                "point": 0.0,
+                "low": 5.551115123125783e-17,
+                "high": 0.5614970317550454,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "弃权率": {
+                "point": 0.0,
+                "low": 5.551115123125783e-17,
+                "high": 0.5614970317550454,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          },
+          "qa": {
+            "suite": "qa",
+            "status": "scored",
+            "reason": null,
+            "denominator": 42,
+            "metrics": {
+              "准确率": 1.0,
+              "该答却弃权": 0.0,
+              "正确弃权率": 1.0,
+              "编造率": 0.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "准确率": {
+                "point": 1.0,
+                "low": 0.916201209134296,
+                "high": 0.9999999999999999,
+                "n": 42,
+                "effective_n": null,
+                "caveat": null
+              },
+              "正确弃权率": {
+                "point": 1.0,
+                "low": 0.916201209134296,
+                "high": 0.9999999999999999,
+                "n": 42,
+                "effective_n": null,
+                "caveat": null
+              },
+              "编造率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.08379879086570391,
+                "n": 42,
+                "effective_n": null,
+                "caveat": null
+              },
+              "该答却弃权": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 42,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          },
+          "n4_governance": {
+            "suite": "n4_governance",
+            "status": "scored",
+            "reason": null,
+            "denominator": 3,
+            "metrics": {
+              "归属率": 1.0,
+              "隔离_无": 1.0,
+              "隔离_过滤级": 0.0,
+              "隔离_授权级": 0.0,
+              "隔离_未验证": 0.0,
+              "删除_none": 0.0,
+              "删除_deleted": 0.0,
+              "删除_filtered": 0.0,
+              "删除_survives_restart": 1.0,
+              "删除_gone_from_storage": 0.0,
+              "删除_gone_from_answers": 0.0,
+              "彻底删除率": 0.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "归属率": {
+                "point": 1.0,
+                "low": 0.4385029682449546,
+                "high": 1.0,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "彻底删除率": {
+                "point": 0.0,
+                "low": 5.551115123125783e-17,
+                "high": 0.5614970317550454,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          },
+          "n3_reasoning": {
+            "suite": "n3_reasoning",
+            "status": "unsupported",
+            "reason": "未声明 reasoning",
+            "denominator": 0,
+            "metrics": {},
+            "failed_rate": 0.0,
+            "intervals": {},
+            "not_publishable": ""
+          },
+          "n5_observed": {
+            "suite": "n5_observed",
+            "status": "scored",
+            "reason": null,
+            "denominator": 30,
+            "metrics": {
+              "该留-留了": 12.0,
+              "该留-丢了": 0.0,
+              "该丢-留了": 18.0,
+              "该丢-丢了": 0.0,
+              "正确保留率": 1.0,
+              "正确遗忘率": 0.0,
+              "囤积率": 1.0,
+              "误删率": 0.0,
+              "保留追踪度": 0.0,
+              "因子_频率": 0.0,
+              "因子_间隔": 0.0,
+              "因子_显著性": 0.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "正确保留率": {
+                "point": 1.0,
+                "low": 0.8864866068260312,
+                "high": 0.9999999999999999,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "正确遗忘率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.11351339317396876,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "囤积率": {
+                "point": 1.0,
+                "low": 0.8864866068260312,
+                "high": 0.9999999999999999,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "误删率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.11351339317396876,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "因子_频率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.11351339317396876,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "保留追踪度": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "因子_间隔": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "因子_显著性": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": "需求概率曲线未从真实语料拟合（source=None）——⛔ 自己拍参数等于自己定义什么叫「该记住」，那是自证。见 docs/adapters/world.md#need-probability"
+          },
+          "n5_self_reported": {
+            "suite": "n5_self_reported",
+            "status": "unsupported",
+            "reason": "未声明 retention",
+            "denominator": 0,
+            "metrics": {},
+            "failed_rate": 0.0,
+            "intervals": {},
+            "not_publishable": ""
+          },
+          "n6_structure": {
+            "suite": "n6_structure",
+            "status": "scored",
+            "reason": null,
+            "denominator": 112,
+            "metrics": {
+              "可达性_fan1": 0.9791666666666666,
+              "精确检索_fan1": 0.6875,
+              "可达性_fan2": 1.0,
+              "精确检索_fan2": 0.4375,
+              "可达性_fan4": 0.9375,
+              "精确检索_fan4": 0.1875,
+              "可达性_fan8": 0.7083333333333333,
+              "精确检索_fan8": 0.0625,
+              "可达性_fan16": 0.7291666666666666,
+              "精确检索_fan16": 0.0625,
+              "可达性_fan32": 0.6666666666666666,
+              "精确检索_fan32": 0.0625,
+              "可达性_fan64": 0.6041666666666666,
+              "精确检索_fan64": 0.0,
+              "扇形退化斜率": -0.15135416723611894,
+              "可达性增益": -0.10304964577778312
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "可达性_fan1": {
+                "point": 0.9791666666666666,
+                "low": 0.9285714285714286,
+                "high": 1.0,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan1": {
+                "point": 0.6875,
+                "low": 0.4375,
+                "high": 0.9166666666666666,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性_fan2": {
+                "point": 1.0,
+                "low": 1.0,
+                "high": 1.0,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan2": {
+                "point": 0.4375,
+                "low": 0.2,
+                "high": 0.7,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性_fan4": {
+                "point": 0.9375,
+                "low": 0.8611111111111112,
+                "high": 1.0,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan4": {
+                "point": 0.1875,
+                "low": 0.0,
+                "high": 0.4166666666666667,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性_fan8": {
+                "point": 0.7083333333333333,
+                "low": 0.6666666666666666,
+                "high": 0.7692307692307693,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan8": {
+                "point": 0.0625,
+                "low": 0.0,
+                "high": 0.21428571428571427,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性_fan16": {
+                "point": 0.7291666666666666,
+                "low": 0.6666666666666666,
+                "high": 0.8,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan16": {
+                "point": 0.0625,
+                "low": 0.0,
+                "high": 0.2,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性_fan32": {
+                "point": 0.6666666666666666,
+                "low": 0.6041666666666666,
+                "high": 0.7291666666666666,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan32": {
+                "point": 0.0625,
+                "low": 0.0,
+                "high": 0.21428571428571427,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性_fan64": {
+                "point": 0.6041666666666666,
+                "low": 0.5208333333333333,
+                "high": 0.6923076923076923,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan64": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "扇形退化斜率": {
+                "point": -0.15135416723611894,
+                "low": -0.20078323840036316,
+                "high": -0.1043377663500054,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性增益": {
+                "point": -0.10304964577778312,
+                "low": -0.11981766411989246,
+                "high": -0.0859887325822016,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          },
+          "n7_calibration": {
+            "suite": "n7_calibration",
+            "status": "unsupported",
+            "reason": "未声明 confidence",
+            "denominator": 0,
+            "metrics": {},
+            "failed_rate": 0.0,
+            "intervals": {},
+            "not_publishable": ""
+          },
+          "n8_induction": {
+            "suite": "n8_induction",
+            "status": "scored",
+            "reason": null,
+            "denominator": 3,
+            "metrics": {
+              "全对": 1.0,
+              "过度修正": 0.0,
+              "过度泛化": 0.0,
+              "未归纳": 0.0,
+              "计数_全对": 3.0,
+              "计数_过度修正": 0.0,
+              "计数_过度泛化": 0.0,
+              "计数_未归纳": 0.0,
+              "规律强度单调性": 0.0,
+              "未解析率": 0.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "全对": {
+                "point": 1.0,
+                "low": 0.4385029682449546,
+                "high": 1.0,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "未解析率": {
+                "point": 0.0,
+                "low": 5.551115123125783e-17,
+                "high": 0.5614970317550454,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "过度修正": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "过度泛化": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "未归纳": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "规律强度单调性": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          }
+        },
+        "participation": {
+          "declared": 7,
+          "total_caps": 11,
+          "items": 274
+        },
+        "crashed": null,
+        "not_applicable": null,
+        "harness_fault": null,
+        "cost": {
+          "setup": 0,
+          "ingest": 2,
+          "probe": 137047
+        },
+        "cost_profile": {
+          "items_ingested": 434,
+          "items_probed": 274,
+          "tokens_in": 8464,
+          "tokens_out": 174,
+          "llm_calls": 51,
+          "canary": {
+            "count": 434,
+            "hits": 3,
+            "with_doc_ids": 3,
+            "with_spans": 3
+          },
+          "pre_ingest_count": 0
+        },
+        "ingest_snapshot": "未启用"
+      },
+      {
+        "arm": "naive_rag",
+        "is_control": true,
+        "declared": [
+          "accounting",
+          "answer",
+          "ingest",
+          "provenance",
+          "search"
+        ],
+        "scores": {
+          "retrieval": {
+            "suite": "retrieval",
+            "status": "scored",
+            "reason": null,
+            "denominator": 40,
+            "metrics": {
+              "top1": 0.975,
+              "recall@k": 1.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "top1": {
+                "point": 0.975,
+                "low": 0.8711863103652591,
+                "high": 0.9955731684973186,
+                "n": 40,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall@k": {
+                "point": 1.0,
+                "low": 0.9123783988027135,
+                "high": 1.0,
+                "n": 40,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          },
+          "n2_provenance": {
+            "suite": "n2_provenance",
+            "status": "scored",
+            "reason": null,
+            "denominator": 38,
+            "metrics": {
+              "回链率": 1.0,
+              "精确匹配率": 0.05263157894736842,
+              "IoU_p50": 0.3333333333333333,
+              "越界率": 0.9473684210526315,
+              "错链率": 0.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "回链率": {
+                "point": 1.0,
+                "low": 0.908190131774416,
+                "high": 0.9999999999999999,
+                "n": 38,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确匹配率": {
+                "point": 0.05263157894736842,
+                "low": 0.014554208147292413,
+                "high": 0.17285462131770377,
+                "n": 38,
+                "effective_n": null,
+                "caveat": null
+              },
+              "越界率": {
+                "point": 0.9473684210526315,
+                "low": 0.8271453786822962,
+                "high": 0.9854457918527075,
+                "n": 38,
+                "effective_n": null,
+                "caveat": null
+              },
+              "错链率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.09180986822558396,
+                "n": 38,
+                "effective_n": null,
+                "caveat": null
+              },
+              "IoU_p50": {
+                "point": 0.3333333333333333,
+                "low": 0.3076923076923077,
+                "high": 0.3333333333333333,
+                "n": 38,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          },
+          "n1_prompted": {
+            "suite": "n1_prompted",
+            "status": "unsupported",
+            "reason": "未声明 reality",
+            "denominator": 0,
+            "metrics": {},
+            "failed_rate": 0.0,
+            "intervals": {},
+            "not_publishable": ""
+          },
+          "n1_spontaneous": {
+            "suite": "n1_spontaneous",
+            "status": "unsupported",
+            "reason": "未声明 reality",
+            "denominator": 0,
+            "metrics": {},
+            "failed_rate": 0.0,
+            "intervals": {},
+            "not_publishable": ""
+          },
+          "qa": {
+            "suite": "qa",
+            "status": "scored",
+            "reason": null,
+            "denominator": 42,
+            "metrics": {
+              "准确率": 1.0,
+              "该答却弃权": 0.0,
+              "正确弃权率": 1.0,
+              "编造率": 0.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "准确率": {
+                "point": 1.0,
+                "low": 0.916201209134296,
+                "high": 0.9999999999999999,
+                "n": 42,
+                "effective_n": null,
+                "caveat": null
+              },
+              "正确弃权率": {
+                "point": 1.0,
+                "low": 0.916201209134296,
+                "high": 0.9999999999999999,
+                "n": 42,
+                "effective_n": null,
+                "caveat": null
+              },
+              "编造率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.08379879086570391,
+                "n": 42,
+                "effective_n": null,
+                "caveat": null
+              },
+              "该答却弃权": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 42,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          },
+          "n4_governance": {
+            "suite": "n4_governance",
+            "status": "unsupported",
+            "reason": "未声明 governance",
+            "denominator": 0,
+            "metrics": {},
+            "failed_rate": 0.0,
+            "intervals": {},
+            "not_publishable": ""
+          },
+          "n3_reasoning": {
+            "suite": "n3_reasoning",
+            "status": "unsupported",
+            "reason": "未声明 reasoning",
+            "denominator": 0,
+            "metrics": {},
+            "failed_rate": 0.0,
+            "intervals": {},
+            "not_publishable": ""
+          },
+          "n5_observed": {
+            "suite": "n5_observed",
+            "status": "scored",
+            "reason": null,
+            "denominator": 30,
+            "metrics": {
+              "该留-留了": 12.0,
+              "该留-丢了": 0.0,
+              "该丢-留了": 18.0,
+              "该丢-丢了": 0.0,
+              "正确保留率": 1.0,
+              "正确遗忘率": 0.0,
+              "囤积率": 1.0,
+              "误删率": 0.0,
+              "保留追踪度": 0.0,
+              "因子_频率": 0.0,
+              "因子_间隔": 0.0,
+              "因子_显著性": 0.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "正确保留率": {
+                "point": 1.0,
+                "low": 0.8864866068260312,
+                "high": 0.9999999999999999,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "正确遗忘率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.11351339317396876,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "囤积率": {
+                "point": 1.0,
+                "low": 0.8864866068260312,
+                "high": 0.9999999999999999,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "误删率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.11351339317396876,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "因子_频率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.11351339317396876,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "保留追踪度": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "因子_间隔": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "因子_显著性": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": "需求概率曲线未从真实语料拟合（source=None）——⛔ 自己拍参数等于自己定义什么叫「该记住」，那是自证。见 docs/adapters/world.md#need-probability"
+          },
+          "n5_self_reported": {
+            "suite": "n5_self_reported",
+            "status": "unsupported",
+            "reason": "未声明 retention",
+            "denominator": 0,
+            "metrics": {},
+            "failed_rate": 0.0,
+            "intervals": {},
+            "not_publishable": ""
+          },
+          "n6_structure": {
+            "suite": "n6_structure",
+            "status": "scored",
+            "reason": null,
+            "denominator": 112,
+            "metrics": {
+              "可达性_fan1": 0.875,
+              "精确检索_fan1": 0.6875,
+              "可达性_fan2": 0.9166666666666666,
+              "精确检索_fan2": 0.625,
+              "可达性_fan4": 0.8958333333333334,
+              "精确检索_fan4": 0.375,
+              "可达性_fan8": 0.8333333333333333,
+              "精确检索_fan8": 0.5,
+              "可达性_fan16": 0.9166666666666666,
+              "精确检索_fan16": 0.5625,
+              "可达性_fan32": 0.875,
+              "精确检索_fan32": 0.3125,
+              "可达性_fan64": 0.7083333333333333,
+              "精确检索_fan64": 0.0,
+              "扇形退化斜率": -0.12881205722222888,
+              "可达性增益": -0.028982712875001513
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "可达性_fan1": {
+                "point": 0.875,
+                "low": 0.7894736842105263,
+                "high": 0.9545454545454546,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan1": {
+                "point": 0.6875,
+                "low": 0.4444444444444444,
+                "high": 0.9090909090909091,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性_fan2": {
+                "point": 0.9166666666666666,
+                "low": 0.8333333333333334,
+                "high": 1.0,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan2": {
+                "point": 0.625,
+                "low": 0.3684210526315789,
+                "high": 0.8666666666666667,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性_fan4": {
+                "point": 0.8958333333333334,
+                "low": 0.8125,
+                "high": 0.9696969696969696,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan4": {
+                "point": 0.375,
+                "low": 0.14285714285714285,
+                "high": 0.625,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性_fan8": {
+                "point": 0.8333333333333333,
+                "low": 0.7435897435897435,
+                "high": 0.9215686274509803,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan8": {
+                "point": 0.5,
+                "low": 0.25,
+                "high": 0.7692307692307693,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性_fan16": {
+                "point": 0.9166666666666666,
+                "low": 0.8333333333333334,
+                "high": 0.9814814814814815,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan16": {
+                "point": 0.5625,
+                "low": 0.29411764705882354,
+                "high": 0.8,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性_fan32": {
+                "point": 0.875,
+                "low": 0.7894736842105263,
+                "high": 0.9523809523809524,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan32": {
+                "point": 0.3125,
+                "low": 0.09090909090909091,
+                "high": 0.5555555555555556,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性_fan64": {
+                "point": 0.7083333333333333,
+                "low": 0.5833333333333334,
+                "high": 0.8235294117647058,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan64": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "扇形退化斜率": {
+                "point": -0.12881205722222888,
+                "low": -0.18076625363519455,
+                "high": -0.07385224614074457,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性增益": {
+                "point": -0.028982712875001513,
+                "low": -0.05549197535103516,
+                "high": -0.004808502378846603,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          },
+          "n7_calibration": {
+            "suite": "n7_calibration",
+            "status": "unsupported",
+            "reason": "未声明 confidence",
+            "denominator": 0,
+            "metrics": {},
+            "failed_rate": 0.0,
+            "intervals": {},
+            "not_publishable": ""
+          },
+          "n8_induction": {
+            "suite": "n8_induction",
+            "status": "scored",
+            "reason": null,
+            "denominator": 3,
+            "metrics": {
+              "全对": 0.3333333333333333,
+              "过度修正": 0.6666666666666666,
+              "过度泛化": 0.0,
+              "未归纳": 0.0,
+              "计数_全对": 1.0,
+              "计数_过度修正": 2.0,
+              "计数_过度泛化": 0.0,
+              "计数_未归纳": 0.0,
+              "规律强度单调性": 0.0,
+              "未解析率": 0.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "全对": {
+                "point": 0.3333333333333333,
+                "low": 0.06149194472039621,
+                "high": 0.7923403991979522,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "未解析率": {
+                "point": 0.0,
+                "low": 5.551115123125783e-17,
+                "high": 0.5614970317550454,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "过度修正": {
+                "point": 0.6666666666666666,
+                "low": 0.0,
+                "high": 1.0,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "过度泛化": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "未归纳": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "规律强度单调性": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          }
+        },
+        "participation": {
+          "declared": 5,
+          "total_caps": 11,
+          "items": 265
+        },
+        "crashed": null,
+        "not_applicable": null,
+        "harness_fault": null,
+        "cost": {
+          "setup": 0,
+          "ingest": 132331,
+          "probe": 1581228
+        },
+        "cost_profile": {
+          "items_ingested": 434,
+          "items_probed": 265,
+          "tokens_in": 8399,
+          "tokens_out": 175,
+          "llm_calls": 51,
+          "canary": {
+            "count": 434,
+            "hits": 3,
+            "with_doc_ids": 3,
+            "with_spans": 3
+          },
+          "pre_ingest_count": 0,
+          "embed_calls": 637,
+          "embed_texts": 1043,
+          "embed_wall_ms": 1533956,
+          "embed_slowest_ms": 15629
+        },
+        "ingest_snapshot": "未启用"
+      },
+      {
+        "arm": "mem0_raw",
+        "is_control": false,
+        "declared": [
+          "accounting",
+          "answer",
+          "governance",
+          "ingest",
+          "provenance",
+          "search"
+        ],
+        "scores": {
+          "retrieval": {
+            "suite": "retrieval",
+            "status": "scored",
+            "reason": null,
+            "denominator": 40,
+            "metrics": {
+              "top1": 0.975,
+              "recall@k": 1.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "top1": {
+                "point": 0.975,
+                "low": 0.8711863103652591,
+                "high": 0.9955731684973186,
+                "n": 40,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall@k": {
+                "point": 1.0,
+                "low": 0.9123783988027135,
+                "high": 1.0,
+                "n": 40,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          },
+          "n2_provenance": {
+            "suite": "n2_provenance",
+            "status": "scored",
+            "reason": null,
+            "denominator": 38,
+            "metrics": {
+              "回链率": 1.0,
+              "精确匹配率": 0.05263157894736842,
+              "IoU_p50": 0.3333333333333333,
+              "越界率": 0.9473684210526315,
+              "错链率": 0.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "回链率": {
+                "point": 1.0,
+                "low": 0.908190131774416,
+                "high": 0.9999999999999999,
+                "n": 38,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确匹配率": {
+                "point": 0.05263157894736842,
+                "low": 0.014554208147292413,
+                "high": 0.17285462131770377,
+                "n": 38,
+                "effective_n": null,
+                "caveat": null
+              },
+              "越界率": {
+                "point": 0.9473684210526315,
+                "low": 0.8271453786822962,
+                "high": 0.9854457918527075,
+                "n": 38,
+                "effective_n": null,
+                "caveat": null
+              },
+              "错链率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.09180986822558396,
+                "n": 38,
+                "effective_n": null,
+                "caveat": null
+              },
+              "IoU_p50": {
+                "point": 0.3333333333333333,
+                "low": 0.3076923076923077,
+                "high": 0.3333333333333333,
+                "n": 38,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          },
+          "n1_prompted": {
+            "suite": "n1_prompted",
+            "status": "unsupported",
+            "reason": "未声明 reality",
+            "denominator": 0,
+            "metrics": {},
+            "failed_rate": 0.0,
+            "intervals": {},
+            "not_publishable": ""
+          },
+          "n1_spontaneous": {
+            "suite": "n1_spontaneous",
+            "status": "unsupported",
+            "reason": "未声明 reality",
+            "denominator": 0,
+            "metrics": {},
+            "failed_rate": 0.0,
+            "intervals": {},
+            "not_publishable": ""
+          },
+          "qa": {
+            "suite": "qa",
+            "status": "scored",
+            "reason": null,
+            "denominator": 42,
+            "metrics": {
+              "准确率": 1.0,
+              "该答却弃权": 0.0,
+              "正确弃权率": 1.0,
+              "编造率": 0.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "准确率": {
+                "point": 1.0,
+                "low": 0.916201209134296,
+                "high": 0.9999999999999999,
+                "n": 42,
+                "effective_n": null,
+                "caveat": null
+              },
+              "正确弃权率": {
+                "point": 1.0,
+                "low": 0.916201209134296,
+                "high": 0.9999999999999999,
+                "n": 42,
+                "effective_n": null,
+                "caveat": null
+              },
+              "编造率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.08379879086570391,
+                "n": 42,
+                "effective_n": null,
+                "caveat": null
+              },
+              "该答却弃权": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 42,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          },
+          "n4_governance": {
+            "suite": "n4_governance",
+            "status": "scored",
+            "reason": null,
+            "denominator": 3,
+            "metrics": {
+              "归属率": 1.0,
+              "隔离_无": 0.0,
+              "隔离_过滤级": 1.0,
+              "隔离_授权级": 0.0,
+              "隔离_未验证": 0.0,
+              "删除_none": 0.0,
+              "删除_deleted": 0.0,
+              "删除_filtered": 0.0,
+              "删除_survives_restart": 1.0,
+              "删除_gone_from_storage": 0.0,
+              "删除_gone_from_answers": 0.0,
+              "彻底删除率": 0.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "归属率": {
+                "point": 1.0,
+                "low": 0.4385029682449546,
+                "high": 1.0,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "彻底删除率": {
+                "point": 0.0,
+                "low": 5.551115123125783e-17,
+                "high": 0.5614970317550454,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          },
+          "n3_reasoning": {
+            "suite": "n3_reasoning",
+            "status": "unsupported",
+            "reason": "未声明 reasoning",
+            "denominator": 0,
+            "metrics": {},
+            "failed_rate": 0.0,
+            "intervals": {},
+            "not_publishable": ""
+          },
+          "n5_observed": {
+            "suite": "n5_observed",
+            "status": "scored",
+            "reason": null,
+            "denominator": 30,
+            "metrics": {
+              "该留-留了": 12.0,
+              "该留-丢了": 0.0,
+              "该丢-留了": 18.0,
+              "该丢-丢了": 0.0,
+              "正确保留率": 1.0,
+              "正确遗忘率": 0.0,
+              "囤积率": 1.0,
+              "误删率": 0.0,
+              "保留追踪度": 0.0,
+              "因子_频率": 0.0,
+              "因子_间隔": 0.0,
+              "因子_显著性": 0.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "正确保留率": {
+                "point": 1.0,
+                "low": 0.8864866068260312,
+                "high": 0.9999999999999999,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "正确遗忘率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.11351339317396876,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "囤积率": {
+                "point": 1.0,
+                "low": 0.8864866068260312,
+                "high": 0.9999999999999999,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "误删率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.11351339317396876,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "因子_频率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.11351339317396876,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "保留追踪度": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "因子_间隔": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "因子_显著性": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": "需求概率曲线未从真实语料拟合（source=None）——⛔ 自己拍参数等于自己定义什么叫「该记住」，那是自证。见 docs/adapters/world.md#need-probability"
+          },
+          "n5_self_reported": {
+            "suite": "n5_self_reported",
+            "status": "unsupported",
+            "reason": "未声明 retention",
+            "denominator": 0,
+            "metrics": {},
+            "failed_rate": 0.0,
+            "intervals": {},
+            "not_publishable": ""
+          },
+          "n6_structure": {
+            "suite": "n6_structure",
+            "status": "scored",
+            "reason": null,
+            "denominator": 112,
+            "metrics": {
+              "可达性_fan1": 0.875,
+              "精确检索_fan1": 0.75,
+              "可达性_fan2": 0.9375,
+              "精确检索_fan2": 0.625,
+              "可达性_fan4": 0.8958333333333334,
+              "精确检索_fan4": 0.375,
+              "可达性_fan8": 0.8333333333333333,
+              "精确检索_fan8": 0.5,
+              "可达性_fan16": 0.9166666666666666,
+              "精确检索_fan16": 0.5625,
+              "可达性_fan32": 0.8541666666666666,
+              "精确检索_fan32": 0.3125,
+              "可达性_fan64": 0.7083333333333333,
+              "精确检索_fan64": 0.0625,
+              "扇形退化斜率": -0.12881205722222888,
+              "可达性增益": -0.033276448115742485
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "可达性_fan1": {
+                "point": 0.875,
+                "low": 0.7894736842105263,
+                "high": 0.9545454545454546,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan1": {
+                "point": 0.75,
+                "low": 0.5,
+                "high": 0.9444444444444444,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性_fan2": {
+                "point": 0.9375,
+                "low": 0.8666666666666667,
+                "high": 1.0,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan2": {
+                "point": 0.625,
+                "low": 0.3684210526315789,
+                "high": 0.8666666666666667,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性_fan4": {
+                "point": 0.8958333333333334,
+                "low": 0.8125,
+                "high": 0.9696969696969696,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan4": {
+                "point": 0.375,
+                "low": 0.14285714285714285,
+                "high": 0.625,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性_fan8": {
+                "point": 0.8333333333333333,
+                "low": 0.7435897435897435,
+                "high": 0.9215686274509803,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan8": {
+                "point": 0.5,
+                "low": 0.25,
+                "high": 0.7692307692307693,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性_fan16": {
+                "point": 0.9166666666666666,
+                "low": 0.8333333333333334,
+                "high": 0.9814814814814815,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan16": {
+                "point": 0.5625,
+                "low": 0.29411764705882354,
+                "high": 0.8,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性_fan32": {
+                "point": 0.8541666666666666,
+                "low": 0.75,
+                "high": 0.9444444444444445,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan32": {
+                "point": 0.3125,
+                "low": 0.09090909090909091,
+                "high": 0.5555555555555556,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性_fan64": {
+                "point": 0.7083333333333333,
+                "low": 0.5833333333333334,
+                "high": 0.8235294117647058,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan64": {
+                "point": 0.0625,
+                "low": 0.0,
+                "high": 0.2,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "扇形退化斜率": {
+                "point": -0.12881205722222888,
+                "low": -0.18251677646411202,
+                "high": -0.06631705140805222,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性增益": {
+                "point": -0.033276448115742485,
+                "low": -0.05930542478608974,
+                "high": -0.008577222365414734,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          },
+          "n7_calibration": {
+            "suite": "n7_calibration",
+            "status": "unsupported",
+            "reason": "未声明 confidence",
+            "denominator": 0,
+            "metrics": {},
+            "failed_rate": 0.0,
+            "intervals": {},
+            "not_publishable": ""
+          },
+          "n8_induction": {
+            "suite": "n8_induction",
+            "status": "scored",
+            "reason": null,
+            "denominator": 3,
+            "metrics": {
+              "全对": 0.6666666666666666,
+              "过度修正": 0.3333333333333333,
+              "过度泛化": 0.0,
+              "未归纳": 0.0,
+              "计数_全对": 2.0,
+              "计数_过度修正": 1.0,
+              "计数_过度泛化": 0.0,
+              "计数_未归纳": 0.0,
+              "规律强度单调性": 0.0,
+              "未解析率": 0.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "全对": {
+                "point": 0.6666666666666666,
+                "low": 0.2076596008020477,
+                "high": 0.9385080552796037,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "未解析率": {
+                "point": 0.0,
+                "low": 5.551115123125783e-17,
+                "high": 0.5614970317550454,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "过度修正": {
+                "point": 0.3333333333333333,
+                "low": 0.0,
+                "high": 0.6666666666666666,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "过度泛化": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "未归纳": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "规律强度单调性": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          }
+        },
+        "participation": {
+          "declared": 6,
+          "total_caps": 11,
+          "items": 268
+        },
+        "crashed": null,
+        "not_applicable": null,
+        "harness_fault": null,
+        "cost": {
+          "setup": 1,
+          "ingest": 602519,
+          "probe": 814339
+        },
+        "cost_profile": {
+          "items_ingested": 434,
+          "items_probed": 268,
+          "tokens_in": 8399,
+          "tokens_out": 176,
+          "llm_calls": 51,
+          "canary": {
+            "count": 434,
+            "hits": 3,
+            "with_doc_ids": 3,
+            "with_spans": 3
+          },
+          "pre_ingest_count": 0
+        },
+        "ingest_snapshot": "未存（探针动过 store）"
+      },
+      {
+        "arm": "mem0",
+        "is_control": false,
+        "declared": [
+          "accounting",
+          "answer",
+          "governance",
+          "ingest",
+          "search"
+        ],
+        "scores": {
+          "retrieval": {
+            "suite": "retrieval",
+            "status": "scored",
+            "reason": null,
+            "denominator": 40,
+            "metrics": {
+              "top1": 0.775,
+              "recall@k": 0.825
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "top1": {
+                "point": 0.775,
+                "low": 0.6249690325768998,
+                "high": 0.8768390867645927,
+                "n": 40,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall@k": {
+                "point": 0.825,
+                "low": 0.6805000966821229,
+                "high": 0.9125458625396408,
+                "n": 40,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          },
+          "n2_provenance": {
+            "suite": "n2_provenance",
+            "status": "unsupported",
+            "reason": "未声明 provenance",
+            "denominator": 0,
+            "metrics": {},
+            "failed_rate": 0.0,
+            "intervals": {},
+            "not_publishable": ""
+          },
+          "n1_prompted": {
+            "suite": "n1_prompted",
+            "status": "unsupported",
+            "reason": "未声明 reality",
+            "denominator": 0,
+            "metrics": {},
+            "failed_rate": 0.0,
+            "intervals": {},
+            "not_publishable": ""
+          },
+          "n1_spontaneous": {
+            "suite": "n1_spontaneous",
+            "status": "unsupported",
+            "reason": "未声明 reality",
+            "denominator": 0,
+            "metrics": {},
+            "failed_rate": 0.0,
+            "intervals": {},
+            "not_publishable": ""
+          },
+          "qa": {
+            "suite": "qa",
+            "status": "scored",
+            "reason": null,
+            "denominator": 42,
+            "metrics": {
+              "准确率": 0.7631578947368421,
+              "该答却弃权": 0.15789473684210525,
+              "正确弃权率": 1.0,
+              "编造率": 0.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "准确率": {
+                "point": 0.7631578947368421,
+                "low": 0.616074537696258,
+                "high": 0.8661366250060032,
+                "n": 42,
+                "effective_n": null,
+                "caveat": null
+              },
+              "正确弃权率": {
+                "point": 1.0,
+                "low": 0.916201209134296,
+                "high": 0.9999999999999999,
+                "n": 42,
+                "effective_n": null,
+                "caveat": null
+              },
+              "编造率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.08379879086570391,
+                "n": 42,
+                "effective_n": null,
+                "caveat": null
+              },
+              "该答却弃权": {
+                "point": 0.15789473684210525,
+                "low": 0.05128205128205128,
+                "high": 0.2894736842105263,
+                "n": 42,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          },
+          "n4_governance": {
+            "suite": "n4_governance",
+            "status": "scored",
+            "reason": null,
+            "denominator": 3,
+            "metrics": {
+              "归属率": 1.0,
+              "隔离_无": 0.0,
+              "隔离_过滤级": 1.0,
+              "隔离_授权级": 0.0,
+              "隔离_未验证": 0.0,
+              "删除_none": 0.0,
+              "删除_deleted": 0.0,
+              "删除_filtered": 0.0,
+              "删除_survives_restart": 1.0,
+              "删除_gone_from_storage": 0.0,
+              "删除_gone_from_answers": 0.0,
+              "彻底删除率": 0.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "归属率": {
+                "point": 1.0,
+                "low": 0.4385029682449546,
+                "high": 1.0,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "彻底删除率": {
+                "point": 0.0,
+                "low": 5.551115123125783e-17,
+                "high": 0.5614970317550454,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          },
+          "n3_reasoning": {
+            "suite": "n3_reasoning",
+            "status": "unsupported",
+            "reason": "未声明 reasoning",
+            "denominator": 0,
+            "metrics": {},
+            "failed_rate": 0.0,
+            "intervals": {},
+            "not_publishable": ""
+          },
+          "n5_observed": {
+            "suite": "n5_observed",
+            "status": "scored",
+            "reason": null,
+            "denominator": 30,
+            "metrics": {
+              "该留-留了": 12.0,
+              "该留-丢了": 0.0,
+              "该丢-留了": 18.0,
+              "该丢-丢了": 0.0,
+              "正确保留率": 1.0,
+              "正确遗忘率": 0.0,
+              "囤积率": 1.0,
+              "误删率": 0.0,
+              "保留追踪度": 0.0,
+              "因子_频率": 0.0,
+              "因子_间隔": 0.0,
+              "因子_显著性": 0.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "正确保留率": {
+                "point": 1.0,
+                "low": 0.8864866068260312,
+                "high": 0.9999999999999999,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "正确遗忘率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.11351339317396876,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "囤积率": {
+                "point": 1.0,
+                "low": 0.8864866068260312,
+                "high": 0.9999999999999999,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "误删率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.11351339317396876,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "因子_频率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.11351339317396876,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "保留追踪度": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "因子_间隔": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              },
+              "因子_显著性": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 30,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": "需求概率曲线未从真实语料拟合（source=None）——⛔ 自己拍参数等于自己定义什么叫「该记住」，那是自证。见 docs/adapters/world.md#need-probability"
+          },
+          "n5_self_reported": {
+            "suite": "n5_self_reported",
+            "status": "unsupported",
+            "reason": "未声明 retention",
+            "denominator": 0,
+            "metrics": {},
+            "failed_rate": 0.0,
+            "intervals": {},
+            "not_publishable": ""
+          },
+          "n6_structure": {
+            "suite": "n6_structure",
+            "status": "scored",
+            "reason": null,
+            "denominator": 112,
+            "metrics": {
+              "可达性_fan1": 0.8125,
+              "精确检索_fan1": 0.5,
+              "可达性_fan2": 0.9166666666666666,
+              "精确检索_fan2": 0.6875,
+              "可达性_fan4": 0.9583333333333334,
+              "精确检索_fan4": 0.5,
+              "可达性_fan8": 0.875,
+              "精确检索_fan8": 0.5625,
+              "可达性_fan16": 0.875,
+              "精确检索_fan16": 0.5625,
+              "可达性_fan32": 0.8541666666666666,
+              "精确检索_fan32": 0.125,
+              "可达性_fan64": 0.7916666666666666,
+              "精确检索_fan64": 0.125,
+              "扇形退化斜率": -0.11271055006945029,
+              "可达性增益": -0.013954639532408138
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "可达性_fan1": {
+                "point": 0.8125,
+                "low": 0.6666666666666666,
+                "high": 0.9285714285714286,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan1": {
+                "point": 0.5,
+                "low": 0.23529411764705882,
+                "high": 0.75,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性_fan2": {
+                "point": 0.9166666666666666,
+                "low": 0.8333333333333333,
+                "high": 0.9803921568627452,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan2": {
+                "point": 0.6875,
+                "low": 0.4375,
+                "high": 0.9166666666666666,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性_fan4": {
+                "point": 0.9583333333333334,
+                "low": 0.8947368421052632,
+                "high": 1.0,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan4": {
+                "point": 0.5,
+                "low": 0.25,
+                "high": 0.75,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性_fan8": {
+                "point": 0.875,
+                "low": 0.7948717948717948,
+                "high": 0.9583333333333334,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan8": {
+                "point": 0.5625,
+                "low": 0.3125,
+                "high": 0.8333333333333334,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性_fan16": {
+                "point": 0.875,
+                "low": 0.7948717948717948,
+                "high": 0.9555555555555556,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan16": {
+                "point": 0.5625,
+                "low": 0.3125,
+                "high": 0.8,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性_fan32": {
+                "point": 0.8541666666666666,
+                "low": 0.7692307692307693,
+                "high": 0.9333333333333333,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan32": {
+                "point": 0.125,
+                "low": 0.0,
+                "high": 0.3076923076923077,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性_fan64": {
+                "point": 0.7916666666666666,
+                "low": 0.6969696969696969,
+                "high": 0.888888888888889,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "精确检索_fan64": {
+                "point": 0.125,
+                "low": 0.0,
+                "high": 0.3125,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "扇形退化斜率": {
+                "point": -0.11271055006945029,
+                "low": -0.1710300523058028,
+                "high": -0.051058625405156065,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              },
+              "可达性增益": {
+                "point": -0.013954639532408138,
+                "low": -0.04097335815943032,
+                "high": 0.016262061610573003,
+                "n": 112,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          },
+          "n7_calibration": {
+            "suite": "n7_calibration",
+            "status": "unsupported",
+            "reason": "未声明 confidence",
+            "denominator": 0,
+            "metrics": {},
+            "failed_rate": 0.0,
+            "intervals": {},
+            "not_publishable": ""
+          },
+          "n8_induction": {
+            "suite": "n8_induction",
+            "status": "scored",
+            "reason": null,
+            "denominator": 3,
+            "metrics": {
+              "全对": 0.3333333333333333,
+              "过度修正": 0.0,
+              "过度泛化": 0.3333333333333333,
+              "未归纳": 0.3333333333333333,
+              "计数_全对": 1.0,
+              "计数_过度修正": 0.0,
+              "计数_过度泛化": 1.0,
+              "计数_未归纳": 1.0,
+              "规律强度单调性": -0.8660254037844387,
+              "未解析率": 0.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "全对": {
+                "point": 0.3333333333333333,
+                "low": 0.06149194472039621,
+                "high": 0.7923403991979522,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "未解析率": {
+                "point": 0.0,
+                "low": 5.551115123125783e-17,
+                "high": 0.5614970317550454,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "过度修正": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.0,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "过度泛化": {
+                "point": 0.3333333333333333,
+                "low": 0.0,
+                "high": 1.0,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "未归纳": {
+                "point": 0.3333333333333333,
+                "low": 0.0,
+                "high": 0.6666666666666666,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              },
+              "规律强度单调性": {
+                "point": -0.8660254037844387,
+                "low": -1.0000000000000002,
+                "high": 0.0,
+                "n": 3,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          }
+        },
+        "participation": {
+          "declared": 5,
+          "total_caps": 11,
+          "items": 230
+        },
+        "crashed": null,
+        "not_applicable": null,
+        "harness_fault": null,
+        "cost": {
+          "setup": 2,
+          "ingest": 4212633,
+          "probe": 790415
+        },
+        "cost_profile": {
+          "items_ingested": 434,
+          "items_probed": 230,
+          "tokens_in": 10095,
+          "tokens_out": 173,
+          "llm_calls": 51,
+          "canary": {
+            "count": 434,
+            "hits": 3,
+            "with_doc_ids": 3,
+            "with_spans": 0
+          },
+          "pre_ingest_count": 0
+        },
+        "ingest_snapshot": "未存（探针动过 store）"
+      }
+    ]
+  },
+  "host": {},
+  "externals": {
+    "a_mem": {
+      "actual": "0.2.6",
+      "declared": "0.2.6",
+      "detail": "隔离环境：openai=2.54.0 chromadb=1.5.9 litellm=1.99.0 sentence-transformers=6.0.1",
+      "kind": "venv",
+      "location": ".external/venvs/a_mem/bin/python",
+      "name": "a_mem",
+      "ok": true
+    },
+    "locomo": {
+      "actual": "3eb6f2c585f5e1699204e3c3bdf7adc5c28cb376",
+      "declared": "main",
+      "detail": "",
+      "kind": "git",
+      "location": ".external/locomo",
+      "name": "locomo",
+      "ok": true
+    },
+    "mem0": {
+      "actual": "2.0.19",
+      "declared": "2.0.19",
+      "detail": "隔离环境：openai=3.7.0",
+      "kind": "venv",
+      "location": ".external/venvs/mem0/bin/python",
+      "name": "mem0",
+      "ok": true
+    }
+  },
+  "sampling": {},
+  "cache": {}
+}

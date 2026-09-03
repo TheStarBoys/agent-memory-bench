@@ -6,6 +6,13 @@ from amb.report.floor import best_floor, delta
 from amb.report.schema import LANE_LABEL, LANES, Report
 
 #: 每个套件在对比表里用哪个指标当主指标（其余仍进 JSON）。
+#: ⛔ 不能当**质量轴**的主指标，以及为什么。
+#: ⚠️ 成本×质量那张表默认「越高越好、什么都不做得低分」——
+#: 不满足这一条的指标摆上去会产出反的结论。
+#: ⭐ 实测踩到两次：`扇形退化斜率`（形状，⛔ 检索不到东西的臂斜率完美）
+#: 已经换成 `精确检索`；`ECE` 越低越好，⛔ 留在这里当挡板。
+QUALITY_UNFIT = {"ECE": "⚠️ 越低越好——⛔ 摆进「越高越好」的表里结论是反的"}
+
 HEADLINE = {
     "retrieval": "top1",
     "n2_provenance": "精确匹配率",
@@ -19,8 +26,8 @@ HEADLINE = {
     "n4_governance": "彻底删除率",
     "n5_observed": "保留追踪度",
     "n5_agent": "保留追踪度",
-    "n6_agent": "扇形退化斜率",
-    "n6_structure": "扇形退化斜率",
+    "n6_agent": "精确检索",
+    "n6_structure": "精确检索",
     "n7_calibration": "ECE",
     "n8_induction": "全对",
     "n5_self_reported": "保留追踪度",
@@ -146,8 +153,13 @@ def _render_cost(arms: list, suites: list[str],
     # ⭐ 质量取**参与面最广**的那个套件——⛔ 不合成总分。
     # ⚠️ 挑一个大多数臂都不支持的套件，成本表就只剩一行，比较不起来。
     def scored_count(name: str) -> int:
+        # ⛔ 「有这个套件的分」还不够，得**真有那个指标**：
+        # ⚠️ 踩过——存档是加这个指标之前跑的，`metrics.get(名字, 0.0)`
+        # 于是给每条臂发了一个 0.000，表里五条臂并列 0.000。
+        # ⭐ 指标不在就是不在，不拿 0 冒充。
         return sum(1 for a in arms
-                   if (sc := a.scores.get(name)) and sc.status == "scored")
+                   if (sc := a.scores.get(name)) and sc.status == "scored"
+                   and HEADLINE[name] in sc.metrics)
 
     # ⛔ 「不得发布」的档不许当质量列：⚠️ 分是算得出来的，
     # 但 ground truth 本身立不住（N5 的需求概率曲线还没拟合）。
@@ -158,7 +170,8 @@ def _render_cost(arms: list, suites: list[str],
                        for a in arms)
 
     candidates = [s for s in suites
-                  if s in HEADLINE and scored_count(s) > 0 and publishable(s)]
+                  if s in HEADLINE and scored_count(s) > 0 and publishable(s)
+                  and HEADLINE[s] not in QUALITY_UNFIT]
     if not candidates:
         return []
     # 并列时取名字靠前的，⚠️ 保证同一批数据两次跑挑的是同一个
@@ -167,8 +180,8 @@ def _render_cost(arms: list, suites: list[str],
     quality: dict[str, float] = {}
     for a in arms:
         sc = a.scores.get(chosen)
-        if sc and sc.status == "scored":
-            quality[a.arm] = sc.metrics.get(HEADLINE[chosen], 0.0)
+        if sc and sc.status == "scored" and HEADLINE[chosen] in sc.metrics:
+            quality[a.arm] = sc.metrics[HEADLINE[chosen]]
     if not quality:
         return []
 

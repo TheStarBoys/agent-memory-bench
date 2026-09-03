@@ -260,3 +260,36 @@ def test_answer_reports_token_usage(tmp_path: Path) -> None:
     usage = arm.usage()
     assert isinstance(usage, list) and isinstance(usage[0], Usage)
     assert usage[0].tokens_in > 0 and usage[0].llm_calls > 0
+
+
+def test_every_quality_axis_punishes_doing_nothing(tmp_path: Path) -> None:
+    """⛔ 成本×质量那张表默认「越高越好、什么都不做的得低分」。
+
+    ⚠️ 实测踩到：`n6_structure` 的主指标曾是 `扇形退化斜率`，
+    ⭐ 而 `null` 什么都检索不到，每一档都是 0.000 —— **斜率因此完美地等于 0**。
+    ⛔ 于是它当上了成本×质量表的地板，四条真臂全被判
+    「既不如它准，又不比它快——没有存在理由」。
+
+    ⭐ 这条测试拿真的 `null` 与真的 `bm25` 跑一遍，逐个主指标对：
+    ⛔ 一个不做事的臂在任何一个质量轴上都不许赢。
+    """
+    from amb.report.render import HEADLINE, QUALITY_UNFIT
+
+    nothing, _ = run_one("null", build("null"), plan(), tmp_path / "n",
+                         is_control=True)
+    real, _ = run_one("bm25", build("bm25"), plan(), tmp_path / "b",
+                      is_control=True)
+
+    compared = 0
+    for suite, metric in HEADLINE.items():
+        a, b = nothing.scores.get(suite), real.scores.get(suite)
+        if not (a and b) or a.status != "scored" or b.status != "scored":
+            continue
+        if metric not in a.metrics or metric not in b.metrics:
+            continue
+        assert metric not in QUALITY_UNFIT, f"{suite} 的主指标方向是反的"
+        compared += 1
+        assert a.metrics[metric] <= b.metrics[metric], (
+            f"⛔ {suite} 的 {metric}：什么都不做的 null 赢了 bm25 "
+            f"（{a.metrics[metric]:.3f} > {b.metrics[metric]:.3f}）")
+    assert compared >= 3, "⚠️ 对上的主指标太少，这条测试没在守什么"

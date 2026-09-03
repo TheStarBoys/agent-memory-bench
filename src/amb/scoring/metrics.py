@@ -385,7 +385,14 @@ def score_structure(run: SuiteRun) -> Score:
         reach_pts.append((math.log(fan), reach))
         precise_pts.append((math.log(fan), precise))
 
-    # ⭐ 退化斜率：精确检索随 log(扇形度) 的回归斜率，越平越好
+    # ⭐ 两条曲线各给一个**跨档汇总**：⚠️ 每档等权，⛔ 不是按题数加权——
+    # 高扇形度那几档题多，加权等于让它们说了算。
+    metrics["可达性"] = sum(v for _, v in reach_pts) / len(reach_pts)
+    metrics["精确检索"] = sum(v for _, v in precise_pts) / len(precise_pts)
+    # ⭐ 退化斜率：精确检索随 log(扇形度) 的回归斜率，越平越好。
+    # ⛔ 它是**形状**，不是质量：⚠️ 一条什么都检索不到的臂每档都是 0.000，
+    # 斜率因此是完美的 0.000——实测它凭这个当上了成本×质量表的地板，
+    # 于是四条真臂全被判「没有存在理由」。⭐ 形状只在检索本身站得住时才有意义。
     metrics["扇形退化斜率"] = _slope(precise_pts)
     metrics["可达性增益"] = _slope(reach_pts)
     s.metrics = metrics
