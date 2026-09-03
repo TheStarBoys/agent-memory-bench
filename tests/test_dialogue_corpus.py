@@ -18,9 +18,11 @@ from amb.world.stream import dialogue as dlg
 FACTS = _corpus.build(seed=42, entities=24, attrs_per_entity=5)
 RENDERED = {c: dlg.render(FACTS, c, seed=42) for c in dlg.Condition}
 
-#: ⚠️ LoCoMo 实测：中位 145 · 均值 159 · 全域 34~494 字符
+#: ⚠️ LoCoMo 实测：全域 34~494 · 四分位 [108, 145, 197] 字符
 LOCOMO_BAND = (34, 494)
-LOCOMO_MEDIAN = 145
+#: ⭐ 判据是「落在真实语料的四分位区间里」，⛔ 不是「贴着中位数」——
+#: ⚠️ 中位数对上而方差为零的语料，同样不像真对话。
+LOCOMO_IQR = (108, 197)
 
 
 def test_the_questions_and_answers_are_identical_across_conditions() -> None:
@@ -63,9 +65,29 @@ def test_filler_cannot_be_mistaken_for_a_fact() -> None:
 
 
 def test_filler_is_varied_enough_to_actually_dilute() -> None:
-    """⛔ 同一句闲聊反复出现，词法臂会当它是背景直接忽略——那等于没稀释。"""
+    """⛔ 同一段闲聊反复出现，词法臂会当它是背景直接忽略——那等于没稀释。"""
     assert len(set(dlg.FILLER)) == len(dlg.FILLER)
     assert len(dlg.FILLER) >= 20
+
+
+def test_every_passage_is_long_enough_to_stand_as_one_turn() -> None:
+    """⛔ 实测踩过：`_say` 先按长度过滤再挑，⚠️ 而当时只有 2 段够长——
+    ⭐ 600 条噪声轮于是全用那两段，**等于没稀释，而且不报错**。
+    现在长度在这里拦。"""
+    assert dlg.too_short() == ()
+
+
+def test_a_turn_is_one_topic_not_a_bag_of_sentences() -> None:
+    """⛔ 一轮 = **一段** = 一个话题。
+
+    ⚠️ 第一版拼 10 条互不相干的一句话去凑长度，代价是一次 2.5 小时的跑：
+    ⭐ `mem0` 把每个碎句都记成一条（膨胀 2.19×），
+    ⛔ 向量臂的向量成了十个话题的平均（top1 掉到 0.133，**比掷硬币还差**）。
+    ⚠️ 两个都是渲染方式的产物，不是被测系统的性质。
+    """
+    used = {t.doc_id: sum(1 for f in dlg.FILLER if f in t.text)
+            for t in RENDERED[dlg.Condition.DILUTED].turns}
+    assert set(used.values()) == {1}, "⛔ 一轮里出现了不止一段闲聊"
 
 
 @pytest.mark.parametrize(
@@ -74,7 +96,26 @@ def test_conversational_turns_match_locomo_length(cond) -> None:
     """⚠️ 编几句短句叫「对话」的话，外部效度归零。"""
     lens = [len(t.text) for t in RENDERED[cond].turns]
     assert LOCOMO_BAND[0] <= min(lens) and max(lens) <= LOCOMO_BAND[1]
-    assert abs(st.median(lens) - LOCOMO_MEDIAN) <= 30, "中位数偏离 LoCoMo 太远"
+    assert LOCOMO_IQR[0] <= st.median(lens) <= LOCOMO_IQR[1], \
+        "轮长中位数掉出了 LoCoMo 的四分位区间"
+
+
+def test_the_narrow_spread_is_recorded_not_hidden() -> None:
+    """⚠️ **已知偏差**：我们的轮长挤在一起，LoCoMo 是散开的。
+
+    | | 四分位 |
+    |---|---|
+    | LoCoMo | [108, 145, 197] |
+    | 我们 | [119, 133, 137] |
+
+    ⛔ 中位数落在真实区间里了，⚠️ 但**离散度明显偏小**——
+    ⭐ 这条测试的作用不是拦住它（拦不住，那要重写全部语料），
+    是**让它别被忘掉**：结论里必须写明这一条。
+    """
+    lens = [len(t.text) for t in RENDERED[dlg.Condition.REVISED].turns]
+    lo, _, hi = st.quantiles(lens, n=4)
+    assert (hi - lo) < (LOCOMO_IQR[1] - LOCOMO_IQR[0]), (
+        "⭐ 离散度追上 LoCoMo 了——那就把这条测试和文档里那句限制一起删掉")
 
 
 def test_dense_stays_dense() -> None:

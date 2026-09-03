@@ -1,0 +1,663 @@
+{
+  "run_id": "dialogue-revised-2026-09-03T13:29:34Z",
+  "at": "2026-09-03T13:29:34Z",
+  "world": {
+    "name": "dialogue-revised",
+    "seed": 42,
+    "digest": "sha256:7e2f8a08ab7215bbdb019f016517d239f68f575796075d6f21648c1b8ce11117"
+  },
+  "backbone": {
+    "model": "Qwen/Qwen3-8B",
+    "temperature": 0.0,
+    "thinking": false,
+    "ingest_model": "Qwen/Qwen3-8B",
+    "answer_prompt": "你是一个问答助手。只依据给出的资料回答，用最简短的词或短语作答，不要解释、不要复述问题。如果资料里没有答案，只回答四个字：资料未提及。",
+    "answer_prompt_styles": {
+      "inductive": "你是一个问答助手。资料里是一批同类个体的观察记录。先从这些记录里归纳出这一类通常成立的规律，再回答问题。用最简短的词或短语作答，不要解释、不要复述问题。如果资料里没有直接提到问题问的那个个体，就按归纳出的规律推断作答，不要回答「资料未提及」。但如果资料里明确写了那个个体的情况，以资料写的为准。"
+    }
+  },
+  "lanes": {
+    "library": [
+      {
+        "arm": "null",
+        "is_control": true,
+        "declared": [
+          "accounting",
+          "answer",
+          "ingest",
+          "search"
+        ],
+        "scores": {
+          "retrieval": {
+            "suite": "retrieval",
+            "status": "scored",
+            "reason": null,
+            "denominator": 120,
+            "metrics": {
+              "top1": 0.0,
+              "recall@k": 0.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "top1": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.031019166418703486,
+                "n": 120,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall@k": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.031019166418703486,
+                "n": 120,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          },
+          "qa": {
+            "suite": "qa",
+            "status": "scored",
+            "reason": null,
+            "denominator": 120,
+            "metrics": {
+              "准确率": 0.0,
+              "该答却弃权": 1.0,
+              "正确弃权率": 0.0,
+              "编造率": 0.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "准确率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.031019166418703486,
+                "n": 120,
+                "effective_n": null,
+                "caveat": null
+              },
+              "正确弃权率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.031019166418703486,
+                "n": 120,
+                "effective_n": null,
+                "caveat": null
+              },
+              "编造率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.031019166418703486,
+                "n": 120,
+                "effective_n": null,
+                "caveat": null
+              },
+              "该答却弃权": {
+                "point": 1.0,
+                "low": 1.0,
+                "high": 1.0,
+                "n": 120,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          }
+        },
+        "participation": {
+          "declared": 4,
+          "total_caps": 11,
+          "items": 240
+        },
+        "crashed": null,
+        "not_applicable": null,
+        "harness_fault": null,
+        "cost": {
+          "setup": 0,
+          "ingest": 0,
+          "probe": 253437
+        },
+        "cost_profile": {
+          "items_ingested": 240,
+          "items_probed": 240,
+          "tokens_in": 9954,
+          "tokens_out": 360,
+          "llm_calls": 120,
+          "canary": {
+            "count": 0,
+            "hits": 0,
+            "with_doc_ids": 0,
+            "with_spans": 0
+          },
+          "pre_ingest_count": 0
+        },
+        "ingest_snapshot": "未启用"
+      },
+      {
+        "arm": "bm25",
+        "is_control": true,
+        "declared": [
+          "accounting",
+          "answer",
+          "governance",
+          "ingest",
+          "provenance",
+          "reality",
+          "search"
+        ],
+        "scores": {
+          "retrieval": {
+            "suite": "retrieval",
+            "status": "scored",
+            "reason": null,
+            "denominator": 120,
+            "metrics": {
+              "top1": 0.49166666666666664,
+              "recall@k": 1.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "top1": {
+                "point": 0.49166666666666664,
+                "low": 0.4038757172769723,
+                "high": 0.5799746021633394,
+                "n": 120,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall@k": {
+                "point": 1.0,
+                "low": 0.9689808335812966,
+                "high": 1.0,
+                "n": 120,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          },
+          "qa": {
+            "suite": "qa",
+            "status": "scored",
+            "reason": null,
+            "denominator": 120,
+            "metrics": {
+              "准确率": 0.525,
+              "该答却弃权": 0.008333333333333333,
+              "正确弃权率": 0.0,
+              "编造率": 0.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "准确率": {
+                "point": 0.525,
+                "low": 0.43626995305824834,
+                "high": 0.6121790886208165,
+                "n": 120,
+                "effective_n": null,
+                "caveat": null
+              },
+              "正确弃权率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.031019166418703486,
+                "n": 120,
+                "effective_n": null,
+                "caveat": null
+              },
+              "编造率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.031019166418703486,
+                "n": 120,
+                "effective_n": null,
+                "caveat": null
+              },
+              "该答却弃权": {
+                "point": 0.008333333333333333,
+                "low": 0.0,
+                "high": 0.025,
+                "n": 120,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          }
+        },
+        "participation": {
+          "declared": 7,
+          "total_caps": 11,
+          "items": 240
+        },
+        "crashed": null,
+        "not_applicable": null,
+        "harness_fault": null,
+        "cost": {
+          "setup": 0,
+          "ingest": 9,
+          "probe": 274150
+        },
+        "cost_profile": {
+          "items_ingested": 240,
+          "items_probed": 240,
+          "tokens_in": 73231,
+          "tokens_out": 483,
+          "llm_calls": 120,
+          "canary": {
+            "count": 240,
+            "hits": 3,
+            "with_doc_ids": 3,
+            "with_spans": 3
+          },
+          "pre_ingest_count": 0
+        },
+        "ingest_snapshot": "未启用"
+      },
+      {
+        "arm": "naive_rag",
+        "is_control": true,
+        "declared": [
+          "accounting",
+          "answer",
+          "ingest",
+          "provenance",
+          "search"
+        ],
+        "scores": {
+          "retrieval": {
+            "suite": "retrieval",
+            "status": "scored",
+            "reason": null,
+            "denominator": 120,
+            "metrics": {
+              "top1": 0.13333333333333333,
+              "recall@k": 0.35
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "top1": {
+                "point": 0.13333333333333333,
+                "low": 0.08376608962687311,
+                "high": 0.20564796574684285,
+                "n": 120,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall@k": {
+                "point": 0.35,
+                "low": 0.2705189959028541,
+                "high": 0.438786754022757,
+                "n": 120,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          },
+          "qa": {
+            "suite": "qa",
+            "status": "scored",
+            "reason": null,
+            "denominator": 120,
+            "metrics": {
+              "准确率": 0.30833333333333335,
+              "该答却弃权": 0.4083333333333333,
+              "正确弃权率": 0.0,
+              "编造率": 0.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "准确率": {
+                "point": 0.30833333333333335,
+                "low": 0.23272736988916298,
+                "high": 0.39582997723800684,
+                "n": 120,
+                "effective_n": null,
+                "caveat": null
+              },
+              "正确弃权率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.031019166418703486,
+                "n": 120,
+                "effective_n": null,
+                "caveat": null
+              },
+              "编造率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.031019166418703486,
+                "n": 120,
+                "effective_n": null,
+                "caveat": null
+              },
+              "该答却弃权": {
+                "point": 0.4083333333333333,
+                "low": 0.31666666666666665,
+                "high": 0.49166666666666664,
+                "n": 120,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          }
+        },
+        "participation": {
+          "declared": 5,
+          "total_caps": 11,
+          "items": 240
+        },
+        "crashed": null,
+        "not_applicable": null,
+        "harness_fault": null,
+        "cost": {
+          "setup": 0,
+          "ingest": 122882,
+          "probe": 943523
+        },
+        "cost_profile": {
+          "items_ingested": 240,
+          "items_probed": 240,
+          "tokens_in": 74061,
+          "tokens_out": 435,
+          "llm_calls": 120,
+          "canary": {
+            "count": 240,
+            "hits": 3,
+            "with_doc_ids": 3,
+            "with_spans": 3
+          },
+          "pre_ingest_count": 0,
+          "embed_calls": 257,
+          "embed_texts": 482,
+          "embed_wall_ms": 716249,
+          "embed_slowest_ms": 9260,
+          "embed_retries": 3
+        },
+        "ingest_snapshot": "未启用"
+      },
+      {
+        "arm": "mem0_raw",
+        "is_control": false,
+        "declared": [
+          "accounting",
+          "answer",
+          "governance",
+          "ingest",
+          "provenance",
+          "search"
+        ],
+        "scores": {
+          "retrieval": {
+            "suite": "retrieval",
+            "status": "scored",
+            "reason": null,
+            "denominator": 120,
+            "metrics": {
+              "top1": 0.14166666666666666,
+              "recall@k": 0.35
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "top1": {
+                "point": 0.14166666666666666,
+                "low": 0.09036879103483236,
+                "high": 0.21519494489857183,
+                "n": 120,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall@k": {
+                "point": 0.35,
+                "low": 0.2705189959028541,
+                "high": 0.438786754022757,
+                "n": 120,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          },
+          "qa": {
+            "suite": "qa",
+            "status": "scored",
+            "reason": null,
+            "denominator": 120,
+            "metrics": {
+              "准确率": 0.2916666666666667,
+              "该答却弃权": 0.4083333333333333,
+              "正确弃权率": 0.0,
+              "编造率": 0.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "准确率": {
+                "point": 0.2916666666666667,
+                "low": 0.2178156362103854,
+                "high": 0.3784423497974078,
+                "n": 120,
+                "effective_n": null,
+                "caveat": null
+              },
+              "正确弃权率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.031019166418703486,
+                "n": 120,
+                "effective_n": null,
+                "caveat": null
+              },
+              "编造率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.031019166418703486,
+                "n": 120,
+                "effective_n": null,
+                "caveat": null
+              },
+              "该答却弃权": {
+                "point": 0.4083333333333333,
+                "low": 0.31666666666666665,
+                "high": 0.49166666666666664,
+                "n": 120,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          }
+        },
+        "participation": {
+          "declared": 6,
+          "total_caps": 11,
+          "items": 240
+        },
+        "crashed": null,
+        "not_applicable": null,
+        "harness_fault": null,
+        "cost": {
+          "setup": 0,
+          "ingest": 358264,
+          "probe": 689577
+        },
+        "cost_profile": {
+          "items_ingested": 240,
+          "items_probed": 240,
+          "tokens_in": 74037,
+          "tokens_out": 435,
+          "llm_calls": 120,
+          "canary": {
+            "count": 240,
+            "hits": 3,
+            "with_doc_ids": 3,
+            "with_spans": 3
+          },
+          "pre_ingest_count": 0
+        },
+        "ingest_snapshot": "已存"
+      },
+      {
+        "arm": "mem0",
+        "is_control": false,
+        "declared": [
+          "accounting",
+          "answer",
+          "governance",
+          "ingest",
+          "search"
+        ],
+        "scores": {
+          "retrieval": {
+            "suite": "retrieval",
+            "status": "scored",
+            "reason": null,
+            "denominator": 120,
+            "metrics": {
+              "top1": 0.2,
+              "recall@k": 0.5083333333333333
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "top1": {
+                "point": 0.2,
+                "low": 0.13824476478840256,
+                "high": 0.2803667350628196,
+                "n": 120,
+                "effective_n": null,
+                "caveat": null
+              },
+              "recall@k": {
+                "point": 0.5083333333333333,
+                "low": 0.4200253978366605,
+                "high": 0.5961242827230276,
+                "n": 120,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          },
+          "qa": {
+            "suite": "qa",
+            "status": "scored",
+            "reason": null,
+            "denominator": 120,
+            "metrics": {
+              "准确率": 0.375,
+              "该答却弃权": 0.26666666666666666,
+              "正确弃权率": 0.0,
+              "编造率": 0.0
+            },
+            "failed_rate": 0.0,
+            "intervals": {
+              "准确率": {
+                "point": 0.375,
+                "low": 0.29352429786446804,
+                "high": 0.4642304937402079,
+                "n": 120,
+                "effective_n": null,
+                "caveat": null
+              },
+              "正确弃权率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.031019166418703486,
+                "n": 120,
+                "effective_n": null,
+                "caveat": null
+              },
+              "编造率": {
+                "point": 0.0,
+                "low": 0.0,
+                "high": 0.031019166418703486,
+                "n": 120,
+                "effective_n": null,
+                "caveat": null
+              },
+              "该答却弃权": {
+                "point": 0.26666666666666666,
+                "low": 0.19166666666666668,
+                "high": 0.3416666666666667,
+                "n": 120,
+                "effective_n": null,
+                "caveat": null
+              }
+            },
+            "not_publishable": ""
+          }
+        },
+        "participation": {
+          "declared": 5,
+          "total_caps": 11,
+          "items": 240
+        },
+        "crashed": null,
+        "not_applicable": null,
+        "harness_fault": null,
+        "cost": {
+          "setup": 0,
+          "ingest": 3810728,
+          "probe": 788689
+        },
+        "cost_profile": {
+          "items_ingested": 240,
+          "items_probed": 240,
+          "tokens_in": 2318895,
+          "tokens_out": 35393,
+          "llm_calls": 360,
+          "canary": {
+            "count": 526,
+            "hits": 3,
+            "with_doc_ids": 3,
+            "with_spans": 0
+          },
+          "pre_ingest_count": 0
+        },
+        "ingest_snapshot": "已存"
+      }
+    ]
+  },
+  "host": {},
+  "externals": {
+    "a_mem": {
+      "actual": "0.2.6",
+      "declared": "0.2.6",
+      "detail": "隔离环境：openai=2.54.0 chromadb=1.5.9 litellm=1.99.0 sentence-transformers=6.0.1",
+      "kind": "venv",
+      "location": ".external/venvs/a_mem/bin/python",
+      "name": "a_mem",
+      "ok": true
+    },
+    "locomo": {
+      "actual": "3eb6f2c585f5e1699204e3c3bdf7adc5c28cb376",
+      "declared": "main",
+      "detail": "",
+      "kind": "git",
+      "location": ".external/locomo",
+      "name": "locomo",
+      "ok": true
+    },
+    "mem0": {
+      "actual": "2.0.19",
+      "declared": "2.0.19",
+      "detail": "隔离环境：openai=3.7.0",
+      "kind": "venv",
+      "location": ".external/venvs/mem0/bin/python",
+      "name": "mem0",
+      "ok": true
+    }
+  },
+  "sampling": {
+    "condition": "revised",
+    "entities": 24,
+    "attrs": 5,
+    "documents": 240,
+    "questions": 120
+  },
+  "cache": {}
+}
