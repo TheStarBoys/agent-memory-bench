@@ -7,10 +7,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from amb.adapters.llm import LLMClient
-from amb.core import Answer, Entry, Usage
+from amb.core import Answer, AnswerStyle, Entry, Usage
 
 #: ⚠️ 提示是判分口径的一部分。改它等于换尺子，两次跑不可比。
 #: ⛔ 但**一次跑里所有臂必须用同一个**——那才是「差别只来自记忆层」的前提。
@@ -28,11 +28,24 @@ class Prompt:
     """
 
     system: str
+    #: ⭐ 允许外推那一套的 system。⛔ 没有默认值是**故意**的：
+    #: 少写一个变体，声明它的套件就会静默退回默认口径——
+    #: ⚠️ 那正是 N8 四条臂全 0.000 的成因，不能让它再发生一次。
+    inductive: str
     #: ⛔ 判分要逐字认的那个弃权词
     abstain: str
     no_context: str
     #: 资料 / 问题 / 答案三个标签——⚠️ 也得跟着语言走
     labels: tuple[str, str, str]
+
+    def styled(self, style: AnswerStyle) -> "Prompt":
+        """换成这个套件要的口径。⛔ 只换 system——语言、标签、弃权词不动。
+
+        ⚠️ 换的是**要求**，不是语言：语言仍然跟题库走。
+        """
+        if style is AnswerStyle.INDUCTIVE:
+            return replace(self, system=self.inductive)
+        return self
 
 
 ZH = Prompt(
@@ -40,6 +53,14 @@ ZH = Prompt(
         "你是一个问答助手。只依据给出的资料回答，用最简短的词或短语作答，"
         "不要解释、不要复述问题。"
         "如果资料里没有答案，只回答四个字：资料未提及。"
+    ),
+    inductive=(
+        "你是一个问答助手。资料里是一批同类个体的观察记录。"
+        "先从这些记录里归纳出这一类通常成立的规律，再回答问题。"
+        "用最简短的词或短语作答，不要解释、不要复述问题。"
+        "如果资料里没有直接提到问题问的那个个体，就按归纳出的规律推断作答，"
+        "不要回答「资料未提及」。"
+        "但如果资料里明确写了那个个体的情况，以资料写的为准。"
     ),
     abstain="资料未提及",
     no_context="（没有可用资料）",
@@ -52,6 +73,16 @@ EN = Prompt(
         "below. Reply with the shortest possible word or phrase — no "
         "explanation, no restating the question. If the material does not "
         "contain the answer, reply exactly: NOT IN THE MATERIAL."
+    ),
+    inductive=(
+        "You are a question-answering assistant. The material below is a set "
+        "of observations about individuals of the same kind. First infer the "
+        "general pattern that usually holds for them, then answer. Reply with "
+        "the shortest possible word or phrase — no explanation. If the "
+        "material does not mention the individual the question asks about, "
+        "answer by extrapolating from the pattern — do NOT reply that the "
+        "material does not say. But when the material states something "
+        "explicitly about that individual, the explicit statement wins."
     ),
     abstain="NOT IN THE MATERIAL",
     no_context="(no material available)",

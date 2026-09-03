@@ -8,6 +8,7 @@ from amb.core.env import find_dotenv, load_dotenv, require
 from amb.core.outcome import Failed, Unsupported
 from amb.core.phase import BOUNDARIES, Phase
 from amb.core.rules import DefeasibleRule, Rule
+from amb.core.style import AnswerStyle
 from amb.core.types import (
     Answer,
     AuditEvent,
@@ -26,7 +27,7 @@ from amb.core.types import (
 )
 
 __all__ = [
-    "Adapter", "AdapterBase", "Answer", "AuditEvent", "BASELINE", "BOUNDARIES",
+    "Adapter", "AdapterBase", "Answer", "AnswerStyle", "AuditEvent", "BASELINE", "BOUNDARIES",
     "Capability", "Claim", "Observation", "SuiteRun", "find_dotenv", "load_dotenv", "require", "DefeasibleRule", "DeleteResult", "Document", "Entry",
     "Failed", "Phase", "Premise", "RecallVerdict", "Regularity", "Rule", "Span",
     "Step", "Unsupported", "Usage", "Verdict", "WorldHandle",

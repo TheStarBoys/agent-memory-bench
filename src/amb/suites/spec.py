@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from amb.core import Adapter, Capability, Observation, SuiteRun
+from amb.core import Adapter, AnswerStyle, Capability, Observation, SuiteRun
 from amb.world import WorldState
 
 __all__ = ["Observation", "Suite", "SuiteRun"]
@@ -18,5 +18,11 @@ __all__ = ["Observation", "Suite", "SuiteRun"]
 class Suite(Protocol):
     name: str
     requires: frozenset[Capability]
+    #: 这个套件要哪一种答题口径。⚠️ 可选——不声明就是默认那套。
+    #: ⛔ 声明它**不是**在给自己开小灶：runner 对**所有臂**挂同一个变体，
+    #: ⭐ 它调的是「这道题在问什么」，不是「谁答得好」。
+    #: ⚠️ 现实需求见 N8：它问的个体故意不在语料里，而默认口径要求
+    #: 「资料里没有就弃权」——⛔ 两者相反，一套提示不可能同时满足。
+    answer_style: AnswerStyle
 
     def probe(self, adapter: Adapter, world: WorldState) -> SuiteRun: ...

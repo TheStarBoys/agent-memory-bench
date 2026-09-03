@@ -15,7 +15,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from amb.core import load_dotenv
+from amb.core import AnswerStyle, load_dotenv
 from amb.report import ArmResult, Report, render
 from amb.runner import (
     answer_prompt, backbone, build, build_plan, cache_report, context_overflow,
@@ -106,7 +106,14 @@ def main(argv: list[str] | None = None) -> int:
                   # 照样调 LLM——钱那一列要靠它才算得出来。
                   "ingest_model": os.environ.get("AMB_LLM_MODEL", ""),
                   # ⛔ 换提示等于换尺子，两次跑不可比——必须进报告
-                  "answer_prompt": prompt.system if llm else None},
+                  "answer_prompt": prompt.system if llm else None,
+                  # ⭐ 跟**套件**走的那一层变体：⚠️ 默认口径要求「资料里没有
+                  # 就弃权」，而 N8 问的是故意没进语料的个体——⛔ 两者相反。
+                  # ⚠️ 变体同样是尺子的一部分，一并进报告。
+                  "answer_prompt_styles": (
+                      {v.value: prompt.styled(v).system
+                       for v in AnswerStyle if v is not AnswerStyle.STRICT}
+                      if llm else None)},
         # ⭐ 外部依赖的实际版本，⛔ 没有它这次跑不算数
         externals=snapshot(),
         # ⚠️ 抽样方式进报告——⛔ 抽样变了分数就不可比

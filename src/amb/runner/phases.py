@@ -17,8 +17,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from amb.core import (
-    Adapter, Capability, Document, Failed, Phase, SuiteRun, Unsupported,
-    WorldHandle,
+    Adapter, AnswerStyle, Capability, Document, Failed, Phase, SuiteRun,
+    Unsupported, WorldHandle,
 )
 from amb.report import ArmResult
 from amb.scoring import score
@@ -121,6 +121,12 @@ def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
                     run = SuiteRun(suite.name, "unsupported",
                                    reason=f"未声明 {', '.join(missing)}")
                 else:
+                    # ⛔ 答题口径跟**套件**走（语言仍然跟题库走）：
+                    # ⚠️ N8 问的是故意没进语料的个体，默认那套「资料里没有
+                    # 就弃权」会让它结构上不可能得分——实测四条臂全 0.000。
+                    # ⭐ 每个套件跑前都挂一次，不挂就会继承上一个套件的口径。
+                    _use_style(adapter, getattr(suite, "answer_style",
+                                                AnswerStyle.STRICT))
                     run = suite.probe(adapter, state)
                 result.scores[suite.name] = score(run)
                 items += len(run.observations)
@@ -198,6 +204,19 @@ def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
                 if v - embed_before.get(k, 0)}
     result.cost_profile = profile
     return result, guard.expected
+
+
+def _use_style(adapter: Adapter, style: AnswerStyle) -> None:
+    """把这个套件要的答题口径挂到臂上。
+
+    ⚠️ 一次跑里**所有臂**在同一个套件上收到同一个变体——⭐ 公平性只要求这个，
+    跨套件的分本来就不可比。
+    ⛔ 挂不上就算了：那样的臂根本不用我们的提示（自带答题的系统），
+    ⚠️ 而它对每个套件都一样，不构成臂之间的差别。
+    """
+    use = getattr(adapter, "use_style", None)
+    if use is not None:
+        use(style)
 
 
 def _store_of(adapter: Adapter) -> Path | None:
