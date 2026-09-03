@@ -18,6 +18,17 @@ def log(msg: str) -> None:
     print(msg, file=sys.stderr, flush=True)
 
 
+#: ⭐ mem0 的通配符：`{"key": "*"}` = 任意值（见它 `search()` 的 docstring）。
+#: ⛔ 不能传 `filters=None`——它会抛
+#: 「filters must contain at least one of: user_id, agent_id, run_id」。
+ANY = "*"
+
+
+def _by(principal: str | None) -> dict:
+    """主体过滤条件。⛔ `None` = **不过滤**（全部主体），⚠️ 不是「默认主体」。"""
+    return {"user_id": principal or ANY}
+
+
 class Runner:
     def __init__(self) -> None:
         self.memory = None
@@ -77,8 +88,13 @@ class Runner:
         return {"added": added}
 
     def search(self, *, query: str, k: int, principal: str | None) -> dict:
-        who = principal or self.default
-        got = self.memory.search(query, top_k=k, filters={"user_id": who})
+        # ⛔ `principal=None` 意思是**不按主体过滤**，⚠️ 不是「用默认主体」。
+        # 踩过：摄入时文档带 principal=alice → 存进 user_id=alice，
+        # 而套件调 search() 不传 principal → 查 user_id=amb → **一条都搜不到**，
+        # 且不报错。⚠️ LoCoMo 的文档 principal 全是 None，所以从没暴露；
+        # ⛔ 一上多主体语料（toy）整条臂全线 0.000。
+        # ⭐ 与 bm25 / naive_rag 的语义对齐：不传就是不过滤。
+        got = self.memory.search(query, top_k=k, filters=_by(principal))
         out = []
         for row in (got or {}).get("results", []):
             meta = row.get("metadata") or {}
@@ -87,12 +103,18 @@ class Runner:
                 "memory": str(row.get("memory", "")),
                 "score": row.get("score"),
                 "doc_id": meta.get("doc_id"),
-                "principal": row.get("user_id") or who,
+                "principal": row.get("user_id") or principal,
             })
         return {"entries": out, "raw": self.raw if not self.infer else {}}
 
     def count(self) -> dict:
-        got = self.memory.get_all(filters={"user_id": self.default}, top_k=1000)
+        """库里**一共**多少条。⛔ 不按主体过滤。
+
+        ⚠️ 早先固定按 `self.default` 过滤——多主体语料下恒返回 **0**，
+        ⛔ 而 `count()` 正是行为指纹与「摄入前库里有没有残留」
+        两道防护网的读数来源：⭐ 它错了，那两道网在多主体语料上整个失效。
+        """
+        got = self.memory.get_all(filters=_by(None), top_k=10_000)
         return {"count": len((got or {}).get("results", []))}
 
     def delete(self, *, entry_ids: list) -> dict:

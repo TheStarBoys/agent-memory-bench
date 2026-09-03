@@ -166,3 +166,39 @@ def test_mem0_raw_provenance_table_survives_a_store_copy(tmp_path: Path) -> None
     spans = arm(copied)._span_for("d/1", "went hiking")
     assert spans and spans[0].doc_id == "d/1", \
         "⛔ 记账没进 store——命中快照时 PROVENANCE 会静默退化"
+
+
+# ── ④ `principal=None` 是「不过滤」，⛔ 不是「默认主体」 ─────────
+def test_principal_none_means_no_filter_not_the_default_principal() -> None:
+    """⛔ 这个语义搞错，整条臂会在多主体语料上全线 0.000 且不报错。
+
+    ⚠️ 踩过：摄入时文档带 `principal="alice"` → 存进 `user_id=alice`，
+    而套件调 `search()` 不传 principal → 查 `user_id=amb` → **一条都搜不到**。
+    ⭐ LoCoMo 的文档 principal 全是 None，所以三天没暴露；
+    ⛔ 一上多主体语料（toy）就整条臂归零。
+
+    ⚠️ 更要紧的是 `count()`：它是[行为指纹](../src/amb/runner/phases.py)与
+    「摄入前有没有残留」两道防护网的读数来源——⛔ 它恒返回 0，
+    那两道网在多主体语料上就整个失效。
+    """
+    from amb.adapters.impl.mem0.worker import ANY, _by
+
+    assert _by(None) == {"user_id": ANY}, "⛔ 不传主体必须是通配，不是默认主体"
+    assert _by("alice") == {"user_id": "alice"}, "⛔ 传了主体就要真过滤"
+    # ⚠️ 不能退回 filters=None——mem0 会抛「filters must contain at least one of」
+    assert _by(None) is not None
+
+
+def test_count_never_filters_by_a_single_principal() -> None:
+    """⛔ `count()` 数的是**库里一共多少条**，⚠️ 不是「默认主体有多少条」。"""
+    import inspect
+
+    from amb.adapters.impl.mem0 import worker
+
+    # ⚠️ 只看**代码**，⛔ docstring 里提 self.default 是在讲历史，不算数
+    src = "\n".join(line for line in
+                    inspect.getsource(worker.Runner.count).splitlines()
+                    if not line.strip().startswith(("\"\"\"", "⚠️", "⛔", "⭐"))
+                    and '"""' not in line)
+    assert "_by(None)" in src, "⛔ count 又按单个主体过滤了——防护网会静默失效"
+    assert "self.default" not in src, "⛔ count 不该只数某一个主体"
