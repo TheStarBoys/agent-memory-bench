@@ -13,7 +13,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import ClassVar
 
@@ -57,6 +57,14 @@ class LocomoData:
     turns: dict[str, dict[str, str]]
     #: 每个 dia_id 属于哪一次会话，⚠️ 摄入时要按顺序
     order: dict[str, list[str]]
+    #: conversation_id → dia_id → 那次会话的日期时间原文。
+    #: ⚠️ 缺日期的会话不在这张表里——⛔ 不编一个。
+    dated: dict[str, dict[str, str]] = field(default_factory=dict)
+
+    def undated(self) -> int:
+        """没有会话日期的轮次有多少条。⛔ 进报告，⚠️ 不静默。"""
+        return sum(len(v) - len(self.dated.get(k, {}))
+                   for k, v in self.turns.items())
 
 
 def load(path: Path = DATA) -> LocomoData:
@@ -71,18 +79,34 @@ def load(path: Path = DATA) -> LocomoData:
     turns: dict[str, dict[str, str]] = {}
     order: dict[str, list[str]] = {}
 
+    dated: dict[str, dict[str, str]] = {}
     for conv in raw:
         cid = str(conv.get("sample_id", len(turns)))
         body = conv.get("conversation") or {}
         turns[cid] = {}
         order[cid] = []
+        dated[cid] = {}
         for key in sorted(k for k in body
                           if k.startswith("session_") and isinstance(body[k], list)):
+            # ⭐ 会话日期：`session_3_date_time` = "1:56 pm on 8 May, 2023"。
+            # ⛔ 早先它被丢掉了，于是**时间推理那一类构造性不可答**——
+            # 问 `When did Jon go to a fair?`（gold `24 April, 2023`），
+            # ⚠️ 所有臂拿到的资料里根本没有日期。
+            # ⭐ 检索档那一类还有 0.571~0.643 分（捞对了轮次，轮次里没日期），
+            # ⛔ 那一格把「检索到证据 ≠ 答得对」演示到了极致。
+            when = str(body.get(f"{key}_date_time", "") or "")
             for turn in body[key]:
                 dia = turn.get("dia_id")
                 if not dia:
                     continue
-                turns[cid][dia] = f"{turn.get('speaker', '')}: {turn.get('text', '')}"
+                said = f"{turn.get('speaker', '')}: {turn.get('text', '')}"
+                # ⚠️ 日期放进**摄入单元本身**，不是放进一条单独的文档：
+                # ⭐ 上游数据里会话头就管着这一段的每一轮，那是原文的意思；
+                # ⛔ 单独放一条会凭空造出一道「把轮次连到日期」的连接题，
+                # 而那道题不在这个题库里。
+                turns[cid][dia] = f"[{when}] {said}" if when else said
+                if when:
+                    dated[cid][dia] = when
                 order[cid].append(dia)
 
         for i, qa in enumerate(conv.get("qa") or []):
@@ -94,7 +118,8 @@ def load(path: Path = DATA) -> LocomoData:
                 category=int(qa.get("category", 0)),
                 evidence=tuple(str(e) for e in (qa.get("evidence") or [])),
             ))
-    return LocomoData(questions=questions, turns=turns, order=order)
+    return LocomoData(questions=questions, turns=turns, order=order,
+                      dated=dated)
 
 
 def documents_for(data: LocomoData, conversation_ids: set[str],
@@ -231,17 +256,35 @@ def pick(data: LocomoData, spec: SampleSpec,
         questions = [q for q in questions if q.conversation_id in keep]
         notes.append(f"max_conversations={max_conversations}（随机抽）")
 
+    # ⛔ evidence 不在语料里的题一律丢掉——⚠️ 留着它们**必然全错**，
+    # 那不是系统答砸了，是这道题在这份语料上不可能命中（假的失分）。
+    # ⭐ 三种成因分开记：合并成一个数就读不出该修哪一边。
+    kept_turns = {cid: (set(order[:max_turns]) if max_turns is not None
+                        else set(order))
+                  for cid, order in data.order.items()}
     if max_turns is not None:
-        # 每个对话只留前 max_turns 轮
-        kept_turns = {cid: set(order[:max_turns]) for cid, order in data.order.items()}
-        before = len(questions)
-        # ⛔ evidence 不在保留语料里的题必须丢掉——留着它们必然全错
-        questions = [
-            q for q in questions
-            if q.evidence and set(q.evidence) <= kept_turns.get(q.conversation_id, set())
-        ]
         notes.append(f"max_turns={max_turns}")
-        notes.append(f"dropped_no_evidence={before - len(questions)}")
+
+    causes = {"no_evidence": 0, "dangling": 0, "truncated": 0}
+    keep_q: list[LocomoQA] = []
+    for q in questions:
+        known = set(data.turns.get(q.conversation_id, {}))
+        kept = kept_turns.get(q.conversation_id, set())
+        if not q.evidence:
+            # ⚠️ 上游就没给证据（实测 4 条，全是开放域推断）。
+            # ⛔ 留着的话「命中任一率」把它记成一次未命中——而它无从命中。
+            causes["no_evidence"] += 1
+        elif not set(q.evidence) <= known:
+            # ⛔ 上游数据里那个 id 根本不存在（实测 9 条：`D`、`D:11:26`、
+            # `D8:6; D9:17` 两个 id 挤在一个串里）。⚠️ 它会把 evidence_recall
+            # 的分母顶大——⭐ 那是上游的数据问题，不是谁答砸了。
+            causes["dangling"] += 1
+        elif not set(q.evidence) <= kept:
+            causes["truncated"] += 1        # ⚠️ 我们自己截语料截掉的
+        else:
+            keep_q.append(q)
+    questions = keep_q
+    notes += [f"dropped_{k}={v}" for k, v in causes.items() if v]
 
     got = sample(questions, spec, key=lambda q: q.qa_id,
                  stratum=lambda q: q.stratum)

@@ -97,7 +97,9 @@ def test_sampling_provenance_is_report_ready(data) -> None:
     """⚠️ 抽样方式变了分数就不可比——种子也要在。"""
     p = pick(data, SampleSpec(Strategy.STRATIFIED, 20, seed=3)).provenance()
     assert p["strategy"] == "stratified" and p["seed"] == 3
-    assert p["sampled"] == 20 and p["total"] == 1986
+    # ⚠️ 1986 是上游的总题数；⛔ 题池是 1973——13 道**在任何语料上都不可能
+    # 命中**（4 道上游没给证据，9 道证据 id 是坏的），先丢再抽。
+    assert p["sampled"] == 20 and p["total"] == 1973
     assert p["by_stratum"]
 
 
@@ -140,7 +142,7 @@ def test_conversation_limit_is_recorded_in_provenance(data) -> None:
     """
     p = pick(data, SampleSpec(Strategy.STRATIFIED, 20, seed=42),
              max_conversations=2).provenance()
-    assert p["note"] == "max_conversations=2（随机抽）"
+    assert "max_conversations=2（随机抽）" in p["note"]
 
 
 def test_named_conversations_are_recorded_too(data) -> None:
@@ -151,7 +153,7 @@ def test_named_conversations_are_recorded_too(data) -> None:
     """
     cid = sorted(data.turns)[0]
     got = pick(data, SampleSpec(Strategy.ALL, 0, seed=1), conversations=(cid,))
-    assert got.provenance()["note"] == f"conversations={cid}"
+    assert f"conversations={cid}" in got.provenance()["note"]
     assert {q.conversation_id for q in got.items} == {cid}
 
 
@@ -188,7 +190,8 @@ def test_dropped_question_count_is_recorded(data) -> None:
     """⚠️ 丢了几道要进报告——不然读者不知道题池被削过。"""
     p = pick(data, SampleSpec(Strategy.STRATIFIED, 12, seed=42),
              max_conversations=1, max_turns=60).provenance()
-    assert "dropped_no_evidence=" in p["note"]
+    # ⛔ 成因分开记：⚠️ 「我们截掉的」与「上游 id 是坏的」要修的地方不一样
+    assert "dropped_truncated=" in p["note"]
     assert "max_turns=60" in p["note"]
 
 
@@ -320,3 +323,62 @@ def test_all_arms_share_one_answer_prompt() -> None:
 
     arms = [build(n, prompt=EN) for n in ("bm25", "naive_rag")]
     assert all(a._prompt is EN for a in arms)
+
+
+# ── ⛔ 时间推理那一类曾经**构造性不可答** ────────────────────────
+def test_the_session_date_reaches_the_ingestion_unit(data) -> None:
+    """⛔ 会话日期早先被丢在 `session_N_date_time` 里没进摄入单元。
+
+    ⚠️ 于是问 `When did Jon go to a fair?`（gold `24 April, 2023`），
+    **所有臂拿到的资料里根本没有日期**——⭐ 而检索档那一类还有
+    0.571~0.643 分（捞对了轮次，轮次里没日期）。
+    ⛔ 那一格把「检索到证据 ≠ 答得对」演示到了极致。
+    """
+    from amb.suites.public.locomo import documents_for
+
+    assert data.undated() == 0, "⛔ 有轮次没有会话日期"
+    cid = sorted(data.turns)[0]
+    text = documents_for(data, {cid})[0].text
+    assert text.startswith("["), "⭐ 日期在摄入单元里，⛔ 不是在别处"
+    assert "2023" in text.split("]")[0]
+
+
+def test_temporal_questions_now_have_a_date_in_their_evidence(data) -> None:
+    """⭐ 这一类的**前提**：证据轮里得有日期可读。
+
+    ⚠️ 这不等于「答得出来」：gold 有 74% 是**推导出来的说法**
+    （`The week before 9 June 2023` / `June 2023` / `2022`），
+    ⛔ 逐字比对本来就给不了分——那是[判分严格度的已知上界](../docs/benchmarks.md)，
+    ⭐ 与「资料里根本没有日期」是两件事。
+    """
+    import re
+
+    from amb.suites.public import SampleSpec, Strategy
+
+    # ⚠️ 走 pick()：⛔ evidence 悬空的题本来就不该进这一跑（见下一条测试）
+    picked = pick(data, SampleSpec(Strategy.ALL, seed=1))
+    temporal = [q for q in picked.items if q.category == 2]
+    assert len(temporal) > 300
+    for q in temporal:
+        seen = "\n".join(data.turns[q.conversation_id][e] for e in q.evidence)
+        assert re.search(r"\b20\d{2}\b", seen), f"{q.qa_id} 的证据里没有年份"
+
+
+def test_questions_that_cannot_be_hit_are_dropped_not_scored_zero(data) -> None:
+    """⛔ 一道 gold 证据不在语料里的题，任何系统都不可能命中。
+
+    ⚠️ 留着它就是**假的失分**：`命中任一率` 把它记成一次未命中，
+    `evidence_recall` 的分母被顶大。⭐ 而那既不是系统的错，也不是我们的错——
+    上游数据里那几个 id 本身是坏的（`D`、`D:11:26`、`D8:6; D9:17`）。
+
+    ⚠️ 三种成因分开记进 provenance——⛔ 合并成一个数就读不出该修哪一边。
+    """
+    from amb.suites.public import SampleSpec, Strategy
+
+    got = pick(data, SampleSpec(Strategy.ALL, seed=1))
+    assert "dropped_dangling=9" in got.spec_note
+    assert "dropped_no_evidence=4" in got.spec_note
+    kept = {q.qa_id for q in got.items}
+    assert len(kept) == 1973
+    for q in got.items:
+        assert set(q.evidence) <= set(data.turns[q.conversation_id]), q.qa_id
