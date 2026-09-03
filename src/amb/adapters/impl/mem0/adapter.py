@@ -198,17 +198,37 @@ class Mem0Adapter(Answerable, AdapterBase):
         """⭐ 成本实测。⚠️ 数字来自**我们的**包装层，⛔ 不是它自报的——
         它没有报 token 的接口，但每一次 openai 调用都经过我们手里。
 
-        ⛔ 分不出 ingest / probe：我们的计量器是按进程累计的，
-        ⚠️ 硬拆会造出一个假的分配。全部记在 ingest——
-        这一档（`--no-answer`）本来就只有摄入调 LLM。
+        ⛔ **两个计量器，不能只报一个**：
+
+        | 阶段 | 谁调的 LLM | 计量器在哪 |
+        |---|---|---|
+        | ingest | 被测系统自己（抽事实 / 演化链接） | ⚠️ **子进程**里 |
+        | probe | 我们的 backbone 答题 | ⭐ 宿主的 `LLMClient` |
+
+        ⚠️ 早先只报子进程那份，理由写的是「这一档（`--no-answer`）
+        本来就只有摄入调 LLM」——⛔ 回答档上线后这个前提没了：
+        回答档里这条臂答了 126 次，`tokens_in` 却报 **0**，
+        ⭐ 而钱是[原则⑥](../../../../../docs/adapters/README.md#p6)的一等维度。
+
+        ⛔ 子进程那份**分不出** ingest / probe（它按进程累计，
+        ⚠️ 硬拆会造出一个假的分配）——⭐ 但它跟宿主那份是分得开的，
+        那才是这里要修的事。
         """
-        if self._bridge is None:
+        from amb.adapters.answering import usage_of
+
+        out: list[Usage] = []
+        if self._bridge is not None:
+            got = self._talk().call("meter")
+            if got:
+                out.append(Usage(phase="ingest", tokens_in=got["tokens_in"],
+                                 tokens_out=got["tokens_out"],
+                                 llm_calls=got["llm_calls"]))
+        # ⭐ 答题走的是**宿主**的 backbone，⛔ 不在子进程的计量器里
+        if self._llm is not None:
+            out += usage_of(self._llm)
+        if not out:
             return Unsupported("没跑过，无从计量")
-        got = self._talk().call("meter")
-        if not got:
-            return Unsupported("worker 拿不到计量器")
-        return [Usage(phase="ingest", tokens_in=got["tokens_in"],
-                      tokens_out=got["tokens_out"], llm_calls=got["llm_calls"])]
+        return out
 
     def storage_locations(self) -> list[str]:
         """⭐ 申报持久层，让带外取证那一步能做。"""

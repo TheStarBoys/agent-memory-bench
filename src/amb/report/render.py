@@ -195,7 +195,7 @@ def _render_cost(arms: list, suites: list[str],
         # ⛔ 没测到就写 —，⚠️ 不拿 0 冒充「没花钱」
         toks = ("—" if p.tokens_in is None
                 else f"{(p.tokens_in + (p.tokens_out or 0)) / 1000:.0f}k")
-        money = "—" if p.money_usd is None else f"${p.money_usd:.3f}"
+        money = "—" if p.money_usd is None else _money(p.money_usd)
         out.append(f"| {v.arm} | {v.quality:.3f} | {d} | {ratio} | {ing} | {prb} "
                    f"| {toks} | {money} | {v.label} |")
         if v.note:
@@ -349,6 +349,21 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
                    f"| {p.get('items', 0)} | {cost} |")
     out.append("")
     return "\n".join(out)
+
+
+def _money(usd: float) -> str:
+    """钱。⛔ 三位小数会把一整档的成本压成 `$0.000`。
+
+    ⚠️ 实测踩到：17 题回答档全部四条臂都显示 `$0.000`——
+    ⭐ 而它们真实差着 3 倍（$0.0002 vs $0.0007）。
+    ⛔ 一栏永远是 0 的成本表，等于没有这一栏。
+    """
+    if usd >= 0.01:
+        return f"${usd:.3f}"
+    if usd > 0:
+        # ⚠️ 亚分级要多给两位，⛔ 否则看不出臂之间的差
+        return f"${usd:.5f}"
+    return "$0"
 
 
 def _pricing_model(backbone: dict) -> str:

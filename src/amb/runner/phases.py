@@ -143,11 +143,10 @@ def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
         _try_save(snap, adapter, canary=canary, cost={
             "ingest_ms": ledger.wall_ms_harness.get("ingest", 0),
             "items": len(plan.documents),
-            **({} if isinstance(usage, (Unsupported, Failed)) or not usage else {
-                "tokens_in": sum(u.tokens_in for u in usage),
-                "tokens_out": sum(u.tokens_out for u in usage),
-                "llm_calls": sum(u.llm_calls for u in usage),
-            }),
+            # ⛔ 只取 **ingest** 那一份：⚠️ 回答档里 usage() 还会带回
+            # 答题的 token（那是宿主 backbone 花的），
+            # 把它存进「摄入成本」，下次命中快照就会虚报一次摄入的钱。
+            **_ingest_tokens(usage),
         })
     if snap is not None and not restored and not settled:
         _warn(f"{name}：探针动过 store（多半是 N4 的删除），"
@@ -252,6 +251,25 @@ def _try_save(key, adapter: Adapter, cost: dict | None = None,
     store = _store_of(adapter)
     if store is not None:
         save(key, store, cost=cost, canary=canary)
+
+
+def _ingest_tokens(usage) -> dict[str, int]:
+    """从 `usage()` 里挑出**摄入**那部分的 token。⛔ 快照只该存这一份。
+
+    ⚠️ 回答档里同一条臂有两个来源：被测系统自己摄入时调的 LLM（`ingest`），
+    与我们的 backbone 答题调的 LLM（`probe`）。
+    ⛔ 存快照时混在一起，下次命中就会把答题的钱当成摄入的钱报出来。
+    """
+    from amb.core import Failed, Unsupported
+
+    if isinstance(usage, (Unsupported, Failed)) or not usage:
+        return {}
+    rows = [u for u in usage if u.phase == "ingest"]
+    if not rows:
+        return {}
+    return {"tokens_in": sum(u.tokens_in for u in rows),
+            "tokens_out": sum(u.tokens_out for u in rows),
+            "llm_calls": sum(u.llm_calls for u in rows)}
 
 
 def _embed_snapshot() -> dict[str, int]:

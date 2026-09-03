@@ -380,3 +380,85 @@ def test_full_context_is_flagged_as_degenerate_in_retrieval() -> None:
 
     assert "退化†" in text            # ⭐ 那一行被标了
     assert "分母被绕过" in text        # ⛔ 且脚注解释了为什么——不能是孤儿脚注
+
+
+# ── 走子进程的臂：两个计量器都要报 ────────────────────────────
+class _TwoMeterArm:
+    """一条走子进程的臂：摄入的 token 在子进程，答题的在宿主。"""
+
+    name = "mem0"
+
+    def __init__(self, ingest: tuple[int, int], probe: tuple[int, int] | None):
+        self._ingest = ingest
+        self._probe = probe
+
+    def usage(self):
+        from amb.core import Usage
+
+        out = [Usage(phase="ingest", tokens_in=self._ingest[0],
+                     tokens_out=self._ingest[1], llm_calls=419)]
+        if self._probe is not None:
+            out.append(Usage(phase="probe", tokens_in=self._probe[0],
+                             tokens_out=self._probe[1], llm_calls=126))
+        return out
+
+
+def test_snapshot_stores_ingest_tokens_only() -> None:
+    """⛔ 快照存的是**摄入**成本——⚠️ 混进答题的 token 会虚报一次摄入的钱。
+
+    ⭐ 实测背景：回答档上线后，同一条臂的 `usage()` 会同时带回
+    子进程的摄入用量与宿主 backbone 的答题用量。
+    """
+    from amb.runner.phases import _ingest_tokens
+
+    arm = _TwoMeterArm(ingest=(3_634_599, 40_142), probe=(31_898, 586))
+    got = _ingest_tokens(arm.usage())
+    assert got == {"tokens_in": 3_634_599, "tokens_out": 40_142,
+                   "llm_calls": 419}, "⛔ 答题的 token 混进摄入成本了"
+
+
+def test_snapshot_cost_is_empty_when_nothing_was_ingested() -> None:
+    """⚠️ 命中快照那一跑没摄入——⛔ 别把答题的 token 当成摄入成本存下去。"""
+    from amb.runner.phases import _ingest_tokens
+    from amb.core import Unsupported, Usage
+
+    only_probe = [Usage(phase="probe", tokens_in=31_898, tokens_out=586,
+                        llm_calls=126)]
+    assert _ingest_tokens(only_probe) == {}
+    assert _ingest_tokens(Unsupported("没跑过")) == {}
+    assert _ingest_tokens([]) == {}
+
+
+def test_subprocess_arm_reports_both_meters() -> None:
+    """⛔ 回答档里 `mem0` 答了 126 次，`tokens_in` 却报 0——修的就是这个。
+
+    ⚠️ 两个来源分得开：摄入的 LLM 在子进程，答题的 backbone 在宿主。
+    ⭐ 只报一个，钱那一列就是错的。
+    """
+    from amb.adapters.impl.mem0.adapter import Mem0Adapter
+    from amb.adapters.llm import LLMConfig
+    from amb.core import Unsupported
+
+    arm = Mem0Adapter(llm_model="m", llm_base_url="u", embed_model="e",
+                      embed_base_url="u", embed_dims=8, storage_dir="/tmp/x")
+    # 没起桥、没挂 backbone → ⛔ 无从计量，不拿 0 冒充
+    assert isinstance(arm.usage(), Unsupported)
+
+    arm.attach_llm(LLMConfig(model="m", base_url="u", api_key_env="K"))
+    arm._llm.meter.add({"prompt_tokens": 31_898, "completion_tokens": 586})
+    got = arm.usage()
+    assert [u.phase for u in got] == ["probe"], \
+        "⛔ 挂了 backbone 之后答题用量必须报出来"
+    assert got[0].tokens_in == 31_898
+
+
+def test_sub_cent_costs_are_not_all_rendered_as_zero() -> None:
+    """⛔ 三位小数把一整档的成本压成 `$0.000`——那一栏就等于没有。
+
+    ⚠️ 实测：17 题回答档四条臂全显示 `$0.000`，而它们真实差着 3 倍。
+    """
+    from amb.report.render import _money
+
+    assert _money(0.2205) == "$0.221"
+    assert _money(0.00024) != _money(0.00071), "⛔ 差 3 倍的两笔钱显示成了同一个数"
+    assert _money(0.0) == "$0"
