@@ -34,6 +34,17 @@ API 写的，那边有另一套（mem0 的 `user_id` 必填，于是顺手写了
 ⭐ **慢的臂默认不跑，但默认跑 `mem0_raw`。** ⚠️ `mem0` 与 `mem0_raw` 是
 **同一个适配器类**（只差 `infer`），语义契约完全相同——
 ⭐ 跑快的那个就覆盖了这套语义。⛔ 要全跑：`AMB_CONFORMANCE_FULL=1`。
+
+## ⚠️ `a_mem` 必须单独跑
+
+它 **35s/条**，而这个文件里有两处各摄入一遍（契约本身 + 并存性），
+⛔ 连着别的臂一起跑会**顶穿 900 秒超时被杀**——⚠️ 那看起来像挂了，
+其实只是没跑完。⭐ 单独跑，给它 6 分钟：
+
+    AMB_CONFORMANCE_FULL=1 pytest tests/test_adapter_conformance.py -k a_mem
+
+⛔ 不要为了「让它进 CI」把断言删薄——⚠️ 那 7 个 bug 里有 a_mem 的两个。
+⭐ 慢是它的事实，不是这套断言的问题。
 """
 
 from __future__ import annotations
