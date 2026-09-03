@@ -23,6 +23,7 @@ from amb.suites.native.n6_structure import StructureSuite
 from amb.suites.native.n7_calibration import CalibrationItem, CalibrationSuite
 from amb.suites.native.n8_induction import InductionSuite
 from amb.suites.native.qa import QAItem, QASuite
+from amb.world.stream import corpus as _corpus
 from amb.world.stream import events as _events
 from amb.world.stream import factgraph as _factgraph
 from amb.world.stream import need as _need
@@ -63,16 +64,16 @@ DOCUMENTS = [
 def all_documents() -> list[Document]:
     return [*DOCUMENTS, *extra_documents()]
 
-CORPUS = dict(_FILES)
-
-QUERIES = [
+_HAND_QUERIES = [
     Query("q1", "哪个结构学得慢？", frozenset({"notes/neocortex.md"})),
     Query("q2", "什么动物喜欢晒太阳？", frozenset({"notes/cat.md"})),
     Query("q3", "一次就能记住靠什么？", frozenset({"notes/hippocampus.md"})),
     Query("q4", "保留多少天？", frozenset({"config/retention.txt"})),
 ]
 
-SPAN_PROBES = [
+#: ⚠️ 手写的两条留着——⛔ 它们的语料同时被 N1 引用，删了 N1 就没了参照。
+#: ⭐ 生成的那批在 `SPAN_PROBES` 里追加（见文件末尾）。
+_HAND_SPAN_PROBES = [
     SpanProbe("s1", "新皮层", "notes/neocortex.md", 0, len(_FILES["notes/neocortex.md"])),
     SpanProbe("s2", "橘猫", "notes/cat.md", 0, len(_FILES["notes/cat.md"])),
 ]
@@ -102,7 +103,7 @@ TRUTH = {"c1": "broken", "c2": "broken", "c3": "holds"}
 
 #: 端到端答题。⛔ 短事实题——判分要确定性，不能用评委。
 #: ⚠️ 答案都取自变更**之后**的世界，与 N1 的真值一致。
-QA_ITEMS = [
+_HAND_QA_ITEMS = [
     QAItem("a1", "哪个脑结构学得慢，靠反复暴露抽取规律？", ("新皮层",)),
     QAItem("a2", "哪个脑结构一次暴露就能记住？", ("海马",)),
     # ⭐ 该弃权的题：语料里**从来没提过**这件事。
@@ -128,6 +129,13 @@ EVENT_STREAM = _events.build(seed=SEED, span_s=86_400 * 30.0, per_cell=3)
 TOPOLOGY = _topology.build(seed=SEED, entities_per_fan=2)
 REGULARITIES = _regularity.build(seed=SEED)
 
+#: ⭐ `retrieval` / `qa` / N2 的语料——**生成的，不是手写的**。
+#: ⛔ 手写夹具只有 4/3/2 题且互不相似，[实测](../docs/runs/2026-09-03-native-suites-first.md)
+#: 三条臂分数完全相同——⚠️ 什么方法都能在互不相干的三篇里找对。
+#: ⭐ 生成的这份**每条都有 35 条干扰**（同实体不同属性、同属性不同实体），
+#: 要同时认出实体和属性才找得对。⚠️ 难度由 entities × attrs 调。
+CORPUS_GEN = _corpus.build(seed=SEED, entities=12, attrs_per_entity=3)
+
 #: ⛔ 占位曲线：参数不是我们拟合的，拿它跑出来的 N5 分数**不得发布**。
 NEED_CURVE = _need.PLACEHOLDER
 
@@ -149,7 +157,32 @@ def extra_documents() -> list[Document]:
             docs.append(Document(doc_id=f"{reg.category}#{i}",
                                  text=inst.statement(reg.prop),
                                  timestamp=CLOCK_START, principal="alice"))
+    # ⭐ 生成的检索语料。⚠️ 它**轮流分主体**（alice/bob/carol）——
+    # ⛔ 手写那几篇 principal 全是 alice，N4 的隔离没有真实的对照面。
+    docs += CORPUS_GEN.documents(clock=CLOCK_START)
     return docs
+
+
+#: ⭐ 手写 + 生成。⛔ 手写的留着是因为 N1 引用了它们的语料。
+#: ⭐ 生成器只出数据，转成套件的题在这一层做——⛔ `world` 不许依赖 `suites`。
+QUERIES = [*_HAND_QUERIES, *(
+    Query(f"c{i}", f.question, frozenset({f.doc_id}))
+    for i, f in enumerate(CORPUS_GEN.facts))]
+
+QA_ITEMS = [*_HAND_QA_ITEMS, *(
+    QAItem(f"c{i}", f.question, (f.value,))
+    for i, f in enumerate(CORPUS_GEN.facts)), *(
+    # ⚠️ 该弃权的题：问库里**从来没有**的实体。
+    # ⛔ 不用「被删掉的那条」——那考的是记忆过时（N1 的活），
+    # 混进来会让「编造率」同时含两种成因，读不出是哪一种。
+    QAItem(f"cx{i}", f"E999_{i}的配额是多少？", (), unanswerable=True)
+    for i in range(3))]
+
+SPAN_PROBES = [*_HAND_SPAN_PROBES, *(
+    SpanProbe(f"c{i}", f.question, f.doc_id, f.value_start, f.value_end)
+    for i, f in enumerate(CORPUS_GEN.facts))]
+#: ⚠️ N2 判分要拿原文比对——⛔ 生成的那批也得进这张表
+CORPUS = {**_FILES, **{f.doc_id: f.text for f in CORPUS_GEN.facts}}
 
 
 def suites(rebuild=None, world_handle=None) -> list:
