@@ -27,6 +27,9 @@ class Score:
     #: 它假装自己是全量分（docs/sampling.md）。
     #: ⚠️ 算不出区间的指标**不在这里**，⛔ 不硬凑一个。
     intervals: dict[str, Interval] = field(default_factory=dict)
+    #: ⭐ 不得发布的理由（⚠️ 空串 = 可发布）。⛔ 与 status 是两件事：
+    #: 分算得出来，但 ground truth 本身立不住——见 SuiteRun.not_publishable。
+    not_publishable: str = ""
 
     def interval(self, metric: str) -> Interval | None:
         return self.intervals.get(metric)
@@ -38,6 +41,8 @@ UNTRUSTED_THRESHOLD = 0.20
 
 
 def _finish(score: Score, run: SuiteRun) -> Score:
+    # ⛔ 一路带到报告：⚠️ 断在这里的话，一个「不得发布」的数会照常进对比表
+    score.not_publishable = run.not_publishable
     total = len(run.observations) + run.failed
     score.denominator = total
     score.failed_rate = run.failed / total if total else 0.0

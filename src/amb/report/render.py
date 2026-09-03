@@ -149,7 +149,16 @@ def _render_cost(arms: list, suites: list[str],
         return sum(1 for a in arms
                    if (sc := a.scores.get(name)) and sc.status == "scored")
 
-    candidates = [s for s in suites if s in HEADLINE and scored_count(s) > 0]
+    # ⛔ 「不得发布」的档不许当质量列：⚠️ 分是算得出来的，
+    # 但 ground truth 本身立不住（N5 的需求概率曲线还没拟合）。
+    # ⭐ 实测踩到：它参与面最广，于是当上了成本×质量表的质量列，
+    # 而那一列全是 0.000，⛔ 表里于是印出「bm25 没有存在理由」。
+    def publishable(name: str) -> bool:
+        return not any((sc := a.scores.get(name)) and sc.not_publishable
+                       for a in arms)
+
+    candidates = [s for s in suites
+                  if s in HEADLINE and scored_count(s) > 0 and publishable(s)]
     if not candidates:
         return []
     # 并列时取名字靠前的，⚠️ 保证同一批数据两次跑挑的是同一个
@@ -175,17 +184,28 @@ def _render_cost(arms: list, suites: list[str],
     floor = (max(controls, key=lambda k: quality[k]) if controls
              else max(quality, key=lambda k: quality[k]))
 
+    # ⛔ 质量列分不开各条臂时，⚠️ 这张表只能报成本，不能报判定——
+    # 「Δ vs 地板 = +0.000」加上「谁被谁压制」是**拿一个不区分的数在排名**。
+    spread = max(quality.values()) - min(quality.values())
+    flat = spread < 1e-9
+
     out = [f"## 成本 × 质量　（质量看 `{chosen}` 的 {HEADLINE[chosen]}，"
            f"{len(quality)}/{len(arms)} 条臂参与）", "",
            "⛔ **不给总分**——快与准的权衡因用途而异，"
            "合成一个数就等于替使用者做了那个取舍。", "",
            "| | 质量 | Δ vs 地板 | 总耗时 | 每条摄入 | 每次回答 | token | 钱 | 判定 |",
            "|---|---:|---:|---:|---:|---:|---:|---:|---|"]
+    if flat:
+        out[3:3] = [f"⛔ **这一跑不给判定**：`{HEADLINE[chosen]}` 在所有臂上"
+                    f"都是 {next(iter(quality.values())):.3f}，"
+                    "⚠️ 一个不区分它们的数排不出名次。⭐ 下面只有成本是真的。",
+                    ""]
     # ⛔ 退化的臂不进成本表：它的「1ms 拿满分」既不是质量也不是速度
     quality = {k: v for k, v in quality.items() if not is_degenerate(k, chosen)}
     for v in judge_cost(quality, profiles, floor):
         p = profiles[v.arm]
-        d = "—" if v.quality_delta is None else f"{v.quality_delta:+.3f}"
+        # ⚠️ 质量列分不开时，Δ 与判定都不出——⛔ 不拿不区分的数排名
+        d = "—" if (flat or v.quality_delta is None) else f"{v.quality_delta:+.3f}"
         ratio = _ratio_text(v.cost_ratio)
         ing = _seconds(p.ingest_ms_per_item)
         # ⚠️ 快照命中 → 这一格不是这次真测的
@@ -196,9 +216,10 @@ def _render_cost(arms: list, suites: list[str],
         toks = ("—" if p.tokens_in is None
                 else f"{(p.tokens_in + (p.tokens_out or 0)) / 1000:.0f}k")
         money = "—" if p.money_usd is None else _money(p.money_usd)
+        label = "—" if flat else v.label
         out.append(f"| {v.arm} | {v.quality:.3f} | {d} | {ratio} | {ing} | {prb} "
-                   f"| {toks} | {money} | {v.label} |")
-        if v.note:
+                   f"| {toks} | {money} | {label} |")
+        if v.note and not flat:
             out.append(f"| | | | | | | ⚠️ {v.note} |")
     priced = [v.arm for v in judge_cost(quality, profiles, floor)
               if profiles[v.arm].money_usd is not None]

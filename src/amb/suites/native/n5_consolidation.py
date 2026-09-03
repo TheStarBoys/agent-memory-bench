@@ -59,17 +59,35 @@ def probes_from(stream: EventStream, curve: NeedCurve, *, now_s: float,
     return out
 
 
+#: ⛔ 曲线没拟合时，这一档的数**不得发布**的理由。⚠️ 机制照跑，分照算——
+#: ⭐ 但 ground truth 本身立不住：自己拍参数等于自己定义什么叫「该记住」。
+UNFITTED_WHY = ("需求概率曲线未从真实语料拟合（source=None）——"
+                "⛔ 自己拍参数等于自己定义什么叫「该记住」，那是自证。"
+                "见 docs/adapters/world.md#need-probability")
+
+
+def _why_unpublishable(curve: NeedCurve | None) -> str:
+    """⚠️ 没给曲线就不表态：⛔ 不拿「没说」冒充「可发布」。"""
+    if curve is None:
+        return "未申报需求概率曲线的来源——⛔ 说不清 ground truth 从哪来"
+    return "" if curve.fitted else UNFITTED_WHY
+
+
 class ObservedRetentionSuite:
     """外部观察：⭐ 不需要声明任何能力，任何系统都能跑。"""
 
     name: ClassVar[str] = "n5_observed"
     requires: ClassVar[frozenset[Capability]] = frozenset({Capability.SEARCH})
 
-    def __init__(self, probes: list[RetentionProbe]) -> None:
+    def __init__(self, probes: list[RetentionProbe],
+                 curve: NeedCurve | None = None) -> None:
         self._probes = probes
+        # ⛔ 曲线的出身必须跟着分走到报告：⚠️ 断在这里，一个「不得发布」的数
+        # 就会照常进对比表——实测踩到，它还当上了成本×质量表的质量列。
+        self._why = _why_unpublishable(curve)
 
     def probe(self, adapter: Adapter, world: WorldState) -> SuiteRun:
-        run = SuiteRun(self.name, "scored")
+        run = SuiteRun(self.name, "scored", not_publishable=self._why)
         for p in self._probes:
             hits = adapter.search(p.query, 5)
             retained = any(p.fact.fact_id in h.doc_ids for h in hits)
@@ -91,8 +109,10 @@ class SelfReportedRetentionSuite:
     name: ClassVar[str] = "n5_self_reported"
     requires: ClassVar[frozenset[Capability]] = frozenset({Capability.RETENTION})
 
-    def __init__(self, probes: list[RetentionProbe]) -> None:
+    def __init__(self, probes: list[RetentionProbe],
+                 curve: NeedCurve | None = None) -> None:
         self._probes = probes
+        self._why = _why_unpublishable(curve)      # ⛔ 同上，曲线出身跟着分走
 
     def probe(self, adapter: Adapter, world: WorldState) -> SuiteRun:
         claims = [Claim(p.fact.fact_id, p.query, [p.fact.fact_id])
@@ -102,9 +122,9 @@ class SelfReportedRetentionSuite:
             return SuiteRun(self.name, "unsupported", reason=got.reason)
         if isinstance(got, Failed):
             return SuiteRun(self.name, "scored", reason=got.reason,
-                            failed=len(claims))
+                            failed=len(claims), not_publishable=self._why)
 
-        run = SuiteRun(self.name, "scored")
+        run = SuiteRun(self.name, "scored", not_publishable=self._why)
         by_id = {v.claim_id: v for v in got}
         for p in self._probes:
             v = by_id.get(p.fact.fact_id)

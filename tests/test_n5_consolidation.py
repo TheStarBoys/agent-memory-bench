@@ -20,8 +20,12 @@ CURVE = NeedCurve(a=200.0, b=0.5, source="test-fixture", r_squared=0.9)
 
 
 def make_probes():
+    return make_probes_with(CURVE)
+
+
+def make_probes_with(curve):
     stream = build(seed=11, span_s=SPAN, per_cell=4)
-    return probes_from(stream, CURVE, now_s=SPAN)
+    return probes_from(stream, curve, now_s=SPAN)
 
 
 class _Arm(AdapterBase):
@@ -119,3 +123,55 @@ def test_a_frequency_counter_shows_no_spacing_sensitivity() -> None:
     assert counter["因子_间隔"] == 0.0, "只数频次就不该对间隔敏感"
     # ⭐ 而一个真的追踪需求概率的系统，会在间隔上显出来
     assert aware["因子_间隔"] > 0.4, "分散复现的最后一次更近，需求概率更高"
+
+
+def test_an_unfitted_curve_marks_the_score_unpublishable() -> None:
+    """⛔ 「分算得出来」与「这个分能发布」是两件事。
+
+    ⚠️ 需求概率曲线没从真实语料拟合时，自己拍参数等于自己定义
+    什么叫「该记住」——⭐ 那是自证。机制照跑，⛔ 但数不得进对比表。
+    ⚠️ 而这句话必须**跟着分走到报告**：断在套件里的话，
+    一个不得发布的数会照常被当成正常的分用掉（实测：它当上了质量列）。
+    """
+    from amb.core import AdapterBase, BASELINE
+    from amb.scoring import score
+    from amb.suites.native.n5_consolidation import ObservedRetentionSuite
+    from amb.world.stream import need
+
+    class _Blank(AdapterBase):
+        def capabilities(self):
+            return set(BASELINE)
+
+        def search(self, query, k, *, principal=None):
+            return []
+
+    probes = make_probes_with(need.PLACEHOLDER)
+    s = score(ObservedRetentionSuite(probes, need.PLACEHOLDER)
+              .probe(_Blank(), None))
+    assert "未从真实语料拟合" in s.not_publishable
+    assert s.status == "scored", "⛔ 它不是「跑砸了」——机制是好的"
+
+    # ⭐ 拟合过的曲线就没有这句话
+    fitted = need.NeedCurve(a=1.0, b=0.5, source="真实会话日志", r_squared=0.9)
+    ok = score(ObservedRetentionSuite(make_probes_with(fitted), fitted)
+               .probe(_Blank(), None))
+    assert ok.not_publishable == ""
+
+
+def test_not_declaring_the_curve_is_not_the_same_as_publishable() -> None:
+    """⛔ 不拿「没说」冒充「可发布」。"""
+    from amb.core import AdapterBase, BASELINE
+    from amb.scoring import score
+    from amb.suites.native.n5_consolidation import ObservedRetentionSuite
+    from amb.world.stream import need
+
+    class _Blank(AdapterBase):
+        def capabilities(self):
+            return set(BASELINE)
+
+        def search(self, query, k, *, principal=None):
+            return []
+
+    s = score(ObservedRetentionSuite(make_probes_with(need.PLACEHOLDER))
+              .probe(_Blank(), None))
+    assert s.not_publishable, "⚠️ 没申报来源 → 说不清 ground truth 从哪来"

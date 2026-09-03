@@ -196,10 +196,13 @@ def suites(rebuild=None, world_handle=None) -> list:
             GovernanceSuite(DELETION_PROBES, rebuild, world_handle),
         ]),
         ReasoningSuite(FACT_GRAPH, questions_from(FACT_GRAPH)),
+        # ⛔ 曲线一并传进去：⚠️ 它是占位的，这两档的数**不得发布**，
+        # 而那句话必须跟着分走到报告——⭐ 不然它会被当成正常的分用掉
+        # （实测踩到：它当上了成本×质量表的质量列）。
         ObservedRetentionSuite(probes_from(EVENT_STREAM, NEED_CURVE,
-                                           now_s=86_400 * 30.0)),
+                                           now_s=86_400 * 30.0), NEED_CURVE),
         SelfReportedRetentionSuite(probes_from(EVENT_STREAM, NEED_CURVE,
-                                               now_s=86_400 * 30.0)),
+                                               now_s=86_400 * 30.0), NEED_CURVE),
         StructureSuite(TOPOLOGY),
         CalibrationSuite([
             CalibrationItem(f"c{i}", q, g, salient=(i % 2 == 0))

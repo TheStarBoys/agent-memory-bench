@@ -462,3 +462,82 @@ def test_sub_cent_costs_are_not_all_rendered_as_zero() -> None:
     assert _money(0.2205) == "$0.221"
     assert _money(0.00024) != _money(0.00071), "⛔ 差 3 倍的两笔钱显示成了同一个数"
     assert _money(0.0) == "$0"
+
+
+# ── ⛔ 一个不区分各条臂的数，排不出名次 ──────────────────────────
+def test_a_tie_on_both_axes_is_not_domination() -> None:
+    """⛔ 「被压制」要求至少有一轴**严格**更差。
+
+    ⚠️ 实测踩到：质量列在所有臂上都是 0.000、耗时比 1.0x，
+    报告照样印出「bm25 既不如它准，又不比它快——没有存在理由」。
+    ⭐ 那不是判定，那是把一个不区分的数当成了排名依据。
+    """
+    from amb.scoring import CostProfile, judge_cost
+
+    profiles = {n: CostProfile(arm=n, wall_ms={"probe": 1000},
+                               items_probed=10) for n in ("floor", "same")}
+    verdicts = {v.arm: v for v in judge_cost({"floor": 0.0, "same": 0.0},
+                                             profiles, "floor")}
+    assert verdicts["same"].label == "与地板并列"
+    assert "没有存在理由" not in verdicts["same"].note
+
+
+def test_still_dominated_when_strictly_slower() -> None:
+    """⚠️ 反过来要还认得出来：⛔ 分一样但更慢，那确实没有存在理由。"""
+    from amb.scoring import CostProfile, judge_cost
+
+    profiles = {
+        "floor": CostProfile(arm="floor", wall_ms={"probe": 1000},
+                             items_probed=10),
+        "slow": CostProfile(arm="slow", wall_ms={"probe": 3000},
+                            items_probed=10),
+    }
+    verdicts = {v.arm: v for v in judge_cost({"floor": 0.5, "slow": 0.5},
+                                             profiles, "floor")}
+    assert verdicts["slow"].label == "⛔ 被地板压制"
+
+
+def test_an_unpublishable_suite_cannot_become_the_quality_column() -> None:
+    """⛔ ground truth 立不住的档，不许当成本×质量表的质量列。
+
+    ⚠️ 实测踩到：N5 的需求概率曲线还是占位的（`不得发布`），
+    ⭐ 但它参与面最广，于是当上了质量列——而它在所有臂上都是 0.000，
+    ⛔ 表里于是印出「bm25 没有存在理由」。
+    """
+    from amb.report.render import _render_cost
+    from amb.report.schema import ArmResult
+    from amb.scoring import Score
+
+    def arm(name: str, retrieval: float, retention: float) -> ArmResult:
+        a = ArmResult(arm=name, is_control=True)
+        a.scores["retrieval"] = Score("retrieval", "scored",
+                                      metrics={"top1": retrieval})
+        a.scores["n5_observed"] = Score(
+            "n5_observed", "scored", metrics={"保留追踪度": retention},
+            not_publishable="需求概率曲线未拟合")
+        a.cost_profile = {"items_probed": 10}
+        a.cost = {"probe": 1000}
+        return a
+
+    text = "\n".join(_render_cost([arm("bm25", 0.9, 0.0), arm("null", 0.0, 0.0)],
+                                  ["n5_observed", "retrieval"]))
+    assert "retrieval" in text and "n5_observed" not in text
+
+
+def test_a_flat_quality_column_prints_no_verdict() -> None:
+    """⚠️ 挑不出别的档时，⛔ 只报成本，不报判定。"""
+    from amb.report.render import _render_cost
+    from amb.report.schema import ArmResult
+    from amb.scoring import Score
+
+    def arm(name: str) -> ArmResult:
+        a = ArmResult(arm=name, is_control=True)
+        a.scores["retrieval"] = Score("retrieval", "scored",
+                                      metrics={"top1": 0.0})
+        a.cost_profile = {"items_probed": 10}
+        a.cost = {"probe": 1000}
+        return a
+
+    text = "\n".join(_render_cost([arm("bm25"), arm("null")], ["retrieval"]))
+    assert "不给判定" in text
+    assert "没有存在理由" not in text and "被地板压制" not in text

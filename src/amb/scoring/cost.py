@@ -167,9 +167,16 @@ def _label(arm: str, floor_arm: str, dq: float | None,
 
     if dq is None:
         return "—", ""
-    if dq <= 0 and (ratio or 1) >= 1:
+    # ⛔ 「被压制」要求**至少有一轴严格更差**：⚠️ 两轴都打平是并列，不是压制。
+    # ⭐ 实测踩到：质量列在所有臂上都是 0.000、耗时比 1.0x，
+    # 报告照样印出「bm25 既不如它准，又不比它快——没有存在理由」。
+    strictly_worse = dq < 0 or (ratio or 1) > 1
+    if dq <= 0 and (ratio or 1) >= 1 and strictly_worse:
         # 既不如地板准，又不比它快 → ⛔ 全面被压制
         return "⛔ 被地板压制", "既不如它准，又不比它快——没有存在理由"
+    if dq == 0 and (ratio or 1) == 1:
+        return "与地板并列", ""
+
     if dq <= 0:
         return "⚠️ 更快但更差", "省了时间，丢了准确率——⛔ 值不值要看用途"
     if (ratio or 1) > 1:

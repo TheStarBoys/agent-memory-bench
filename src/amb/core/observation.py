@@ -28,3 +28,9 @@ class SuiteRun:
     reason: str | None = None        # 非 scored 时说清为什么
     observations: list[Observation] = field(default_factory=list)
     failed: int = 0                  # ⛔ 计入分母的失败次数
+    #: ⭐ 「这一档的数**不得发布**」以及为什么。⚠️ 空串 = 可发布。
+    #: ⛔ 它与 status 是两件事：⭐ 分是算得出来的、机制自测也用得上，
+    #: 但**ground truth 本身立不住**（如 N5 的需求概率曲线还没从真实语料拟合，
+    #: 自己拍参数等于自己定义什么叫「该记住」，那是自证）。
+    #: ⚠️ 混进 `untrusted` 就把「它答砸了」和「我们的尺子还没造好」压成一态。
+    not_publishable: str = ""
