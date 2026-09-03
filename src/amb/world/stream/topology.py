@@ -21,6 +21,14 @@ class Linked:
     text: str
     #: 语义等价但表面不同的线索。⭐ 可达性靠它测——多线索能不能够到同一条
     cues: tuple[str, ...]
+    #: ⭐ **完整指名**这一条的说法（实体 + 别名），精确检索用它当查询。
+    #: ⛔ 不用原句：⚠️ 逐字查是恒等式，不是线索——activation 没有可分摊的东西，
+    #: 实测 `bm25` 与 `naive_rag` 在 fan1~fan64 上**全是 1.000**，
+    #: 于是「扇形退化斜率」恒为 0.000，读起来像「不受扇形效应影响」，
+    #: ⛔ 实际是这个探针看不见它。
+    #: ⚠️ 它与 `cues[1]` 是同一个串，这是**刻意**的：两条曲线于是成了
+    #: 同一个挤压过程上的两道阈——先掉出第一名，再掉出 top-k。
+    designation: str = ""
 
 
 @dataclass
@@ -156,6 +164,9 @@ def build(*, seed: int, fans: tuple[int, ...] = (1, 2, 4, 8, 16, 32, 64),
             picks = rng.sample(PAIRS, k=fan)
             for i, (verb, obj, alias) in enumerate(picks):
                 fid = f"{entity}#{i}"
+                # ⭐ 完整指名：⚠️ 别名在同一个实体里与宾语一一对应，
+                # 所以它**唯一**地指向这一条，⛔ 而它不是原文的子串。
+                designation = f"{entity} {alias}"
                 topo.facts.append(Linked(
                     fid, entity, fan,
                     text=f"{entity} {verb} {obj}。",
@@ -163,7 +174,8 @@ def build(*, seed: int, fans: tuple[int, ...] = (1, 2, 4, 8, 16, 32, 64),
                     #   ① 实体+动词  —— 原文子串，指名道姓
                     #   ② 实体+别名  —— ⭐ **换个说法**，⛔ 一个字都不共
                     #   ③ 只有宾语    —— 线索不够，靠的是跨实体挤不挤得动
-                    cues=(f"{entity} {verb}", f"{entity} {alias}",
+                    cues=(f"{entity} {verb}", designation,
                           obj)[:cues_per_fact],
+                    designation=designation,
                 ))
     return topo

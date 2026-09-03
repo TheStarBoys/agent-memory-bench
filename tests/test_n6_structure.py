@@ -12,6 +12,8 @@ from amb.suites.native.n6_structure import StructureSuite
 from amb.world.stream.topology import build
 
 TOPO = build(seed=5)
+#: fact_id → 完整指名。⚠️ 判分用的就是它，⛔ 测试替身也只认它
+DESIGNATION = {f.fact_id: f.designation for f in TOPO.facts}
 #: ⚠️ 跟着生成器的默认走——⛔ 写死一份名单，加了档次就测不到新的那几档
 FANS = tuple(sorted({f.fan for f in TOPO.facts}))
 
@@ -35,8 +37,10 @@ class _Arm(AdapterBase):
             ents = {e for f, e in self._entity.items() if e in query}
             hits = [f for f, e in self._entity.items() if e in ents] or list(self._facts)
         elif self._strategy == "exact_only":
-            # ⭐ 只认整句：精确性满分，可达性崩盘
-            hits = [f for f, t in self._facts.items() if t == query]
+            # ⭐ 只认**完整指名**（整句或「实体+别名」）：
+            # 精确性满分，⛔ 换个弱一点的说法就够不到
+            hits = [f for f, t in self._facts.items()
+                    if query in (t, DESIGNATION.get(f))]
         else:  # 逐词重合
             terms = set(query.replace("。", "").split())
             hits = sorted(
@@ -90,15 +94,19 @@ def test_an_under_specified_cue_cannot_reach_everything() -> None:
 
 
 def test_exact_only_maxes_precision_and_destroys_reach() -> None:
-    """⭐ 「只报一条毫无意义」的证明：只认整句的系统精确性满分。
+    """⭐ 「只报一条毫无意义」的证明：只认完整指名的系统精确性满分。
 
-    ⛔ 只看精确检索，它是完美的；看可达性才发现换个说法就够不到——
-    这就是为什么两条曲线必须一起报。
+    ⛔ 只看精确检索，它是完美的；看可达性才发现**换个弱一点的说法**
+    （实体+动词、或只有宾语）就够不到——这就是为什么两条曲线必须一起报。
+
+    ⚠️ 可达性的地板是 1/3 而不是 0：⭐ 三个线索里有一个正是那句完整指名，
+    ⛔ 这是刻意的——两条曲线是同一个挤压过程上的两道阈
+    （先掉出第一名，再掉出 top-k）。
     """
     m = run("exact_only")
     for fan in FANS:
         assert m[f"精确检索_fan{fan}"] == 1.0
-        assert m[f"可达性_fan{fan}"] == 0.0
+        assert abs(m[f"可达性_fan{fan}"] - 1 / 3) < 1e-9
 
 
 def test_both_curves_are_reported_at_every_fan() -> None:

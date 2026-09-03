@@ -37,8 +37,9 @@ class StructureSuite:
         ⭐ ① 每档的观测数得可比：fan64 有 128 条而 fan1 只有 16 条，
         ⚠️ 而退化斜率把两端**当同等看待**——⛔ 那是拿噪声去拟合。
         ⭐ ② 一条事实要发 4 次检索（3 个线索 + 1 次指名）。
-        ⚠️ 实测 embedding 端点均值 2.3s/次——⛔ 不取样时一条臂光这一档
-        就要 1152 次检索（约 44 分钟）。⭐ 取样后 448 次。
+        ⚠️ 而检索单价不是常数：同一个 embedding 端点实测过 0.26s/次，
+        也实测过 **2.3s/次**（⛔ 差 9 倍）。⭐ 取样不是省钱，是**把最坏情况
+        关进笼子**——不取样时光这一档就是 1152 次检索（约 44 分钟）。
 
         ⚠️ 取样按实体**轮转**，⛔ 不是取前 N 条——那样会全落在同一个实体上，
         高扇形度那几档就成了「一个实体的脾气」。
@@ -69,7 +70,11 @@ class StructureSuite:
                        for h in adapter.search(cue, self._k))
             )
             # ⭐ 精确检索：指名要这一条，top-1 对不对
-            hits = adapter.search(fact.text, 1)
+            # ⛔ 拿**指名**查，不拿原句查：⚠️ 逐字查是恒等式，兄弟条目
+            # 没有可分摊的东西——实测两条真臂在 fan1~fan64 上全是 1.000，
+            # 于是斜率恒为 0.000，读起来像「不受扇形效应影响」，
+            # ⭐ 而它其实是这个探针看不见（topology.Linked.designation）。
+            hits = adapter.search(fact.designation, 1)
             precise = bool(hits and fact.fact_id in hits[0].doc_ids)
             run.observations.append(Observation(fact.fact_id, {
                 "fan": fact.fan,
