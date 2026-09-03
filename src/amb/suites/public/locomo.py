@@ -235,7 +235,6 @@ def pick(data: LocomoData, spec: SampleSpec,
 
     questions = data.questions
     notes: list[str] = []
-    kept_turns: dict[str, set[str]] | None = None
 
     if conversations:
         # ⭐ 点名。⚠️ 各对话的**题目产出差 2.5 倍**（conv-30 给 105 题，
