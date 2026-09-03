@@ -57,8 +57,12 @@ def main(argv: list[str] | None = None) -> int:
                     help="逗号分隔；默认跑全部五条对照组")
     ap.add_argument("--budget", type=int, default=24000, help="full_context 的上下文预算")
     ap.add_argument("--json", type=Path, help="同时写一份 JSON")
-    ap.add_argument("--bench", choices=("toy", "locomo"), default="toy",
-                    help="跑哪个题库")
+    ap.add_argument("--bench", choices=("toy", "locomo", "dialogue"),
+                    default="toy", help="跑哪个题库")
+    ap.add_argument("--condition", default="",
+                    choices=("", "dense", "diluted", "repeated", "revised"),
+                    help="⚠️ 只对 --bench dialogue 有意义：同一批事实的四种讲法。"
+                         "⛔ 四个条件的数不可互比，必须显式给")
     ap.add_argument("--sample", default="all",
                     help="抽题：all | first:N | random:N | stratified:N | ids:a,b")
     ap.add_argument("--max-convs", type=int, default=None,
@@ -84,7 +88,7 @@ def main(argv: list[str] | None = None) -> int:
         args.bench, sample=args.sample, seed=args.sample_seed,
         max_conversations=args.max_convs, max_turns=args.max_turns,
         conversations=tuple(c for c in args.convs.split(",") if c),
-        with_answer=llm is not None)
+        with_answer=llm is not None, condition=args.condition)
 
     # ⛔ 答题口径的语言必须跟题库走。⚠️ 实测踩过：中文提示 + 英文题库，
     # 模型一律用中文答，逐字比对全判错——⭐ 那不是记忆层不行，是尺子在量语言。

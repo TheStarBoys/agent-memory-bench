@@ -29,6 +29,7 @@ def build_plan(bench: str, *, sample: str = "all", seed: int = 42,
                max_turns: int | None = None,
                conversations: tuple[str, ...] = (),
                with_answer: bool = False,
+               condition: str = "",
                ) -> tuple[Plan, dict[str, Any], str]:
     """返回 (plan, 抽样 provenance, 世界名)。
 
@@ -44,7 +45,23 @@ def build_plan(bench: str, *, sample: str = "all", seed: int = 42,
 
         return (Plan(manifest=toy.MANIFEST, documents=toy.all_documents(),
                      changes=toy.CHANGES, suites_for=toy.suites), {}, "toy")
-    raise KeyError(f"未知题库 {bench!r}。已知：toy · locomo")
+    if bench == "dialogue":
+        # ⛔ 抽取层实验：四个条件的数**不可互比**，条件必须显式给。
+        # ⚠️ 不默认某一档——那会让一次跑悄悄测了别的语料。
+        from worlds import dialogue
+
+        if not condition:
+            raise KeyError("`dialogue` 必须给 --condition："
+                           "dense · diluted · repeated · revised")
+        world = dialogue.build(condition)
+        return (Plan(manifest=world.manifest, documents=world.documents(),
+                     suites_for=lambda *_: world.suites()),
+                {"condition": world.condition.value,
+                 "entities": dialogue.ENTITIES, "attrs": dialogue.ATTRS,
+                 "documents": len(world.rendered.turns),
+                 "questions": len(world.rendered.probes)},
+                world.manifest.name)
+    raise KeyError(f"未知题库 {bench!r}。已知：toy · locomo · dialogue")
 
 
 def _locomo(sample: str, seed: int, max_conversations: int | None,
