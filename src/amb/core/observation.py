@@ -21,7 +21,10 @@ class Observation:
 @dataclass(slots=True)
 class SuiteRun:
     suite: str
-    status: str                      # scored | unsupported | partial | untrusted
-    reason: str | None = None        # unsupported / untrusted 时说清为什么
+    #: scored | unsupported | partial | untrusted | harness_fault
+    #: ⛔ `harness_fault` 是**评测器自己**没跑成，⚠️ 不是这个系统的失败——
+    #: 混进别的状态就等于拿我们的 bug 去记它的账（core/fault.py）。
+    status: str
+    reason: str | None = None        # 非 scored 时说清为什么
     observations: list[Observation] = field(default_factory=list)
     failed: int = 0                  # ⛔ 计入分母的失败次数

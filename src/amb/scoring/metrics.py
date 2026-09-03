@@ -16,7 +16,9 @@ from amb.scoring.statistics import Interval, bootstrap, looks_like_proportion, w
 @dataclass(slots=True)
 class Score:
     suite: str
-    status: str                                   # scored | unsupported | partial | untrusted
+    #: scored | unsupported | partial | untrusted | harness_fault
+    #: ⛔ harness_fault 是**评测器自己**没跑成——⚠️ 不是它的分，也不是它的错
+    status: str
     reason: str | None = None
     denominator: int = 0
     metrics: dict[str, float] = field(default_factory=dict)

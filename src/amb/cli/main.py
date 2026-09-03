@@ -15,7 +15,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from amb.core import AnswerStyle, load_dotenv
+from amb.core import AnswerStyle, HarnessFault, load_dotenv
 from amb.report import ArmResult, Report, render
 from amb.runner import (
     answer_prompt, backbone, build, build_plan, cache_report, context_overflow,
@@ -158,6 +158,16 @@ def main(argv: list[str] | None = None) -> int:
                     ArmResult(arm=name, is_control=name in control_arms(),
                               not_applicable=why))
                 continue
+            except HarnessFault as exc:
+                # ⛔ **评测器自己**没跑成——⚠️ 记成 crashed 就是拿我们的 bug
+                # 去记它的账，那一列一混，读者只会以为这个系统不稳。
+                why = str(exc)[:200]
+                print(f"⛔ [{i}/{len(names)}] {name}: 框架自己的问题（{why}）",
+                      file=sys.stderr, flush=True)
+                report.lanes.setdefault("library", []).append(
+                    ArmResult(arm=name, is_control=name in control_arms(),
+                              harness_fault=why))
+                continue
             except Exception as exc:  # noqa: BLE001
                 # ⛔ 不只打到 stderr——静默消失会被读成「没参赛」
                 msg = f"{type(exc).__name__}: {exc}"[:200]
@@ -204,6 +214,13 @@ def _run_agent_lane(report: Report, names: list[str], workdir: Path) -> None:
         try:
             result, digest = run_one_agent(name, spec, plan, workdir / name,
                                            is_control=name in agent_arms())
+        except HarnessFault as exc:
+            why = str(exc)[:200]
+            print(f"⛔ agent/{name}: 框架自己的问题（{why}）", file=sys.stderr)
+            report.lanes.setdefault("agent", []).append(
+                ArmResult(arm=name, is_control=name in agent_arms(),
+                          harness_fault=why))
+            continue
         except Exception as exc:  # noqa: BLE001
             msg = f"{type(exc).__name__}: {exc}"[:200]
             print(f"✗ agent/{name}: {msg}", file=sys.stderr)

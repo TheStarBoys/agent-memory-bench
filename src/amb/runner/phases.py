@@ -17,8 +17,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from amb.core import (
-    Adapter, AnswerStyle, Capability, Document, Failed, Phase, SuiteRun,
-    Unsupported, WorldHandle,
+    Adapter, AnswerStyle, Capability, Document, Failed, HarnessFault, Phase,
+    SuiteRun, Unsupported, WorldHandle,
 )
 from amb.report import ArmResult
 from amb.scoring import score
@@ -127,7 +127,15 @@ def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
                     # ⭐ 每个套件跑前都挂一次，不挂就会继承上一个套件的口径。
                     _use_style(adapter, getattr(suite, "answer_style",
                                                 AnswerStyle.STRICT))
-                    run = suite.probe(adapter, state)
+                    try:
+                        run = suite.probe(adapter, state)
+                    except HarnessFault as exc:
+                        # ⛔ **我们**没跑成，不是它没做到：⚠️ 独占一态，
+                        # 不计分、不计分母、不与 crashed 合并（core/fault.py）。
+                        # ⭐ 也不带走整条臂——别的套件照跑。
+                        _warn(f"{name}/{suite.name}：⛔ 框架自己的问题——{exc}")
+                        run = SuiteRun(suite.name, "harness_fault",
+                                       reason=str(exc)[:200])
                 result.scores[suite.name] = score(run)
                 items += len(run.observations)
         guard.check(Phase.PROBE)

@@ -192,6 +192,83 @@ def test_not_applicable_is_not_crashed() -> None:
     assert na_at != crash_at
 
 
+def test_our_own_fault_is_not_the_systems_fault() -> None:
+    """⛔ 第四态：**框架自己**没跑成，与「它跑挂了」是两件事。
+
+    ⚠️ 实测踩过：N4 第 3 步要重开一个实例，而 mem0 的 Qdrant 本地模式
+    不允许两个客户端同时开同一个目录——⛔ 整条臂被记成「跑挂了」，
+    而它什么都没做错。⭐ 那一列一混，读者只会以为这个系统不稳，
+    **而我们自己的 bug 被盖住了**。
+    """
+    from amb.report.render import _render_lane
+    from amb.report.schema import ArmResult, Report
+
+    report = Report(run_id="r", at="t", world={"name": "w", "seed": 1,
+                                               "digest": ""},
+                    backbone={}, externals={}, sampling={})
+    from amb.scoring import Score
+
+    scored = ArmResult(arm="bm25", is_control=True)
+    scored.scores["retrieval"] = Score("retrieval", "scored",
+                                       metrics={"recall@5": 1.0})
+    text = _render_lane("library", [
+        scored,
+        ArmResult(arm="mem0_raw", is_control=False,
+                  harness_fault="第 3 步重开实例撞上存储独占锁"),
+        ArmResult(arm="mem0", is_control=False, crashed="BridgeError: 挂了"),
+    ], report)
+
+    assert "评测器自己" in text, "⛔ 必须说清是谁的问题"
+    assert "独占锁" in text
+    # ⛔ 与「跑挂了」分属两段
+    assert text.index("评测器自己") != text.index("没跑完")
+    # ⚠️ 也不进分数表——它没有分，⛔ 更不是 0
+    table = text[text.index("retrieval"):]
+    assert "bm25" in table and "mem0_raw" not in table
+
+
+def test_a_harness_fault_does_not_take_down_the_whole_arm(tmp_path) -> None:
+    """⭐ 一个套件撞上框架问题，别的套件照跑——⛔ 不整条臂判死。"""
+    from amb.core import Capability, HarnessFault, SuiteRun
+    from amb.runner import Plan, build, run_one
+
+    import worlds.toy as toy
+
+    class Boom:
+        name = "n6_structure"
+        requires = frozenset({Capability.SEARCH})
+
+        def probe(self, adapter, world):
+            raise HarnessFault("评测器同时开了两个实例")
+
+    class Fine:
+        name = "retrieval"
+        requires = frozenset({Capability.SEARCH})
+
+        def probe(self, adapter, world):
+            return SuiteRun(self.name, "scored")
+
+    r, _ = run_one("bm25", build("bm25"),
+                   Plan(manifest=toy.MANIFEST, documents=toy.DOCUMENTS,
+                        suites=[Boom(), Fine()]),
+                   tmp_path / "hf", is_control=True)
+    assert r.scores["n6_structure"].status == "harness_fault"
+    assert r.scores["n6_structure"].metrics == {}, "⛔ 不是 0 分"
+    assert r.scores["retrieval"].status == "scored", "⭐ 别的套件照跑"
+    assert r.crashed is None, "⛔ 也不是「这条臂跑挂了」"
+
+
+def test_only_a_lock_conflict_is_called_ours() -> None:
+    """⛔ 不猜也不洗：⚠️ 只有独占锁那一种才算我们的错，其余原样抛。"""
+    from amb.core import HarnessFault
+    from amb.suites.native.n4_governance import _ours_if_lock
+
+    lock = RuntimeError("Storage folder /x is already accessed by another instance")
+    assert isinstance(_ours_if_lock(lock), HarnessFault)
+    theirs = RuntimeError("connection reset by peer")
+    assert _ours_if_lock(theirs) is theirs, "⛔ 不许把它的错洗成我们的"
+
+
 # ── ⑤ 快照的键绑的是**摄入**用的 LLM，不是回答用的 backbone ──────
 def test_snapshot_survives_no_answer_runs(monkeypatch) -> None:
     """⛔ 实测踩点：`--no-answer` 时没有回答用的 backbone，

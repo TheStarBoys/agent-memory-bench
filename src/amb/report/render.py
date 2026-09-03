@@ -240,7 +240,20 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
         out += [f"| {a.arm} | {a.not_applicable} |" for a in na]
         out.append("")
 
-    arms = [a for a in arms if not (a.crashed or a.not_applicable)]
+    # ⛔ 框架自己的错独占一段：⚠️ 混进「跑挂了」那一列，
+    # 读者会把**我们的** bug 记到那个系统头上。
+    ours = [a for a in arms if a.harness_fault]
+    if ours:
+        out += ["## ⛔ 这些臂是**评测器自己**没跑成", "",
+                "⚠️ **不是它的错，也不是它的分**——是框架这一侧的问题"
+                "（如评测器同时开了两个实例撞上独占锁）。"
+                "⛔ 这几行是给我们自己看的待修项，不是结果。", "",
+                "| | 我们哪里错了 |", "|---|---|"]
+        out += [f"| {a.arm} | {a.harness_fault} |" for a in ours]
+        out.append("")
+
+    arms = [a for a in arms
+            if not (a.crashed or a.not_applicable or a.harness_fault)]
     if not arms:
         return chr(10).join(out)
 

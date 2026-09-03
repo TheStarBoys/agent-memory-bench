@@ -19,6 +19,7 @@ from amb.core import (
     Capability,
     Document,
     Failed,
+    HarnessFault,
     Observation,
     SuiteRun,
     Unsupported,
@@ -28,6 +29,26 @@ from amb.world import WorldState
 
 #: 四步探针的名字，⚠️ 顺序即加压顺序。
 STEPS = ("deleted", "filtered", "survives_restart", "gone_from_storage")
+
+#: 存储独占锁冲突的几种说法。⚠️ 认字符串很难看，⛔ 但它是**唯一**的信号——
+#: 上游把它抛成普通异常，类型上跟别的错分不开。
+_LOCK_HINTS = ("already accessed by another instance", "already in use",
+               "being used by another", "database is locked",
+               "could not acquire lock")
+
+
+def _ours_if_lock(exc: Exception) -> Exception:
+    """撞上独占锁 → ⭐ 是**评测器**同时开了两个实例，⛔ 不是它的错。
+
+    ⚠️ 实测踩过：这一下曾让整条 `mem0_raw` 被记成「跑挂了」，
+    而它什么都没做错——⛔ 那一列一混，读者只会以为这个系统不稳。
+    """
+    text = str(exc).lower()
+    if any(h in text for h in _LOCK_HINTS):
+        return HarnessFault(
+            f"第 3 步重开实例撞上存储独占锁——⭐ 是评测器同时开了两个实例，"
+            f"⛔ 被测系统没做错任何事：{exc}"[:300])
+    return exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,6 +155,10 @@ class GovernanceSuite:
             fresh.setup(self._handle())
             still_there = any(p.doc_id in h.doc_ids
                               for h in fresh.search(p.query, 10))
+        except Exception as exc:  # noqa: BLE001
+            # ⛔ 分清是谁的错再往上抛：⚠️ 锁冲突是我们造成的，
+            # 其余原样抛出——⭐ 不猜、不洗（core/fault.py）。
+            raise _ours_if_lock(exc) from exc
         finally:
             # ⛔ 必须释放，否则锁留给下一个探针——⚠️ 循环里每个 probe 都要重开
             fresh.close()

@@ -17,6 +17,8 @@ DISPLAY = {
     "unsupported": "—",
     "partial": "过滤级",
     "untrusted": "⚠",
+    # ⛔ 框架自己没跑成：⚠️ 不是它的分，也不是它的错
+    "harness_fault": "⛔框架",
 }
 
 
@@ -36,6 +38,11 @@ class ArmResult:
     #: ⛔ 按 docs/baselines.md 记 N/A，⚠️ 不记 0、也不算失败——
     #: 把它并进 crashed 就是把三态压成两态。
     not_applicable: str | None = None
+    #: ⭐ **评测器自己**没跑成，⛔ 与 `crashed` 是两件事：
+    #: ⚠️ N4 重开实例撞上独占锁那次，被测系统什么都没做错，
+    #: 而它被记成了「跑挂了」——⛔ 那一列里混着我们的 bug，
+    #: 读者只会以为那个系统不稳（core/fault.py）。
+    harness_fault: str | None = None
     #: 墙钟，评测器从外部独立计时。⚠️ 适配器自报的那份另计（原则⑥）。
     cost: dict[str, int] = field(default_factory=dict)
     #: ⭐ 完整成本画像：每条摄入多久、每次回答多久、token、钱。
