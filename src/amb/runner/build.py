@@ -149,6 +149,17 @@ def context_overflow() -> type[Exception]:
     return ContextOverflow
 
 
+#: 臂 → 它依赖的外部包。⛔ **臂名不等于依赖名**：⚠️ `mem0` 与 `mem0_raw`
+#: 是同一个依赖的两种配置（只差 `infer`），⭐ 锁文件里只有一行 `mem0`。
+#: ⚠️ 不在这张表里的臂 = 纯对照组，没有外部依赖。
+ARM_DEPENDENCY = {"mem0": "mem0", "mem0_raw": "mem0", "a_mem": "a_mem"}
+
+
+def dependency_of(arm: str) -> str:
+    """这条臂要哪个外部依赖。⛔ 没有就返回空串（纯对照组）。"""
+    return ARM_DEPENDENCY.get(arm, "")
+
+
 def host_unavailable() -> type[Exception]:
     """「宿主装不上/起不来」那个信号的类型。⚠️ 经 runner 转出，⛔ cli 不直接依赖 agent。
 

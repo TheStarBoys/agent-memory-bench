@@ -192,3 +192,25 @@ def test_running_a_system_without_a_pinned_version_is_refused(monkeypatch) -> No
     clean = pf.Report()
     pf.check_externals(("bm25", "null"), clean)
     assert not clean.fatal
+
+
+def test_the_arm_name_is_not_the_dependency_name() -> None:
+    """⛔ 误报比不报更糟——⚠️ 它会让人养成 `--skip-preflight` 的习惯，
+    那这一层就白建了。
+
+    ⭐ 实测踩到：`mem0_raw` 是**臂名**，而锁文件里记的是**依赖名** `mem0`
+    （两条臂共用一个依赖，只差 `infer`）——拿臂名去查锁文件，
+    ⛔ 正式跑当场被自己的自检拦下。
+    """
+    from amb.runner import dependency_of
+    from amb.runner import preflight as pf
+    from amb.setup import snapshot
+
+    assert dependency_of("mem0_raw") == "mem0"
+    assert dependency_of("mem0") == "mem0"
+    assert dependency_of("bm25") == "", "⚠️ 纯对照组没有外部依赖"
+
+    if (snapshot().get("mem0") or {}).get("ok"):
+        clean = pf.Report()
+        pf.check_externals(("mem0_raw", "mem0", "bm25"), clean)
+        assert not clean.fatal, [str(f) for f in clean.fatal]

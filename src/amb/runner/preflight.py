@@ -345,19 +345,22 @@ def check_externals(arms: tuple[str, ...], out: Report) -> None:
     ⛔ 「没记录版本的跑不算数」是本项目的硬规矩，⚠️ 而它此前**没有任何闸门**：
     `externals` 为空时报告里那一行整条消失，⭐ 读者看不出区别。
     """
-    from amb.adapters import CONTROL_ARMS
+    from amb.runner.build import dependency_of
     from amb.setup import snapshot
 
-    systems = [a for a in arms if a not in CONTROL_ARMS]
-    if not systems:
-        return
+    # ⛔ **臂名不等于依赖名**：⚠️ `mem0` 与 `mem0_raw` 是同一个依赖的
+    # 两种配置，⭐ 锁文件里只有一行 `mem0`——拿臂名去查会误报，
+    # 而一条误报会让人养成 `--skip-preflight` 的习惯，那这层就白建了。
     lock = snapshot()
-    for name in systems:
-        row = lock.get(name) or {}
+    for arm in arms:
+        dep = dependency_of(arm)
+        if not dep:
+            continue                    # 纯对照组，没有外部依赖
+        row = lock.get(dep) or {}
         if not row.get("ok") or not row.get("actual"):
             out.add("fatal", "unpinned-externals",
-                    f"{name} 的版本没记录（锁文件里 {row or '空'}）——"
-                    f"⛔ 这一跑不算数。先跑 `amb setup {name}`")
+                    f"{arm} 要的依赖 {dep} 版本没记录（锁文件里 {row or '空'}）"
+                    f"——⛔ 这一跑不算数。先跑 `amb setup {dep}`")
 
 
 def inspect(plan, *, root: Path | None = None, samples: int = 3,
