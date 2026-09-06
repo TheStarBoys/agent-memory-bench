@@ -288,3 +288,77 @@ def test_step3_releases_the_live_store_before_reopening() -> None:
     assert order.index("close:live") < order.index("open:fresh"), \
         "⛔ 顺序反了：必须先释放再重开"
     assert reached != "none", "⚠️ 修锁冲突不该把这一步的判定改坏"
+
+
+# ── ⛔ 留痕 × 删除的交叉判（此前从没被评测过）────────────────────
+def _trail_run(*, logged: bool, leaked: int, thorough: bool,
+               principal: str | None = "alice", at: str = "2026-01-01"):
+    """造一次 N4 的观测：⚠️ 只含判交叉需要的那两组。"""
+    from amb.core import Observation, SuiteRun
+
+    run = SuiteRun("n4_governance", "scored")
+    run.observations.append(Observation("delete:d", {
+        "group": "deletion",
+        "reached": "gone_from_storage" if thorough else "filtered"}))
+    run.observations.append(Observation("trail", {
+        "group": "trail", "declared": True,
+        "logged_delete": logged, "content_in_log": leaked,
+        "with_principal": 1 if (logged and principal) else 0,
+        "with_time": 1 if (logged and at) else 0,
+        "delete_events": 1 if logged else 0}))
+    return run
+
+
+def test_deleting_without_logging_is_not_compliant() -> None:
+    """⛔ 「删得掉，但没人知道删过」——文档的交叉表第一行第二格。"""
+    from amb.scoring.metrics import score_governance
+
+    m = score_governance(_trail_run(logged=False, leaked=0, thorough=True)).metrics
+    assert m["彻底删除率"] == 1.0, "删是删干净了"
+    assert m["留痕_有删除事件"] == 0.0
+    assert m["治理_合格"] == 0.0, "⛔ 但没留痕就是不合格"
+
+
+def test_logging_the_content_itself_fails_deletion() -> None:
+    """⛔ 「把内容藏进审计日志不算删除」——文档原话。"""
+    from amb.scoring.metrics import score_governance
+
+    m = score_governance(_trail_run(logged=True, leaked=1, thorough=True)).metrics
+    assert m["留痕_日志含正文"] == 1.0
+    assert m["治理_合格"] == 0.0, "⛔ 日志里还有正文就不算删掉"
+
+
+def test_both_halves_must_pass() -> None:
+    """⭐ 只有「删干净 且 留了痕 且 日志里没正文」才合格。"""
+    from amb.scoring.metrics import score_governance
+
+    ok = score_governance(_trail_run(logged=True, leaked=0, thorough=True)).metrics
+    assert ok["治理_合格"] == 1.0
+    # ⛔ 删不干净——留了痕也不合格
+    bad = score_governance(_trail_run(logged=True, leaked=0, thorough=False)).metrics
+    assert bad["治理_合格"] == 0.0
+
+
+def test_an_arm_without_an_audit_log_is_not_scored_zero() -> None:
+    """⛔ 没声明 = 没有这一维，⚠️ 不是 0 分——三态纪律。"""
+    from amb.core import Observation, SuiteRun
+    from amb.scoring.metrics import score_governance
+
+    run = SuiteRun("n4_governance", "scored")
+    run.observations.append(Observation("trail", {
+        "group": "trail", "declared": False, "why": "纯内存实现"}))
+    m = score_governance(run).metrics
+    assert not any(k.startswith("留痕_") for k in m)
+    assert "治理_合格" not in m
+
+
+def test_the_suite_actually_calls_audit_log() -> None:
+    """⛔ 三条臂实现了 `audit_log()`，而套件**一次都没调用它**——
+    ⚠️ 文档把它列为 N4 的判分输入，代码里是空的。⭐ 这条测试守着别再空回去。
+    """
+    import inspect
+
+    from amb.suites.native.n4_governance import GovernanceSuite
+
+    src = inspect.getsource(GovernanceSuite)
+    assert "audit_log()" in src, "⛔ 留痕这一维又没被评测"

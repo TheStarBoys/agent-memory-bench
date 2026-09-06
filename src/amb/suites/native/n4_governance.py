@@ -82,6 +82,11 @@ class GovernanceSuite:
         self._attribution(adapter, run)
         self._isolation(adapter, run)
         self._deletion(adapter, run)
+        # ⛔ **留痕必须与删除交叉判**（docs/suites/n4-governance.md#留痕与删除的交叉）：
+        # ⚠️ 「能删但不留痕」与「留痕但删不掉」都不合格。
+        # ⛔ 这一维此前**从没被评测过**：三条臂实现了 `audit_log()`，
+        # 而套件一次都没调用它——文档把它列为判分输入，代码里是空的。
+        self._trail(adapter, run)
         return run
 
     # ── 归属：说不说得出谁写的 ──────────────────────────────────
@@ -176,6 +181,41 @@ class GovernanceSuite:
             return "survives_restart", detail
         detail["storage"] = "clean"
         return "gone_from_storage", detail
+
+    # ── 留痕：删了什么、谁删的、何时 ────────────────────────────
+    def _trail(self, adapter: Adapter, run: SuiteRun) -> None:
+        """⛔ 两个方向都要查，⚠️ 它们是**相反**的失败：
+
+        ① 删除事件**不在**日志里 → 留痕失败（删得掉，但没人知道删过）
+        ② 日志里**含被删内容的正文** → 删除失败（把内容藏进审计日志不算删除）
+        """
+        got = adapter.audit_log()
+        if isinstance(got, (Unsupported, Failed)):
+            # ⚠️ 没声明就是没有这一维，⛔ 不是 0 分
+            run.observations.append(Observation("trail", {
+                "group": "trail", "declared": False,
+                "why": str(getattr(got, "reason", ""))[:120],
+            }))
+            return
+
+        deletes = [e for e in got if e.action == "delete"]
+        # ⛔ 正文藏进日志：⚠️ 拿**这条独有的**特征子串去找，
+        # 与带外取证用的是同一个 marker
+        markers = [p.marker for p in self._probes]
+        leaked = [e for e in got
+                  if any(m and m in (e.detail or "") for m in markers)]
+        run.observations.append(Observation("trail", {
+            "group": "trail",
+            "declared": True,
+            # ⭐ 删了就该留下事件
+            "logged_delete": bool(deletes),
+            # ⛔ 日志里不许有正文
+            "content_in_log": len(leaked),
+            # ⚠️ 「谁删的、何时」——⛔ 缺了就只是「记了一笔」，不是审计轨迹
+            "with_principal": sum(1 for e in deletes if e.principal),
+            "with_time": sum(1 for e in deletes if e.at),
+            "delete_events": len(deletes),
+        }))
 
     @staticmethod
     def _grep_storage(locations: list[str], marker: str) -> bool:

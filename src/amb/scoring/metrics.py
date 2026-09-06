@@ -286,6 +286,25 @@ def score_governance(run: SuiteRun) -> Score:
         _rate(s, "彻底删除率",
               sum(1 for d in deletion if d["reached"] == "gone_from_storage"), n)
 
+    # ── 留痕 × 删除的**交叉判**（docs/suites/n4-governance.md）─────
+    # ⛔ 「能删但不留痕」与「留痕但删不掉」**都不合格**，
+    # ⚠️ 各判各的就分不出该往哪修。这一维此前从没被评测过。
+    trail = by_group.get("trail") or []
+    if trail and trail[0].get("declared"):
+        t = trail[0]
+        metrics["留痕_有删除事件"] = float(t["logged_delete"])
+        # ⛔ 把内容藏进审计日志不算删除——⚠️ 这一格 > 0 时删除组不通过
+        metrics["留痕_日志含正文"] = float(t["content_in_log"] > 0)
+        if t["delete_events"]:
+            # ⚠️ 「谁删的、何时」缺了就只是「记了一笔」，不是审计轨迹
+            _rate(s, "留痕_有主体", t["with_principal"], t["delete_events"])
+            _rate(s, "留痕_有时间", t["with_time"], t["delete_events"])
+        thorough = metrics.get("彻底删除率")
+        if thorough is not None:
+            # ⭐ 四格交叉：⛔ 只有「删干净 且 留了痕 且 日志里没正文」才合格
+            metrics["治理_合格"] = float(
+                thorough >= 1.0 and t["logged_delete"] and not t["content_in_log"])
+
     return _finish(s, run)
 
 
