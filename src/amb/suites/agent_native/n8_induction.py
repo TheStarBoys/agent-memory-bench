@@ -14,14 +14,9 @@ from amb.world import WorldState
 from amb.world.stream.regularity import Regularity
 
 
-def _yes(text: str) -> bool | None:
-    """⛔ 读不出返回 None，⚠️ 不猜。"""
-    t = text.strip()
-    if "不是" in t or t.startswith("否"):
-        return False
-    if "是" in t:
-        return True
-    return None
+# ⭐ **两档共用同一个解析器**：⛔ 各写一份必然漂移——
+# ⚠️ 实测两份对同一句「无法判断**是否**会发光」给出**相反**诊断。
+from amb.suites.native.n8_induction import parse_yes_no as _yes
 
 
 class AgentInductionSuite:

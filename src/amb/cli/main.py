@@ -190,7 +190,7 @@ def main(argv: list[str] | None = None) -> int:
     if not args.skip_preflight:
         from amb.runner.preflight import estimate, inspect
 
-        pre = inspect(plan)
+        pre = inspect(plan, arms=tuple(names))
         mins = estimate(len(plan.documents), tuple(names))
         if mins:
             pre.budget["摄入分钟"] = {k: round(v, 1) for k, v in mins.items()}
@@ -243,6 +243,17 @@ def main(argv: list[str] | None = None) -> int:
                 # 去记它的账，那一列一混，读者只会以为这个系统不稳。
                 why = str(exc)[:200]
                 print(f"⛔ [{i}/{len(names)}] {name}: 框架自己的问题（{why}）",
+                      file=sys.stderr, flush=True)
+                report.lanes.setdefault("library", []).append(
+                    ArmResult(arm=name, is_control=name in control_arms(),
+                              harness_fault=why))
+                continue
+            except (KeyError, EnvironmentError) as exc:
+                # ⛔ **评测器侧的配置错**：臂名打错、必需环境变量没设、
+                # 依赖没装——⚠️ 那不是「这个系统跑挂了」，
+                # ⭐ 而报告里 crashed 那一列会被读成「这个系统不稳」。
+                why = f"{type(exc).__name__}: {exc}"[:200]
+                print(f"⛔ [{i}/{len(names)}] {name}: 配置问题（{why}）",
                       file=sys.stderr, flush=True)
                 report.lanes.setdefault("library", []).append(
                     ArmResult(arm=name, is_control=name in control_arms(),

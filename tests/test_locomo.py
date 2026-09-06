@@ -382,3 +382,32 @@ def test_questions_that_cannot_be_hit_are_dropped_not_scored_zero(data) -> None:
     assert len(kept) == 1973
     for q in got.items:
         assert set(q.evidence) <= set(data.turns[q.conversation_id]), q.qa_id
+
+
+def test_abstention_is_matched_as_a_whole_not_as_a_substring() -> None:
+    """⛔ 子串匹配让一条**断言了编造答案**的长回答两头占便宜。
+
+    ⚠️ 「资料未提及具体日期，但根据上下文应为 2023 年 9 月」——
+    ⭐ 早先它在不可答题上拿满分的「正确弃权率」（那是编造），
+    在可答题上被移出准确率的分子（少扣一次分）。
+    """
+    from amb.scoring.metrics import _said_abstain
+
+    assert _said_abstain("资料未提及")
+    assert _said_abstain("资料未提及。")
+    assert _said_abstain("NOT IN THE MATERIAL.")
+    assert not _said_abstain("资料未提及具体日期，但根据上下文应为 2023 年 9 月")
+    assert not _said_abstain("")
+
+
+def test_an_empty_answer_is_not_fabrication() -> None:
+    """⛔ 「给不出」与「给错」永不相加——⚠️ 这条纪律 n2 执行了，qa 早先没有。"""
+    from amb.scoring.metrics import score_locomo_answer, score_qa
+    from amb.core import Observation, SuiteRun
+
+    run = SuiteRun("qa", "scored")
+    run.observations.append(Observation("a", {
+        "text": "", "gold": [], "unanswerable": True}))
+    m = score_qa(run).metrics
+    assert m["编造率"] == 0.0, "⛔ 空答案不是编造"
+    assert m["正确弃权率"] == 0.0, "⚠️ 也不是正确弃权——它什么都没说"

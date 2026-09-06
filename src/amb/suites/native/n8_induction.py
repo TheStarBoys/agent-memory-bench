@@ -30,18 +30,44 @@ from amb.world import WorldState
 from amb.world.stream.regularity import Regularity
 
 
+def parse_yes_no(text: str) -> bool | None:
+    """把一句回答读成是/否。⛔ 读不出返回 None，⚠️ 不猜。
+
+    ⭐ **两档共用这一个**：⚠️ 早先 direct 用 `"否" in text`、
+    agent 用 `"不是" in t or t.startswith("否")`——⛔ 同一句
+    「无法判断**是否**会发光」在 direct 判 False（于是记成
+    「正确处理了例外」，`unparsed` 还是 False），在 agent 判 True
+    （「过度泛化」）。**两档对同一段文本给出相反诊断**，
+    而这一类的全部价值就是把那两种毛病分开。
+
+    ⛔ 判据是**整体**，不是子串：⚠️ 「是否」「是不是」这类词里都含「是」。
+    """
+    t = text.strip().strip("。.!！ ")
+    if not t:
+        return None
+    # ⚠️ 明确的否定优先——⛔ 「不是」里也含「是」
+    for no in ("否", "不是", "no", "false"):
+        if t == no or t.startswith(no):
+            return False
+    for yes in ("是", "yes", "true"):
+        if t == yes or t.startswith(yes):
+            return True
+    # ⚠️ 短答里出现单独的否定/肯定也认，⛔ 长答一律读不出
+    if len(t) <= 6:
+        if "不是" in t or "否" in t:
+            return False
+        if "是" in t:
+            return True
+    return None
+
+
 def _asked(adapter: Adapter, instance, prop: str) -> bool | None:
     """问「它具不具有那个性质」。⛔ 读不出返回 None。"""
     got = adapter.answer(f"{instance.name} 是{prop}的吗？只回答「是」或「否」。")
     if isinstance(got, (Unsupported, Failed)):
         return None
     assert isinstance(got, Answer)
-    text = got.text.strip()
-    if "否" in text or "不是" in text:
-        return False
-    if "是" in text:
-        return True
-    return None
+    return parse_yes_no(got.text)
 
 
 class InductionSuite:

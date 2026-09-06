@@ -267,7 +267,8 @@ def test_prompted_reality_retries_once_when_the_verdict_is_missing(tmp_path) -> 
                 srv.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                             "params": {"name": "report_verdict",
                                        "arguments": {"claim_id": "c1",
-                                                     "state": "broken"}}})
+                                                     "state": "broken",
+                                                     "grounds": ["mem:1"]}}})
             return AgentTurn(text="看过了。", finish_reason="completed", events=[])
 
     driver = ForgetsFirstTime()
@@ -298,7 +299,8 @@ def test_no_reminder_when_the_verdict_arrives_first_time(tmp_path) -> None:
             self.turns += 1
             srv.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                         "params": {"name": "report_verdict",
-                                   "arguments": {"claim_id": "c1", "state": "holds"}}})
+                                   "arguments": {"claim_id": "c1", "state": "holds",
+                                                 "grounds": ["mem:1"]}}})
             return AgentTurn(text="仍然成立。", finish_reason="completed", events=[])
 
     driver = Compliant()
@@ -391,3 +393,31 @@ def test_multi_cue_reach_is_measured_per_cue() -> None:
     ], cues_key="cues_list").probe(OnlyKnowsTheFirstCue(), None)
     p = run.observations[0].payload
     assert p["reached"] == 1 and p["cues"] == 3
+
+
+def test_a_verdict_without_grounds_is_failed_in_the_agent_lane_too(tmp_path) -> None:
+    """⛔ 「表了态却拿不出依据 = Failed」——⚠️ 文档承诺的这条闸门
+    直接调库那档补上了，⭐ agent 档早先用 `memory_calls` 兜底（也可以是空的）。
+
+    ⚠️ 一条把所有命题都报 broken、依据一律为空的臂，早先能拿 `检出率 = 1.000`。
+    """
+    from amb.agent import AgentTurn
+    from amb.agent.verdict_server import VerdictServer
+    from amb.core import Claim
+    from amb.suites.agent_native import AgentPromptedRealitySuite
+
+    sink = tmp_path / "v.jsonl"
+    srv = VerdictServer(sink)
+
+    class NoGrounds:
+        def ask(self, prompt: str):
+            srv.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                        "params": {"name": "report_verdict",
+                                   "arguments": {"claim_id": "c1",
+                                                 "state": "broken"}}})
+            return AgentTurn(text="坏了。", finish_reason="completed", events=[])
+
+    run = AgentPromptedRealitySuite(
+        [Claim("c1", "命题", ["d"])], {"c1": "broken"}, sink).probe(NoGrounds(), None)
+    assert run.failed == 1, "⛔ 零依据的表态要记 Failed"
+    assert not run.observations, "⚠️ 它不进分子也不进分母的『有分』那一侧"

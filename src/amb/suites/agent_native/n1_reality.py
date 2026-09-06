@@ -71,11 +71,18 @@ class AgentPromptedRealitySuite:
                 #    ⚠️ 不是弃权——弃权是主动提交 unknown
                 run.failed += 1
                 continue
+            # ⛔ **表了态却拿不出依据 = Failed**，⚠️ 与直接调库那一档对齐：
+            # 早先这里用 `record.memory_calls` 兜底（那也可以是空的），
+            # ⭐ 于是「空 grounds 判 Failed」这条文档承诺在 agent 档不存在。
+            grounds = list(verdict.get("grounds") or ())
+            if verdict["state"] != "unknown" and not grounds:
+                run.failed += 1
+                continue
             run.observations.append(record.as_observation(
                 c.claim_id,
                 truth=self._truth[c.claim_id],
                 reported=verdict["state"],
-                grounds=list(verdict.get("grounds") or record.memory_calls),
+                grounds=grounds,
                 # ⚠️ 记下它是不是被提醒了才提交——这本身是可读的信息
                 needed_reminder=c.claim_id in reminded,
                 answer=record.text[:200],   # ⚠️ 留原始回答，否则没法诊断

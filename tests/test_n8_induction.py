@@ -203,3 +203,27 @@ def test_every_language_carries_the_variant() -> None:
         assert variant.abstain == prompt.abstain
         assert variant.labels == prompt.labels
         assert variant.no_context == prompt.no_context
+
+
+def test_both_lanes_share_one_parser() -> None:
+    """⛔ 两档各写一份解析器必然漂移。
+
+    ⚠️ 实测：direct 用 `"否" in text`、agent 用 `"不是" in t or startswith("否")`，
+    ⭐ 同一句「无法判断**是否**会发光」——direct 判 False（于是记成
+    「正确处理了例外」，`unparsed` 还是 False），agent 判 True（「过度泛化」）。
+    ⛔ **两档对同一段文本给出相反诊断**，而这一类的全部价值就是
+    把「过度修正」与「过度泛化」这两种相反的毛病分开。
+    """
+    from amb.suites.agent_native.n8_induction import _yes
+    from amb.suites.native.n8_induction import parse_yes_no
+
+    assert _yes is parse_yes_no, "⛔ 又各写一份了"
+    for text, want in (
+        ("是", True), ("否", False), ("不是。", False),
+        ("是的", True), ("no", False),
+        # ⛔ 「是否」里含「是」——⚠️ 这句话什么都没回答
+        ("无法判断是否会发光", None),
+        ("资料未提及，无法判断", None),
+        ("", None),
+    ):
+        assert parse_yes_no(text) is want, f"{text!r} → {parse_yes_no(text)}"

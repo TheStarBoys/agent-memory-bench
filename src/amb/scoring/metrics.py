@@ -182,8 +182,25 @@ ABSTAIN_WORDS = (ABSTAIN, "NOT IN THE MATERIAL")
 
 
 def _said_abstain(text: str) -> bool:
+    """这句话**整体**是弃权吗。
+
+    ⛔ 不是子串匹配：⚠️ 一条**断言了编造答案**的长回答只要里面含
+    「资料未提及」四个字，早先就在不可答题上拿满分的「正确弃权率」、
+    在可答题上被移出准确率的分子——⭐ 两头都朝有利方向错。
+    ⚠️ 提示要求的是「只回答四个字：资料未提及」，⛔ 所以判据也该是整体匹配：
+    去掉标点之后**等于**那个词，或者以它开头且没多说什么。
+    """
     got = _normalize(text)
-    return any(_normalize(w) in got for w in ABSTAIN_WORDS)
+    if not got:
+        return False
+    for word in ABSTAIN_WORDS:
+        w = _normalize(word)
+        if got == w:
+            return True
+        # ⚠️ 留一点余地：「资料未提及。」这类尾巴算，⛔ 但后面接一整段不算
+        if got.startswith(w) and len(got) <= len(w) + 4:
+            return True
+    return False
 
 
 def _normalize(text: str) -> str:
@@ -210,10 +227,13 @@ def score_qa(run: SuiteRun) -> Score:
     for obs in run.observations:
         text = _normalize(obs.payload["text"])
         said_abstain = _said_abstain(obs.payload["text"])
+        # ⛔ **空答案不是编造**：⚠️ 「给不出」与「给错」永不相加——
+        # 这条纪律在 n2 里执行了，⭐ 在 qa 里早先没有。
+        empty = not text
         if obs.payload["unanswerable"]:
             # 该弃权的题
             abstained_right += said_abstain
-            fabricated += not said_abstain      # ⛔ 编造
+            fabricated += not (said_abstain or empty)   # ⛔ 编造
         elif said_abstain:
             abstained_wrong += 1                # 该答却弃权——不算错，单列
         else:
@@ -660,7 +680,8 @@ def score_locomo_answer(run: SuiteRun) -> Score:
         said_abstain = _said_abstain(r["text"])
         if r["unanswerable"]:
             abstained_right += said_abstain
-            fabricated += not said_abstain        # ⛔ 编造
+            # ⛔ 同 score_qa：空答案是「给不出」，⚠️ 不是「编造」
+            fabricated += not (said_abstain or not _normalize(r["text"]))        # ⛔ 编造
         elif said_abstain:
             abstained_wrong += 1                  # 该答却弃权——单列，不算错
         else:

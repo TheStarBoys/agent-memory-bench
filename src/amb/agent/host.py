@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -160,7 +161,21 @@ class Host:
             raise HostUnavailable("宿主未启动")
         if self._session is None:
             self._session = self._harness.start_session()
-        result = self._session.run(prompt)
+        # ⛔ **瞬时故障要重试**：⚠️ `adapters/llm.py` 那条腿改过了，
+        # 这一条早先没有——⭐ 同一次网络抖动，直接调库那档被救回来，
+        # agent 档整条臂记 crashed。**框架的缺陷记成被测系统的失败**。
+        result = None
+        last: Exception | None = None
+        for attempt in range(3):
+            try:
+                result = self._session.run(prompt)
+                break
+            except Exception as exc:  # noqa: BLE001 —— 宿主的异常类型不归我们管
+                last = exc
+                if attempt < 2:
+                    time.sleep(2 ** attempt)
+        if result is None:
+            raise HostUnavailable(f"宿主连续 3 次没跑成：{last}") from last
         return AgentTurn(
             text=result.final_response,
             finish_reason=result.finish_reason,

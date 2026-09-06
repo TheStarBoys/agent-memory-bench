@@ -147,11 +147,23 @@ def save_lock(entries: dict[str, dict], path: Path = LOCKFILE) -> None:
 
 
 def require_installed(name: str, path: Path = LOCKFILE) -> dict:
-    """⛔ 没装过就拒绝——不许在缺依赖的情况下静默跑出一个分。"""
+    """⛔ 没装过就拒绝——不许在缺依赖的情况下静默跑出一个分。
+
+    ⚠️ 判据早先**只看锁文件里那行 `ok`**，一次也不碰磁盘：
+    ⛔ 半装好的环境（venv 被删了、解释器不在了）照样算通过，
+    ⭐ 而报告那张版本表也照印 ✓——**锁文件与现实脱节时它一起说谎**。
+    """
     entry = load_lock(path).get(name)
     if entry is None or not entry.get("ok"):
         raise SetupError(
             f"{name} 还没装。⛔ 该系统记「未接入」，不是 0 分。\n"
             f"    python -m amb.cli setup {name}"
+        )
+    # ⭐ 锁文件说装好了，那就**去磁盘上看一眼**
+    location = entry.get("location") or ""
+    if location and not Path(location).exists():
+        raise SetupError(
+            f"{name}: 锁文件说装在 {location}，⛔ 而那里什么都没有。\n"
+            f"⚠️ 锁文件与现实脱节——重装：python -m amb.cli setup {name}"
         )
     return entry

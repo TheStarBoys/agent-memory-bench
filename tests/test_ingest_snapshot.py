@@ -464,6 +464,7 @@ def test_the_snapshot_footnote_never_goes_silent() -> None:
             arm=name, is_control=(name == "naive_rag"),
             scores={"locomo_retrieval": Score(suite="locomo_retrieval",
                                               status="scored",
+                                              denominator=126,
                                               metrics={"evidence_recall": 0.7})},
             cost={"ingest": 900_000, "probe": 100},
             cost_profile={"items_ingested": 30, "items_probed": 17},

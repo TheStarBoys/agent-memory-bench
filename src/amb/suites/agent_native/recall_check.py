@@ -34,13 +34,20 @@ class AgentRecallSuite:
     name: ClassVar[str] = "agent_recall"
 
     def __init__(self, name: str, items: list[RecallItem],
+                 curve=None,
                  cues_key: str | None = None) -> None:
         self.name = name
         self._items = items
         self._cues_key = cues_key
+        # ⛔ **agent 档也要带「不得发布」**：⚠️ 大修只把 `n5_observed` /
+        # `n5_self_reported` 封住了，⭐ 而 `n5_agent` 用的是同一条占位曲线——
+        # 于是「什么都不做也能拿的分」又能当质量轴了。
+        from amb.suites.native.n5_consolidation import _why_unpublishable
+
+        self._why = _why_unpublishable(curve) if name.startswith("n5") else ""
 
     def probe(self, driver: AgentDriver, world: WorldState) -> SuiteRun:
-        run = SuiteRun(self.name, "scored")
+        run = SuiteRun(self.name, "scored", not_publishable=self._why)
         for item in self._items:
             if self._cues_key:
                 # ⭐ N6 可达性：同一条目用多个线索分别问

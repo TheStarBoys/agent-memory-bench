@@ -337,6 +337,7 @@ def test_the_cost_table_shows_money() -> None:
         ArmResult(arm="mem0", is_control=False,
                   scores={"locomo_retrieval": Score(
                       suite="locomo_retrieval", status="scored",
+                      denominator=126,
                       metrics={"evidence_recall": 0.7})},
                   cost={"ingest": 1000, "probe": 100},
                   cost_profile={"items_ingested": 10, "items_probed": 5,
@@ -344,6 +345,7 @@ def test_the_cost_table_shows_money() -> None:
         ArmResult(arm="naive_rag", is_control=True,
                   scores={"locomo_retrieval": Score(
                       suite="locomo_retrieval", status="scored",
+                      denominator=126,
                       metrics={"evidence_recall": 0.6})},
                   cost={"ingest": 100, "probe": 100},
                   cost_profile={"items_ingested": 10, "items_probed": 5}),
@@ -510,10 +512,10 @@ def test_an_unpublishable_suite_cannot_become_the_quality_column() -> None:
 
     def arm(name: str, retrieval: float, retention: float) -> ArmResult:
         a = ArmResult(arm=name, is_control=True)
-        a.scores["retrieval"] = Score("retrieval", "scored",
-                                      metrics={"top1": retrieval})
+        a.scores["retrieval"] = Score("retrieval", "scored", denominator=40, metrics={"top1": retrieval})
         a.scores["n5_observed"] = Score(
-            "n5_observed", "scored", metrics={"保留追踪度": retention},
+            "n5_observed", "scored", denominator=40,
+            metrics={"保留追踪度": retention},
             not_publishable="需求概率曲线未拟合")
         a.cost_profile = {"items_probed": 10}
         a.cost = {"probe": 1000}
@@ -532,8 +534,7 @@ def test_a_flat_quality_column_prints_no_verdict() -> None:
 
     def arm(name: str) -> ArmResult:
         a = ArmResult(arm=name, is_control=True)
-        a.scores["retrieval"] = Score("retrieval", "scored",
-                                      metrics={"top1": 0.0})
+        a.scores["retrieval"] = Score("retrieval", "scored", denominator=40, metrics={"top1": 0.0})
         a.cost_profile = {"items_probed": 10}
         a.cost = {"probe": 1000}
         return a
@@ -555,7 +556,7 @@ def test_a_lower_is_better_metric_picks_the_lowest_floor() -> None:
 
     def arm(name: str, ece: float, control: bool = True) -> ArmResult:
         a = ArmResult(arm=name, is_control=control)
-        a.scores["n7"] = Score("n7", "scored", metrics={"ECE": ece})
+        a.scores["n7"] = Score("n7", "scored", denominator=40, metrics={"ECE": ece})
         return a
 
     floor = best_floor([arm("null", 0.40), arm("bm25", 0.11),
@@ -608,7 +609,7 @@ def test_a_degenerate_arm_cannot_widen_the_spread() -> None:
     def arm(name: str) -> ArmResult:
         a = ArmResult(arm=name, is_control=True)
         val = 1.0 if name == "full_context" else 0.0
-        a.scores["retrieval"] = Score("retrieval", "scored", metrics={"top1": val})
+        a.scores["retrieval"] = Score("retrieval", "scored", denominator=40, metrics={"top1": val})
         a.cost_profile = {"items_probed": 10}
         a.cost = {"probe": 1000}
         return a
@@ -631,3 +632,53 @@ def test_no_interval_means_refuse_to_claim() -> None:
     text = _delta_text(0.9, None, Floor("bm25", 0.2), None, "top1")
     assert "不作判断" in text and "无区间" in text
     assert "帮倒忙" not in text
+
+
+def test_a_three_question_suite_cannot_be_the_quality_axis() -> None:
+    """⛔ 挑质量轴早先只看「有几条臂打了分」，完全不看**题数**。
+
+    ⚠️ 于是一个 **3 道题**的套件当上了整份报告最显眼那张判定表的质量轴——
+    ⭐ 那张表量的是抽样噪声。
+    """
+    from amb.report.render import MIN_AXIS_N, _render_cost
+    from amb.report.schema import ArmResult
+    from amb.scoring import Score
+
+    def arm(name: str, tiny: float, big: float) -> ArmResult:
+        a = ArmResult(arm=name, is_control=True)
+        # ⚠️ 3 道题的套件：分高但没有信息
+        a.scores["n8_induction"] = Score("n8_induction", "scored",
+                                         denominator=3, metrics={"全对": tiny})
+        a.scores["retrieval"] = Score("retrieval", "scored",
+                                      denominator=40, metrics={"top1": big})
+        a.cost_profile = {"items_probed": 10}
+        a.cost = {"probe": 1000}
+        return a
+
+    text = "\n".join(_render_cost([arm("bm25", 1.0, 0.9), arm("null", 0.0, 0.1)],
+                                  ["n8_induction", "retrieval"]))
+    assert "`retrieval`" in text, "⭐ 该挑题多的那个"
+    assert "`n8_induction`" not in text
+    assert MIN_AXIS_N >= 10
+
+
+def test_the_per_suite_table_shows_the_denominator() -> None:
+    """⛔ 条件分母的指标只在一两道题上表态就能拿 1.000。
+
+    ⚠️ `精确匹配率` 的分母是「给出了区间的题」——⭐ 一条只在 1 道题上
+    给了区间且给对了的臂拿满分，而读者看不出那是**几分之几**。
+    """
+    from amb.report.render import _render_lane
+    from amb.report.schema import ArmResult, Report
+    from amb.scoring import Score
+
+    a = ArmResult(arm="x", is_control=True)
+    sc = Score("n2_provenance", "scored", denominator=40,
+               metrics={"精确匹配率": 1.0, "回链率": 0.025})
+    sc.denominators = {"精确匹配率": 1, "回链率": 40}
+    a.scores["n2_provenance"] = sc
+    report = Report(run_id="r", at="t", world={"name": "w", "seed": 1,
+                                               "digest": ""},
+                    backbone={}, externals={}, sampling={})
+    text = _render_lane("library", [a], report)
+    assert "n=1" in text, "⛔ 分母没同屏——读者看不出那是 1/1"

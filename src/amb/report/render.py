@@ -20,6 +20,10 @@ def _quality_unfit(metric: str) -> str:
     return ""
 
 
+#: ⛔ 当质量轴的最低题数。⚠️ 低于它，那张判定表量的是抽样噪声——
+#: 实测踩到：一个 **3 道题**的套件当上了最显眼那张表的质量轴。
+MIN_AXIS_N = 10
+
 HEADLINE = {
     "retrieval": "top1",
     "n2_provenance": "精确匹配率",
@@ -193,13 +197,28 @@ def _render_cost(arms: list, suites: list[str],
         return not any((sc := a.scores.get(name)) and sc.not_publishable
                        for a in arms)
 
+    def sample_size(name: str) -> int:
+        """这个套件的主指标**各条臂的最小分母**。
+
+        ⛔ 早先挑质量轴只看「有几条臂打了分」，完全不看题数——
+        ⚠️ 于是一个 **3 道题**的套件当上了整份报告最显眼那张判定表的质量轴。
+        ⭐ 分母也进排序键，且低于 `MIN_AXIS_N` 的一律不当候选。
+        """
+        sizes = [(sc.denominators or {}).get(HEADLINE[name], sc.denominator)
+                 for a in arms if (sc := a.scores.get(name))
+                 and sc.status == "scored" and HEADLINE[name] in sc.metrics]
+        return min(sizes) if sizes else 0
+
     candidates = [s for s in suites
                   if s in HEADLINE and scored_count(s) > 0 and publishable(s)
-                  and not _quality_unfit(HEADLINE[s])]
+                  and not _quality_unfit(HEADLINE[s])
+                  and sample_size(s) >= MIN_AXIS_N]
     if not candidates:
+        # ⚠️ 没有够格的质量轴就**不出这张表**，⛔ 不退而求其次拿 3 道题的凑
         return []
-    # 并列时取名字靠前的，⚠️ 保证同一批数据两次跑挑的是同一个
-    chosen = max(sorted(candidates), key=scored_count)
+    # ⭐ 先按题数、再按参与臂数排；⚠️ 并列时取名字靠前的（两次跑挑同一个）
+    chosen = max(sorted(candidates),
+                 key=lambda name: (sample_size(name), scored_count(name)))
 
     quality: dict[str, float] = {}
     for a in arms:
@@ -332,7 +351,14 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
 
     for suite in suites:
         metric = HEADLINE.get(suite, "")
-        floor = best_floor(arms, suite, metric)
+        # ⛔ **「不得发布」也要挡住逐套件表**：⚠️ 早先只挡了成本×质量表，
+        # 于是逐套件表照常给它印地板线、Δ 与排名，⭐ 而全篇不出现一个
+        # 「不得发布」字样——与「QUALITY_UNFIT 只挡了一半」同一个形状。
+        unpublishable = next(
+            (sc.not_publishable for a in arms
+             if (sc := a.scores.get(suite)) and sc.not_publishable), "")
+        # ⛔ 不得发布的档**不给地板线、不给 Δ、不排名**
+        floor = best_floor(arms, suite, metric) if not unpublishable else None
         floor_ci = None
         if floor is not None:
             fsc = next((a.scores.get(suite) for a in arms if a.arm == floor.arm), None)
@@ -343,7 +369,8 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
         out += [
             f"## {suite}  （主指标 {metric}）{signed}",
             "",
-            f"地板线 **{floor.arm} = {floor.value:.3f}**" if floor
+            f"⛔ **这一档的数不得发布**：{unpublishable}" if unpublishable
+            else f"地板线 **{floor.arm} = {floor.value:.3f}**" if floor
             else "⚠️ 无地板线——对照组在这一档全部不支持",
             "",
             "| | 分 [95% 区间] | Δ vs 地板 | 状态 | 不支持理由 |",
@@ -372,8 +399,13 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
             v = sc.metrics[metric]
             # ⭐ 抽样分必须带区间——⛔ 不带区间的分假装自己是全量分
             ci = sc.interval(metric)
-            shown = (f"{v:.3f} [{ci.low:.3f}, {ci.high:.3f}]" if ci
-                     else f"{v:.3f}")
+            # ⛔ **分母必须同屏**：⚠️ 条件分母的指标（`精确匹配率` 的分母是
+            # 「给出了区间的题」、`来源正确率` 是「经记忆作答的题」）
+            # 只在一两道题上表态就能拿 1.000，⭐ 而读者看不出那是几分之几。
+            den = (sc.denominators or {}).get(metric)
+            tail = f" n={den}" if den is not None else ""
+            shown = (f"{v:.3f} [{ci.low:.3f}, {ci.high:.3f}]{tail}" if ci
+                     else f"{v:.3f}{tail}")
             # ⛔ Δ 只对被测系统算。对照组是参照系本身，
             #    拿它们互比再标「帮倒忙」是把参照系当成了选手。
             if arm.is_control:

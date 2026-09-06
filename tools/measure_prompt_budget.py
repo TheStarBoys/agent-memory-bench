@@ -6,6 +6,12 @@
 一个抽取提示 8000 token 的系统，假设你有个又快又能吃长上下文的模型。
 """
 
+⛔ **退回路径量的不是提示词，是 Python 源码。** ⚠️ 正则把上一个 docstring
+的结尾和下一个 docstring 的开头配成一对，中间夹的方法体被当成「一条提示」
+计入——⭐ a_mem 那个「最大单条提示 ≈ 921 token」就是这么来的。
+⛔ 所以退回路径的数**不得进文档**，它只能说明「这里有提示词」。
+
+
 from __future__ import annotations
 
 import argparse

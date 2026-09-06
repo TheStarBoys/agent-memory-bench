@@ -331,7 +331,10 @@ def agent_suites(verdict_sink) -> list:
         AgentRecallSuite("n5_agent", retention_items(
             _balanced(probes_from(EVENT_STREAM, NEED_CURVE,
                                   now_s=86_400 * 30.0),
-                      key=lambda p: p.should_keep, per_group=3))),
+                      key=lambda p: p.should_keep, per_group=3)),
+            # ⛔ 曲线跟着走：⚠️ 占位曲线的分不得发布，direct 档封住了，
+            # ⭐ agent 档早先没有——同一条曲线两种待遇
+            curve=NEED_CURVE),
         AgentRecallSuite("n6_agent",
                          _balanced(structure_items(TOPOLOGY),
                                    key=lambda i: i.payload["fan"], per_group=1),

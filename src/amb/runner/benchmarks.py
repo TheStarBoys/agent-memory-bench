@@ -40,6 +40,20 @@ def build_plan(bench: str, *, sample: str = "all", seed: int = 42,
     if bench == "locomo":
         return _locomo(sample, seed, max_conversations, max_turns,
                        conversations, with_answer)
+    # ⛔ **旋钮转了就得算数**：⚠️ `--sample` / `--max-convs` / `--max-turns`
+    # / `--convs` 只有 locomo 认，⭐ 而 toy 与 dialogue 早先**静默忽略**——
+    # 一次「小样本冒烟」会照付全量摄入的钱，而且不进 sampling 存档。
+    if bench in ("toy", "dialogue"):
+        ignored = [n for n, v in (("--sample", sample if sample != "all" else ""),
+                                  ("--max-convs", max_conversations),
+                                  ("--max-turns", max_turns),
+                                  ("--convs", conversations)) if v]
+        if ignored:
+            raise KeyError(
+                f"{bench} 不认这些旋钮：{' '.join(ignored)}——"
+                f"⛔ 它没有「对话」也没有抽题，⚠️ 转了等于没转。"
+                f"⭐ 要小规模跑就改世界的参数（worlds/{bench}.py）")
+
     if bench == "toy":
         from worlds import toy
 

@@ -16,6 +16,23 @@ from pathlib import Path
 SUITE = "locomo_retrieval"
 
 
+def usable(arm: dict, suite: str) -> str:
+    """这条臂在这个套件上的分**能不能拿来对账**。⛔ 返回不能用的理由。
+
+    ⚠️ 早先 `_metrics()` / `_recall()` 既不看 `status` 也不看
+    `not_publishable`——⭐ 于是 `untrusted` 留在 metrics 里的残值、
+    以及「ground truth 立不住」的档，都被当正常分对账。
+    """
+    sc = (arm.get("scores") or {}).get(suite) or {}
+    if not sc:
+        return "没这一档"
+    if sc.get("status") != "scored":
+        return f"status={sc.get('status')}"
+    if sc.get("not_publishable"):
+        return "不得发布"
+    return ""
+
+
 def arms(path: Path) -> dict[str, dict]:
     data = json.loads(path.read_text(encoding="utf-8"))
     return {a["arm"]: a for a in data.get("lanes", {}).get("library", [])}

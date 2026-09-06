@@ -83,3 +83,34 @@ def test_setup_check_reports_status_without_installing(capsys) -> None:
     printed = capsys.readouterr().out
     assert "声明" in printed and "实际" in printed
     assert code in (0, 1)      # ⚠️ 装没装全取决于本机，⛔ 不断言具体值
+
+
+def test_knobs_that_do_nothing_are_refused_not_ignored() -> None:
+    """⛔ 旋钮转了就得算数：⚠️ `--sample` / `--max-turns` 只有 locomo 认，
+    ⭐ 而 toy 与 dialogue 早先**静默忽略**——一次「小样本冒烟」
+    会照付全量摄入的钱，而且不进 sampling 存档。
+    """
+    import pytest as _pytest
+
+    from amb.runner import build_plan
+
+    with _pytest.raises(KeyError, match="不认这些旋钮"):
+        build_plan("toy", max_turns=30)
+    with _pytest.raises(KeyError, match="不认这些旋钮"):
+        build_plan("dialogue", condition="dense", sample="first:5")
+    # ⭐ 不转就不报
+    build_plan("toy")
+
+
+def test_a_configuration_error_is_not_a_crashed_arm() -> None:
+    """⛔ 臂名打错 / 环境变量没设 / 依赖没装是**评测器侧**的错。
+
+    ⚠️ 早先一律记 `crashed`，⭐ 而报告那一列会被读成「这个系统不稳」。
+    """
+    import inspect
+    from importlib import import_module
+
+    src = inspect.getsource(import_module("amb.cli.main").main)
+    assert "except (KeyError, EnvironmentError)" in src
+    assert src.index("except (KeyError, EnvironmentError)") < src.index(
+        "except Exception as exc:  # noqa: BLE001\n                # ⛔ 不只打到 stderr")

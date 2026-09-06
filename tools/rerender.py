@@ -54,6 +54,19 @@ def main() -> int:
         print(__doc__)
         return 2
     raw = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+    # ⛔ **判分口径变了就不许用它**：⚠️ 这个工具只搬数不重判，
+    # ⭐ 而判分层现在会给每个指标记**自己的分母**（`denominators`）——
+    # 存档里没有那一栏，说明它跑在旧口径上，⛔ 渲染出来会是
+    # 「新口径的表格配旧口径的数」，而读者看不出出身。
+    lanes = (raw.get("lanes") or {}).values()
+    has_denoms = any(sc.get("denominators")
+                     for arms_ in lanes for a in arms_
+                     for sc in (a.get("scores") or {}).values())
+    if not has_denoms:
+        print("⛔ 这份存档没有 `denominators`——它跑在**旧判分口径**上。\n"
+              "⚠️ 本工具只搬数不重判，渲染出来会是「新表格配旧数」。\n"
+              "⭐ 要么重跑，要么直接读存档里的 JSON。", file=sys.stderr)
+        return 2
     report = Report(run_id=raw["run_id"], at=raw["at"], world=raw["world"],
                     backbone=raw["backbone"], host=raw.get("host") or {},
                     externals=raw.get("externals") or {},

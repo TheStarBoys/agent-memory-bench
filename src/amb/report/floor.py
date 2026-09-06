@@ -58,9 +58,21 @@ def is_quality_axis(metric: str) -> bool:
     return metric not in SHAPE_NOT_QUALITY and metric not in LOWER_IS_BETTER
 
 
+#: ⭐ **回答档**：这些套件由 backbone 端到端作答，⚠️ 「把语料交出去」
+#: 在这里不是绕过分母——backbone 仍要自己在全文里找。
+#: ⛔ 早先硬编码成 `suite != "qa"` 一个名字，而回答档有六个——
+#: 于是 `full_context` 在 `locomo_answer` / `n8_induction` / `n3_reasoning` /
+#: `n7_calibration` / `n4_governance` 上被**误判成退化**并剔出比较。
+ANSWER_LANE = frozenset({
+    "qa", "locomo_answer", "n8_induction", "n3_reasoning",
+    "n3_reasoning_agent", "n7_calibration", "n4_governance",
+    "n4_governance_agent", "n1_prompted", "n1_spontaneous",
+})
+
+
 def is_degenerate(arm: str, suite: str) -> bool:
     """这条臂在这个套件里是不是**退化**的（不做该做的事就拿满分）。"""
-    return suite != "qa" and arm in DEGENERATE_IN_RETRIEVAL
+    return suite not in ANSWER_LANE and arm in DEGENERATE_IN_RETRIEVAL
 
 
 def best_floor(arms: list[ArmResult], suite: str, metric: str) -> Floor | None:

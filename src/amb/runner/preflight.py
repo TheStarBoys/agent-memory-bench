@@ -40,6 +40,7 @@ CHECKS = {
     "unpublishable-headline": "「不得发布」的档当上了质量列",
     "verdict-on-flat-metric": "质量列分不开各条臂，报告却仍在下判定",
     "no-headroom": "最便宜的词法臂已经打满——⛔ 这一档没有判别空间，跑再多臂也分不开",
+    "unpinned-externals": "要跑被测系统，而它的版本没记录——⛔ 没记录版本的跑不算数",
 }
 
 #: ⛔ 词法臂到了这个分就没有留给别人的空间了。⚠️ 不是「它很强」，
@@ -304,7 +305,29 @@ def estimate(documents: int, arms: tuple[str, ...]) -> dict[str, float]:
     return {a: documents * INGEST_S[a] / 60 for a in arms if a in INGEST_S}
 
 
-def inspect(plan, *, root: Path | None = None, samples: int = 3) -> Report:
+def check_externals(arms: tuple[str, ...], out: Report) -> None:
+    """要跑被测系统，就得说得出它的版本。
+
+    ⛔ 「没记录版本的跑不算数」是本项目的硬规矩，⚠️ 而它此前**没有任何闸门**：
+    `externals` 为空时报告里那一行整条消失，⭐ 读者看不出区别。
+    """
+    from amb.adapters import CONTROL_ARMS
+    from amb.setup import snapshot
+
+    systems = [a for a in arms if a not in CONTROL_ARMS]
+    if not systems:
+        return
+    lock = snapshot()
+    for name in systems:
+        row = lock.get(name) or {}
+        if not row.get("ok") or not row.get("actual"):
+            out.add("fatal", "unpinned-externals",
+                    f"{name} 的版本没记录（锁文件里 {row or '空'}）——"
+                    f"⛔ 这一跑不算数。先跑 `amb setup {name}`")
+
+
+def inspect(plan, *, root: Path | None = None, samples: int = 3,
+            arms: tuple[str, ...] = ()) -> Report:
     """跑之前自查。⛔ 零网络调用。
 
     ⚠️ 返回的 `samples` **必须人眼过一遍**——⭐ 自动检查覆盖不到
@@ -313,6 +336,7 @@ def inspect(plan, *, root: Path | None = None, samples: int = 3) -> Report:
     import tempfile
 
     out = Report()
+    check_externals(arms, out)
     rec = _record(plan)
     check_queries(plan, rec, out)
     check_gold(plan, rec, out)

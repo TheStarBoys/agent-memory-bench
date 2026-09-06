@@ -172,3 +172,23 @@ def test_every_shipped_world_passes_its_own_preflight(bench, condition) -> None:
     plan, _, _ = build_plan(bench, condition=condition)
     report = inspect(plan)
     assert not report.fatal, "\n".join(str(f) for f in report.fatal)
+
+
+def test_running_a_system_without_a_pinned_version_is_refused(monkeypatch) -> None:
+    """⛔ 「没记录版本的跑不算数」是硬规矩，⚠️ 而它此前**没有任何闸门**——
+    `externals` 为空时报告里那一行整条消失，⭐ 读者看不出区别。
+    """
+    from amb.runner import preflight as pf
+
+    monkeypatch.setattr("amb.setup.snapshot", lambda: {}, raising=False)
+    import amb.setup as setup_mod
+
+    monkeypatch.setattr(setup_mod, "snapshot", lambda: {})
+    report = pf.Report()
+    pf.check_externals(("bm25", "mem0"), report)
+    checks = {f.check for f in report.fatal}
+    assert "unpinned-externals" in checks
+    # ⭐ 只跑对照组时不该报——它们没有外部依赖
+    clean = pf.Report()
+    pf.check_externals(("bm25", "null"), clean)
+    assert not clean.fatal
