@@ -94,3 +94,19 @@ def test_undecided_is_tracked_separately_from_wrong() -> None:
 def test_a_step_citing_a_nonexistent_memory_fails() -> None:
     """⛔ 引了一条系统里没有的记忆，那一步不成立。"""
     assert run("guessed")["链条完好率"] == 0.0
+
+
+def test_a_protocol_conformant_ref_is_not_punished() -> None:
+    """⛔ `Premise.ref` 按[协议](../docs/adapters/protocol.md)是 `Entry.id`。
+
+    ⚠️ 早先这里只认**评测器自己的三元组串**，于是一条完全按文档实现的系统
+    拿到 `链条完好率 0.000 / 蒙对率 1.000`——⭐ 报告说它「结论全蒙对、
+    链条全是编的」，而它的链条一步不差。
+    """
+    from amb.suites.native.n3_reasoning import ReasoningSuite, questions_from
+
+    suite = ReasoningSuite(GRAPH, questions_from(GRAPH))
+    # ⭐ 两种 ref 都必须解得开
+    a_fact = str(GRAPH.facts[0])
+    assert suite._resolve(a_fact) == a_fact
+    assert suite._resolve("完全不存在的 ref") is None

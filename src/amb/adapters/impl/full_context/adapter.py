@@ -45,9 +45,14 @@ class FullContextAdapter(Answerable, AdapterBase):
             )
 
     def search(self, query: str, k: int, *, principal: str | None = None) -> list[Entry]:
-        """⚠️ 不检索——全部交出去。query 与 k 都被刻意忽略。
+        """⚠️ 不检索——按原顺序交出**前 k 条**。query 被刻意忽略。
 
         这正是这条线的含义：不做选择，让 backbone 自己在全文里找。
+
+        ⛔ 但 `k` **必须遵守**：⚠️ 早先完全忽略它，于是 `search(线索, 1)`
+        会拿回 12 条——那些「指名要一条」的判据（N6 精确检索、N5、N1 无提示）
+        在这条臂上等于白送分。⭐ 而挡住它的只有一个**按臂名硬编码的名单**
+        （`floor.DEGENERATE_IN_RETRIEVAL`），任何新的同类臂都不在名单里。
         """
         return [
             Entry(
@@ -58,7 +63,7 @@ class FullContextAdapter(Answerable, AdapterBase):
                 spans=[Span(d.doc_id, 0, len(d.text))],
                 principal=d.principal,
             )
-            for i, d in enumerate(self._docs)
+            for i, d in enumerate(self._docs[:k] if k and k > 0 else self._docs)
         ]
 
     def count(self) -> int:

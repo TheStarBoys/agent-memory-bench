@@ -153,8 +153,12 @@ class LocomoRetrievalSuite:
         run = SuiteRun(self.name, "scored")
         for q in self._questions:
             hits = adapter.search(q.question, self._k)
-            got = {d.split("/", 1)[-1] for h in hits for d in h.doc_ids}
-            gold = set(q.evidence)
+            # ⛔ **保留对话前缀**：⚠️ 轮次 id 大面积跨对话重名——实测
+            # 1033 个 id 里 871 个出现在多个对话里（`D1:1` 十个对话都有），
+            # 2815 处 gold 引用里 2773 处受影响。剥掉前缀之后，
+            # 别的对话的同名轮次会被记成命中，⭐ 把弱臂的地板从真 0 抬成非 0。
+            got = {d for h in hits for d in h.doc_ids}
+            gold = {f"{q.conversation_id}/{e}" for e in q.evidence}
             run.observations.append(Observation(q.qa_id, {
                 "category": q.category,
                 "stratum": q.stratum,

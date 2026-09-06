@@ -261,6 +261,10 @@ class Rendered:
                 for t in self.turns]
 
 
+class NoPassageLongEnough(ValueError):
+    """要的轮长超过了最长的一段闲聊。⛔ 不静默退化成「用现有的凑合」。"""
+
+
 def too_short() -> tuple[str, ...]:
     """够不到长度下界的段落。⛔ 必须是空的——⚠️ 短一段就等于少一个话题，
     而[测试](../../../../tests/test_dialogue_corpus.py)在装载时就拦。"""
@@ -281,7 +285,14 @@ def _say(rng: random.Random, principal: str, doc_id: str,
     # ⛔ 从**全部**段落里挑：⚠️ 这里曾经先按长度过滤再挑，
     # 而当时只有 2 段够长——600 条噪声轮于是全用那两段，⭐ 等于没稀释，
     # 而且**不报错**。现在长度由 `too_short()` 在装载时就拦下来。
-    passage = rng.choice(FILLER)
+    # ⚠️ `min_chars` 曾经是**死参数**：签名收下、一路传递、函数体一次都没读，
+    # ⛔ 传 70 与传 5000 产出逐字相同 → 调它去改轮长的人会命中旧快照。
+    # ⭐ 现在它真的生效：要不到就抛，不静默退化。
+    pool = [f for f in FILLER if len(f) >= min_chars]
+    if not pool:
+        raise NoPassageLongEnough(
+            f"min_chars={min_chars} 超过最长的一段（{max(map(len, FILLER))}）")
+    passage = rng.choice(pool)
     if not core:
         return Turn(doc_id, f"{principal}: {passage}。", principal)
     parts = [core, passage] if rng.random() < 0.5 else [passage, core]

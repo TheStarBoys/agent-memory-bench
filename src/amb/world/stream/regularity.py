@@ -42,7 +42,23 @@ class Regularity:
         return [i.statement(self.prop) for i in self.seen]
 
 
-def build(*, seed: int, rates: tuple[float, ...] = (0.6, 0.8, 0.95),
+#: 规律模板：类别名 + 性质。⭐ 每多一组就能多一条规律。
+#: ⚠️ 名字刻意是无意义音节——⛔ 用真实事物的话，模型靠常识就能答，
+#: 量到的是预训练知识而不是「从这个世界里归纳」。
+_SPECS: tuple[tuple[str, str], ...] = (
+    ("Zorp", "会发光"), ("Quix", "有三条腿"), ("Vlim", "怕冷"),
+    ("Brax", "能浮空"), ("Nurl", "有硬壳"), ("Gexa", "夜里活动"),
+    ("Trii", "喜欢咸水"), ("Womp", "会变色"), ("Kysh", "长着长尾"),
+    ("Pelo", "结群迁徙"), ("Rune", "能储水"), ("Sovi", "怕震动"),
+)
+
+
+class NotEnoughSpecs(ValueError):
+    """要的规律数超过了模板。⛔ 不静默少给几条。"""
+
+
+def build(*, seed: int, rates: tuple[float, ...] = (
+              0.55, 0.65, 0.75, 0.8, 0.85, 0.9, 0.92, 0.95, 0.97, 0.98, 0.99, 1.0),
           seen_per_rate: int = 20, held_out: int = 3) -> list[Regularity]:
     """每个成立率造一条规律，各带一个明确的例外。
 
@@ -50,7 +66,14 @@ def build(*, seed: int, rates: tuple[float, ...] = (0.6, 0.8, 0.95),
     答对它才说明真的归纳出了规律，而不是背下了个例。
     """
     rng = random.Random(seed)
-    specs = [("Zorp", "会发光"), ("Quix", "有三条腿"), ("Vlim", "怕冷")]
+    # ⛔ 早先硬编码 3 组，且 `zip(strict=True)` 让 `rates` 也只能是 3 个——
+    # ⚠️ n=3 的「全对」区间是 [0.439, 1.000]，⭐ 而 README 花大篇幅论证
+    # n=2 说明不了任何事。这一轴此前**没有旋钮可调**。
+    specs = [(name, prop) for name, prop in _SPECS]
+    if len(rates) > len(specs):
+        raise NotEnoughSpecs(
+            f"要 {len(rates)} 条规律，⛔ 而模板只有 {len(specs)} 组")
+    specs = specs[:len(rates)]
     out: list[Regularity] = []
 
     for (category, prop), rate in zip(specs, rates, strict=True):

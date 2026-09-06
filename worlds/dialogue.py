@@ -50,8 +50,16 @@ class World:
         return [
             RetrievalSuite([Query(p.probe_id, p.question, p.gold)
                             for p in probes]),
-            QASuite([QAItem(p.probe_id, p.question, (p.answer,))
-                     for p in probes]),
+            QASuite([
+                *(QAItem(p.probe_id, p.question, (p.answer,)) for p in probes),
+                # ⛔ **该弃权的题**：⚠️ 早先一道都没有，于是报告印出
+                # 「编造率 0.000，95% 区间 [0.000, 0.031]」——⭐ 那不是
+                # 「测出来很低」，是「压根没测」，而读者分不出来。
+                # ⚠️ 问库里**从来没有**的实体，⛔ 不用「被改过的那条」——
+                # 那考的是冲突消解，混进来读不出是哪一种。
+                *(QAItem(f"abstain{i}", f"E9{i}一次最多能用多少？", (),
+                         unanswerable=True) for i in range(8)),
+            ]),
         ]
 
 

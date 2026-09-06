@@ -58,12 +58,25 @@ class FactGraph:
         return [f.sentence() for f in self.facts]
 
 
+class NoDerivations(ValueError):
+    """这个参数下一道题都出不来。⛔ 不静默返回空图——⚠️ 判分器会把
+    0/0 变成 0.000 并判 `scored`，⭐ 读作「一条推理链都走不通」，
+    而真相是「一道题都没出」。"""
+
+
 def build(*, seed: int, chains: int = 6, depth: int = 3) -> FactGraph:
     """造若干条传递链：a→b→c→…，⭐ 每一跳都是一条可枚举的合法推导。
 
     ⚠️ 只用 TRANSITIVE 一条规则是刻意的：先把「链条纪律」这件事测干净，
     ⛔ 规则种类多了，「哪条规则适用」本身会变成争议点。
     """
+    # ⛔ 出不了题就**大声抛**：⚠️ `depth=1` 时 `range(2, depth+1)` 是空循环，
+    # 产出 0 条推导。判分器早先把 0/0 变成 0.000 并判 `scored`，
+    # ⭐ 读作「一条推理链都走不通」，而真相是「一道题都没出」。
+    if depth < 2 or chains < 1:
+        raise NoDerivations(
+            f"chains={chains} depth={depth} 出不了任何推导（depth 至少 2）")
+
     rng = random.Random(seed)
     graph = FactGraph()
     relation = "上级"

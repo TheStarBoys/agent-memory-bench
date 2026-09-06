@@ -41,13 +41,20 @@ class PromptedRealitySuite:
         by_id = {v.claim_id: v for v in got}
         for claim in self._claims:
             v = by_id.get(claim.claim_id)
+            # ⛔ **表了态却拿不出依据 = Failed**，⚠️ 不是 unknown：
+            # 文档（docs/suites/n1-reality.md）承诺了这一条，⭐ 而代码早先
+            # 一行都没有——一条把所有命题都报 broken、grounds 一律为空的臂
+            # 能拿到 `检出率 = 1.000`。⚠️ 只有并排的误报率在兜底，
+            # 而那是 `score_reality` 的六格设计，不是这道闸门。
+            if v is not None and v.state != "unknown" and not v.grounds:
+                run.failed += 1
+                continue
             run.observations.append(
                 Observation(
                     claim.claim_id,
                     {
                         "truth": self._truth[claim.claim_id],
                         "reported": v.state if v else "unknown",
-                        # ⛔ 空 grounds 判 Failed，不是 unknown
                         "grounds": list(v.grounds) if v else [],
                     },
                 )

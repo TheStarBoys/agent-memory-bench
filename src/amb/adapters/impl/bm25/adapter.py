@@ -54,6 +54,11 @@ class BM25Adapter(Answerable, AdapterBase):
         self._snapshot: dict[str, str] = {}   # 摄入时的原文副本
         self._reader: WorldReader | None = None
         self._chunks: list[Chunk] = []
+        # ⛔ **稳定 id**，摄入时分配、永不回收。⚠️ 早先直接用位置下标，
+        # 于是删掉 `bm25:0` 之后它指向了原来的第二条——
+        # 违反 protocol.md：「退役的 `Entry.id` 永远不得再指向别的内容」。
+        self._ids: list[str] = []
+        self._next_id = 0
         self._toks: list[list[str]] = []
         self._tf: list[Counter[str]] = []
         self._df: Counter[str] = Counter()
@@ -69,6 +74,8 @@ class BM25Adapter(Answerable, AdapterBase):
         self._snapshot[doc.doc_id] = doc.text
         for c in chunk(doc.doc_id, doc.text, self._chunk_size, self._overlap):
             toks = tokenize(c.text)
+            self._ids.append(f"bm25:{self._next_id}")
+            self._next_id += 1
             self._chunks.append(c)
             self._toks.append(toks)
             self._tf.append(Counter(toks))
@@ -114,7 +121,7 @@ class BM25Adapter(Answerable, AdapterBase):
             c = self._chunks[i]
             out.append(
                 Entry(
-                    id=f"bm25:{i}",
+                    id=self._ids[i],
                     digest=c.text[:200],
                     score=score,
                     doc_ids=[c.doc_id],
@@ -183,12 +190,18 @@ class BM25Adapter(Answerable, AdapterBase):
     # ── N4 ──────────────────────────────────────────────────────
     def delete(self, entry_ids: list[str]) -> DeleteResult:
         """真删：从索引里摘掉。⚠️ 纯内存，所以重开必然干净。"""
-        wanted = {int(i.removeprefix("bm25:")) for i in entry_ids
-                  if i.startswith("bm25:") and i.removeprefix("bm25:").isdigit()}
+        # ⛔ 每一个收到的 id 都要有交代：⚠️ 早先不存在的 id 被记进
+        # `deleted`（幻影删除能让 N4 第一道闸门放行），
+        # 而格式不对的 id **既不在 deleted 也不在 refused**——凭空第三态。
+        at = {eid: i for i, eid in enumerate(self._ids)}
+        wanted = {at[i] for i in entry_ids if i in at}
+        refused = {i: "没有这个条目" for i in entry_ids if i not in at}
         keep = [i for i in range(len(self._chunks)) if i not in wanted]
-        gone = [self._chunks[i].doc_id for i in wanted if i < len(self._chunks)]
+        gone = [self._chunks[i].doc_id for i in sorted(wanted)]
+        removed = [self._ids[i] for i in sorted(wanted)]
 
         self._chunks = [self._chunks[i] for i in keep]
+        self._ids = [self._ids[i] for i in keep]
         self._toks = [self._toks[i] for i in keep]
         self._tf = [self._tf[i] for i in keep]
         self._principals = [self._principals[i] for i in keep]
@@ -205,7 +218,7 @@ class BM25Adapter(Answerable, AdapterBase):
             # ⛔ 只记 doc_id，不记正文——把内容藏进审计日志不算删除
             detail=",".join(gone),
         ))
-        return DeleteResult(deleted=[f"bm25:{i}" for i in sorted(wanted)])
+        return DeleteResult(deleted=removed, refused=refused)
 
     def audit_log(self) -> list[AuditEvent]:
         return list(self._audit)

@@ -185,6 +185,26 @@ SPAN_PROBES = [*_HAND_SPAN_PROBES, *(
 CORPUS = {**_FILES, **{f.doc_id: f.text for f in CORPUS_GEN.facts}}
 
 
+#: N7 的题面。⭐ **两半各占一半**：答得对的与答不对的。
+#: ⛔ 只放答得对的，ECE 就退化成「1 − 平均置信度」——
+#: ⚠️ 那时候一条把置信度钉在基线准确率上的臂拿满分，而它什么也没区分。
+_CALIBRATION_ANSWERABLE = (
+    ("哪个脑结构学得慢？", ("新皮层",)),
+    ("一次暴露就能记住靠哪个结构？", ("海马",)),
+    ("保留多少天？", ("7",)),
+    ("E00一次最多能用多少？", (CORPUS_GEN.facts[0].value,)),
+)
+
+#: ⛔ 这几道**设计上答不对**：问的东西语料里从来没有。
+#: ⭐ 一条校准良好的系统应当在这里给出**低置信度**——那才是这一类要量的。
+_CALIBRATION_UNANSWERABLE = (
+    ("海马体是哪一年被命名的？", ("__不可能答对__",)),
+    ("Z999 一次最多能用多少？", ("__不可能答对__",)),
+    ("这个世界的创建者叫什么名字？", ("__不可能答对__",)),
+    ("retention_days 上一次被谁改的？", ("__不可能答对__",)),
+)
+
+
 def suites(rebuild=None, world_handle=None) -> list:
     return [
         RetrievalSuite(QUERIES),
@@ -204,12 +224,16 @@ def suites(rebuild=None, world_handle=None) -> list:
         SelfReportedRetentionSuite(probes_from(EVENT_STREAM, NEED_CURVE,
                                                now_s=86_400 * 30.0), NEED_CURVE),
         StructureSuite(TOPOLOGY),
+        # ⛔ 校准要量「它知不知道自己什么时候会错」——⚠️ 所以题面里
+        # **必须有设计上答不对的题**。早先两道题都是语料里明摆着的，
+        # 于是 ECE 退化成「1 − 平均置信度」：⭐ 臂把常数置信度调到基线准确率
+        # 就拿满分（实测常数 0.5 → ECE=0.000），而 `区分度` 恒为 0。
         CalibrationSuite([
-            CalibrationItem(f"c{i}", q, g, salient=(i % 2 == 0))
-            for i, (q, g) in enumerate([
-                ("哪个脑结构学得慢？", ("新皮层",)),
-                ("一次暴露就能记住靠哪个结构？", ("海马",)),
-            ])
+            *(CalibrationItem(f"k{i}", q, g, salient=(i % 2 == 0))
+              for i, (q, g) in enumerate(_CALIBRATION_ANSWERABLE)),
+            # ⭐ 这几道**答不对**：问库里从来没有的东西
+            *(CalibrationItem(f"kx{i}", q, g, salient=(i % 2 == 1))
+              for i, (q, g) in enumerate(_CALIBRATION_UNANSWERABLE)),
         ]),
         InductionSuite(REGULARITIES),
     ]

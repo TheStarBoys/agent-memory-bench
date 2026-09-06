@@ -39,7 +39,13 @@ CHECKS = {
     "doing-nothing-wins": "一条什么都不做的臂在某个主指标上赢了——那个指标不能当质量轴",
     "unpublishable-headline": "「不得发布」的档当上了质量列",
     "verdict-on-flat-metric": "质量列分不开各条臂，报告却仍在下判定",
+    "no-headroom": "最便宜的词法臂已经打满——⛔ 这一档没有判别空间，跑再多臂也分不开",
 }
+
+#: ⛔ 词法臂到了这个分就没有留给别人的空间了。⚠️ 不是「它很强」，
+#: 是**这道题用字符串匹配就能解**——⭐ 实测 toy 的生成语料上
+#: `bm25` top1=1.000，真跑里三条臂并列 0.975。
+CEILING = 0.95
 
 
 @dataclass(frozen=True, slots=True)
@@ -253,6 +259,17 @@ def check_scoring(plan, out: Report, root: Path) -> None:
         if "不给判定" in text and ("没有存在理由" in text or "被地板压制" in text):
             out.add("fatal", "verdict-on-flat-metric",
                     "质量列分不开各条臂，报告却仍印出了判定")
+    # ⛔ 天花板检查：⚠️ 免费——`bm25` 本来就跑过了。
+    # ⭐ 最便宜的词法臂打满 = 这一档量不出机制差异，⛔ 花几小时跑真臂也一样。
+    for suite, sc in real.scores.items():
+        if sc.status != "scored":
+            continue
+        metric = HEADLINE.get(suite)
+        if metric and metric in sc.metrics and sc.metrics[metric] >= CEILING:
+            out.add("warn", "no-headroom",
+                    f"{suite} 的「{metric}」：bm25 已经 "
+                    f"{sc.metrics[metric]:.3f}——⚠️ 这一档没有判别空间")
+
     out.budget["documents"] = len(plan.documents)
     out.budget["probes"] = sum(
         int(x.participation.get("items", 0)) for x in results.values()) // 2

@@ -57,6 +57,10 @@ class ReasoningSuite:
         self._closure = graph.closure()
         self._questions = questions
         self._known = {str(f) for f in graph.facts}
+        # ⭐ 「这条事实的 `Entry.id` 长什么样」由适配器决定，评测器无从预知——
+        # ⚠️ 但摄入单元的 `doc_id` 是我们给的，多数适配器拿它当 `Entry.id`。
+        # ⛔ 认这一层是为了不惩罚**按协议实现**的系统；解不出的仍然判不成立。
+        self._by_doc = {str(f): str(f) for f in graph.facts}
 
     def probe(self, adapter: Adapter, world: WorldState) -> SuiteRun:
         run = SuiteRun(self.name, "scored")
@@ -87,6 +91,17 @@ class ReasoningSuite:
             "undecided": bool(answer.missing),
         }
 
+    def _resolve(self, ref: str) -> str | None:
+        """把 `Premise.ref` 解成一条**评测器认识的事实**。
+
+        ⚠️ 认两种：① 事实的三元组串本身（`worlds/toy.py` 的 doc_id 就是它）；
+        ② 摄入时这条事实所在文档的 id——⭐ 那才是协议说的 `Entry.id` 那一侧。
+        ⛔ 解不出就是解不出，不猜。
+        """
+        if ref in self._known:
+            return ref
+        return self._by_doc.get(ref)
+
     def _step_ok(self, step, all_steps: list) -> bool:
         """⛔ 这一步是否落在生成器闭包内。"""
         if step.rule not in tuple(Rule):
@@ -95,9 +110,16 @@ class ReasoningSuite:
         premises: list[str] = []
         for p in step.premises:
             if p.kind == "entry":
-                if p.ref not in self._known:
+                # ⛔ `ref` 按[协议](../../../../docs/adapters/protocol.md)
+                # 是 **`Entry.id`**，⚠️ 而这里早先只认评测器自己的三元组串——
+                # 一条**完全按文档实现**的系统会拿到
+                # `链条完好率 0.000 / 蒙对率 1.000`，⭐ 报告说它「结论全蒙对、
+                # 链条全是编的」，而它的链条一步不差。
+                # ⭐ 两种都认：三元组串（toy 的 doc_id 恰好是它）与真的 Entry.id。
+                fact = self._resolve(p.ref)
+                if fact is None:
                     return False        # ⛔ 引了一条不存在的记忆
-                premises.append(p.ref)
+                premises.append(fact)
             else:
                 upstream = by_id.get(p.ref)
                 if upstream is None:

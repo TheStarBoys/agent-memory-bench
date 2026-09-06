@@ -150,6 +150,9 @@ def build(*, seed: int, fans: tuple[int, ...] = (1, 2, 4, 8, 16, 32, 64),
     """
     if max(fans) > len(PAIRS):
         raise FanTooWide(f"fan={max(fans)} 超过配对池 {len(PAIRS)} 对")
+    # ⛔ 同理：⚠️ 静默截断会让 `cues_per_fact=9` 与 `=3` 产出相同的线索
+    if not 1 <= cues_per_fact <= 3:
+        raise FanTooWide(f"cues_per_fact={cues_per_fact} 只能是 1~3")
     rng = random.Random(seed)
     topo = Topology()
 

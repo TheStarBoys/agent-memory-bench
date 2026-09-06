@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import time
 import os
 import urllib.error
 import urllib.request
@@ -77,13 +78,33 @@ class LLMClient:
             headers={"Authorization": f"Bearer {self._key()}",
                      "Content-Type": "application/json"},
         )
-        try:
-            with urllib.request.urlopen(req, timeout=self.cfg.timeout_s) as resp:
-                body = json.loads(resp.read())
-        except urllib.error.URLError as exc:
-            raise LLMError(f"LLM 调用失败：{exc}") from exc
+        # ⛔ **必须重试**：⚠️ 被测系统那条路（`llm_cache._with_retry`）有退避，
+        # 这里早先一次瞬时 5xx/超时就 `LLMError` 冒到 suite → 整条臂记 crashed。
+        # ⭐ 同一次网络抖动，对照组被记「跑挂了」、被测系统被重试救回来——
+        # 那是**框架的缺陷被记成臂的失败**（见 core/fault.py 那一类）。
+        body = self._post(req)
         self.meter.add(body.get("usage", {}))
         return body["choices"][0]["message"]["content"].strip()
+
+    def _post(self, req, attempts: int = 3) -> dict:
+        """发一次请求，⭐ 瞬时故障退避重试。⛔ 三次都不成才算真失败。"""
+        last: Exception = LLMError("没发出去")
+        for attempt in range(attempts):
+            try:
+                with urllib.request.urlopen(req, timeout=self.cfg.timeout_s) as resp:
+                    return json.loads(resp.read())
+            except urllib.error.URLError as exc:
+                last = exc
+                if not _retryable(exc) or attempt == attempts - 1:
+                    break
+                time.sleep(2 ** attempt)
+        raise LLMError(f"LLM 调用失败（试了 {attempts} 次）：{last}") from last
+
+
+def _retryable(exc: urllib.error.URLError) -> bool:
+    """值不值得重试。⛔ 4xx（除 429）是请求本身错了，重试没有意义。"""
+    code = getattr(exc, "code", None)
+    return code is None or code == 429 or code >= 500
 
 
 def from_env() -> LLMConfig:

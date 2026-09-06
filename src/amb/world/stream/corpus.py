@@ -29,19 +29,35 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass, field
 
-#: 属性名 → 问句模板。⚠️ 问句里**不含答案**，⛔ 否则检索变成字面匹配送分题。
+#: 属性名 → 问句模板 → 值的写法。
+#:
+#: ⛔ **问句里不许出现属性名本身**，⚠️ 也不许出现答案。
+#: 实测踩到：问句「E07的配额是多少？」与文档「E07的配额是4821。」
+#: **逐字共享**实体词和属性词，于是任何会分词的方法都赢——
+#: ⭐ 100% 的题在词法上唯一可解，`bm25` top1 = 1.000，
+#: 真跑里三条臂并列 0.975。⛔ 干扰项的**数量**上去了（每条 35 条），
+#: 但它们**词法上可分**，那份语料建来要修的症状一点没变。
+#:
+#: ⭐ 修法与 [N6 的别名](topology.py)同一个：属性换成**不共字**的说法。
+#: ⚠️ 实体名仍然逐字给（不给就没法指认问的是谁）——所以词法臂找得到
+#: 那个实体的 3 条，⛔ 但挑不出是哪一条属性。
 _ATTRS: tuple[tuple[str, str, str], ...] = (
-    ("配额", "的配额是多少", "{v}"),
-    ("超时", "的超时设成了多少", "{v}"),
-    ("端口", "监听哪个端口", "{v}"),
-    ("副本数", "有几个副本", "{v}"),
-    ("重试次数", "最多重试几次", "{v}"),
-    ("批大小", "的批大小是多少", "{v}"),
+    ("配额", "一次最多能用多少", "{v}"),
+    ("超时", "等多久就放弃", "{v}"),
+    ("端口", "在哪个通道上收请求", "{v}"),
+    ("副本数", "有几份备份", "{v}"),
+    ("重试次数", "失败之后再来几回", "{v}"),
+    ("批大小", "一次打包多少条", "{v}"),
 )
 
 #: ⚠️ 主体轮流分配——⛔ N4 的隔离要靠多主体才测得出来，
 #: 而 LoCoMo 的语料 principal 全是 None，那个 bug 因此三天没露头。
 _PRINCIPALS = ("alice", "bob", "carol")
+
+
+class TooManyAttrs(ValueError):
+    """要的属性数超过了属性池。⛔ 不静默截断——⚠️ 那会让两组不同参数
+    产出逐字节相同的语料，而分数看上去很正常。"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +76,7 @@ class Fact:
 
     @property
     def question(self) -> str:
+        """⚠️ 实体名逐字给（不给就没法指认问谁），⛔ 属性换成不共字的说法。"""
         return f"{self.entity}{_ASK[self.attr]}？"
 
 
@@ -94,12 +111,22 @@ def build(*, seed: int, entities: int = 12,
     ⚠️ 默认 12×3 = 36 条，⛔ 比手写的 4 题多一个数量级，
     而且**每一条都有 35 条干扰**。
     """
+    # ⛔ 要不到就**大声抛**，⚠️ 不静默截断——照 `topology.FanTooWide` 的样子。
+    # 实测踩到：`attrs_per_entity=8` 与 `=6` 产出**逐字节相同**的语料 →
+    # 语料指纹相同 → 命中旧摄入快照，⭐ 而报告标题写着新参数。
+    if attrs_per_entity > len(_ATTRS):
+        raise TooManyAttrs(
+            f"attrs_per_entity={attrs_per_entity} 超过属性池 {len(_ATTRS)} 个")
     rng = random.Random(seed)
     corpus = Corpus()
     used: set[str] = set()
+    # ⛔ **等长补零**，⚠️ 不是固定两位：`E10` 是 `E100` 的前缀，
+    # 而 `topology.py` 已经为同一个坑付过一次代价
+    # （`E01_1` 是 `E01_10` 的前缀，对照策略在 fan1 上从 1.000 掉到 0.625）。
+    width = max(2, len(str(entities - 1)))
 
     for e in range(entities):
-        entity = f"E{e:02d}"
+        entity = f"E{e:0{width}d}"
         for attr, _ask, fmt in rng.sample(_ATTRS,
                                           k=min(attrs_per_entity, len(_ATTRS))):
             # ⛔ 值必须全局唯一：⚠️ 重复的话 retrieval 的 gold 就不唯一了
