@@ -168,7 +168,7 @@ register("letta", LettaAdapter)      # ⛔ 精确名，绝不子串匹配
 t = time.perf_counter(); arm.ingest(doc); print(time.perf_counter() - t)
 ```
 
-⚠️ 实测 mem0 在 Qwen3-8B 上 **36.7 秒/轮**（15–86 秒波动）——
+⚠️ 实测 mem0 在 Qwen3-8B 上 **9.7~10.0 秒/轮**（关思考；⛔ 开思考时是 36.7 秒）——
 它每次 `add()` 要多轮 LLM 调用（抽取 → 比对 → 裁决）。
 外推 LoCoMo 全量 5882 轮要 ⛔ **60 小时**。
 

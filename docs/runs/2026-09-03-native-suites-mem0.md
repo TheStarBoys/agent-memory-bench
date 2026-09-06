@@ -20,12 +20,12 @@ python -m amb.cli --bench toy --arms null,bm25,naive_rag,mem0_raw,mem0
 | 世界 | `toy`——⚠️ **自造的**，434 篇（⛔ 上一跑是 172 篇，[语料变了，两跑不可比](#不可比)） |
 | backbone | `Qwen/Qwen3-8B`，思考关，`temperature=0` |
 | 抽样 | ⚠️ `toy` 不抽题，全跑；世界 `seed=42`（⛔ 语料由它生成，换种子等于换世界） |
-| 墙钟 | **2 小时 45 分**（null 109s · bm25 137s · naive_rag 1718s · mem0_raw 1424s · mem0 5010s） |
+| 墙钟 | **2 小时 20 分**（null 109s · bm25 137s · naive_rag 1718s · mem0_raw 1424s · mem0 5010s，合计 8398s） |
 | 外部版本 | `mem0==2.0.19` |
 | 报告 | [`native-toy-20260903b.json`](native-toy-20260903b.json) |
 
 ⚠️ **这一跑的耗时数字有一半不能用**：embedding 端点全程在抖，
-实测单次 0.26s 到 15.6s 都出现过，均值 2.7s。
+实测单次 0.26s 到 15.6s 都出现过，均值 **2.41s**。
 ⭐ **摄入那一列仍然可信**（各臂顺序摄入同样多的条目，抖动摊平了），
 ⛔ **探针那一列不可信**（naive_rag 的 probe 比 mem0_raw 慢一倍，那是端点不是系统）。
 
@@ -136,7 +136,7 @@ python -m amb.cli --bench toy --arms null,bm25,naive_rag,mem0_raw,mem0
 
 ⚠️ 钱那一列只含**答题 backbone** 的 token；⛔ 被测系统自己摄入时调的 LLM
 不在里面（那是它自己的账，`mem0` 摄入 434 条另有花费）。
-⭐ 真正的差距在**墙钟**：`mem0` 一条臂占了这一跑 2 小时 45 分里的 83 分钟。
+⭐ 真正的差距在**墙钟**：`mem0` 一条臂占了这一跑 2 小时 20 分里的 **83 分钟（60%）**。
 
 ## ⚠️ 区间
 
