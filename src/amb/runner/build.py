@@ -22,6 +22,16 @@ def _env_dir(name: str, default: str) -> str:
     return os.environ.get(name) or default
 
 
+def _store_dir(path: Path) -> Path:
+    """⛔ **先把目录建出来**：⚠️ `_store_of()` 要求 store 的父目录存在
+    （那是「别把整个仓库当成 store」的安全网）。⭐ 新检出的仓库里
+    `.external/` 还不存在，于是第一次跑静默地不存快照——
+    ⛔ 不报错，只是白烧一次几百次 embedding 调用。
+    """
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def build(name: str, *, context_budget: int = 24_000,
           llm: LLMConfig | None = None, prompt=None) -> Adapter:
     """构造参数按名字分派，然后统一挂上 backbone。
@@ -41,7 +51,11 @@ def build(name: str, *, context_budget: int = 24_000,
             base_url=require("AMB_EMBED_BASE_URL"),
             api_key_env=os.environ.get("AMB_EMBED_API_KEY_ENV", "SILICONFLOW_API_KEY"),
             dimensions=int(os.environ.get("AMB_EMBED_DIMS", "0")) or None,
-        ))
+        # ⛔ **两条臂不许共用一个目录**：⚠️ 它们的索引文件同名（index.json），
+        # 共用等于后跑的那条覆盖先跑的那条——⭐ 而覆盖之后 `count()` 仍然对，
+        # 只是内容是另一条臂的。所以 env 给的是**基目录**，臂名再拼一层。
+        ), storage_dir=str(_store_dir(
+            Path(_env_dir("AMB_RAG_DIR", ".external")) / f"{name}-store")))
     elif name in ("mem0", "mem0_raw"):
         # ⛔ 没 setup 就拒绝，不静默跑出一个分
         from amb.setup import require_installed

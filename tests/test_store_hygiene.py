@@ -202,3 +202,70 @@ def test_count_never_filters_by_a_single_principal() -> None:
                     and '"""' not in line)
     assert "_by(None)" in src, "⛔ count 又按单个主体过滤了——防护网会静默失效"
     assert "self.default" not in src, "⛔ count 不该只数某一个主体"
+
+
+# ── ④ build() 造出来的臂：⛔ 每条一个自己的目录 ─────────────────
+def _build_env(monkeypatch, tmp_path) -> None:
+    for k, v in {
+        "AMB_EMBED_MODEL": "fake", "AMB_EMBED_BASE_URL": "http://x",
+        "AMB_EMBED_API_KEY_ENV": "NONE", "AMB_LLM_MODEL": "fake",
+        "AMB_LLM_BASE_URL": "http://x", "AMB_LLM_API_KEY_ENV": "NONE",
+    }.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.chdir(tmp_path)
+
+
+def test_build_actually_constructs_the_vector_arms(monkeypatch, tmp_path):
+    """⛔ 这条路径此前**一个测试都没有**——⚠️ 于是给 `hybrid` 多传一个
+    它不认识的 `storage_dir=` 时，全套 683 个测试照样绿，
+    ⭐ 而真跑起来第一秒就 TypeError。
+    """
+    from amb.runner import build
+
+    _build_env(monkeypatch, tmp_path)
+    for name in ("naive_rag", "hybrid", "bm25", "full_context"):
+        build(name)
+
+
+def test_two_vector_arms_never_share_one_store(monkeypatch, tmp_path):
+    """⛔ 两条臂的索引文件同名（index.json）——⚠️ 共用目录等于后跑的覆盖
+    先跑的。⭐ 覆盖之后 `count()` 仍然对，只是内容是**另一条臂的**。
+
+    ⚠️ 默认路径本来就带臂名；⛔ 出事的是 `AMB_RAG_DIR` 那条覆盖路径。
+    """
+    from amb.runner import build
+
+    _build_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("AMB_RAG_DIR", str(tmp_path / "shared"))
+    places = [build(n).storage_locations() for n in ("naive_rag", "hybrid")]
+    assert places[0] != places[1], f"⛔ 两条臂共用了 {places[0]}"
+
+
+def test_an_empty_rag_dir_never_makes_the_repo_the_store(monkeypatch, tmp_path):
+    """⚠️ `AMB_RAG_DIR=`（空串）→ `Path("")` 是 `.`——⛔ 快照会拷整个仓库。"""
+    from amb.runner import build
+
+    _build_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("AMB_RAG_DIR", "")
+    place = build("naive_rag").storage_locations()[0]
+    assert Path(place).resolve() != Path.cwd().resolve()
+    assert Path(place).resolve().is_relative_to(Path.cwd().resolve())
+
+
+def test_a_fresh_checkout_can_snapshot_on_its_very_first_run(monkeypatch,
+                                                             tmp_path):
+    """⛔ `_store_of()` 要求 store 的父目录存在（防「整个仓库当 store」）。
+
+    ⚠️ 新检出的仓库里 `.external/` 还不存在——⭐ 早先第一次跑因此静默地
+    不存快照，⛔ 不报错，只是白烧一次几百次 embedding 调用。
+    """
+    from amb.core import Document
+    from amb.runner import Plan, build
+    from amb.runner.phases import _snapshot_key
+
+    _build_env(monkeypatch, tmp_path)
+    assert not (tmp_path / ".external").exists()
+    arm = build("naive_rag")
+    plan = Plan(manifest=None, documents=[Document(doc_id="a", text="x")])
+    assert _snapshot_key("naive_rag", arm, plan, "bb") is not None, \
+        "⛔ 第一次跑就该能存快照"

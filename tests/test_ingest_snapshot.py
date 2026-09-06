@@ -635,3 +635,76 @@ def test_the_archive_carries_a_corpus_fingerprint() -> None:
     a = corpus_fingerprint(toy.all_documents())
     b = corpus_fingerprint(toy.all_documents()[:100])
     assert a and b and a != b, "⛔ 语料变了指纹必须变"
+
+
+# ── ⭐ 对照臂也要能命中快照 ────────────────────────────────────
+def test_naive_rag_hits_its_snapshot_on_the_second_run(tmp_path, monkeypatch):
+    """⛔ 端到端：第二次跑必须**一次 embedding 都不发**。
+
+    ⚠️ 这条臂此前拿不到快照，理由写在代码里是「对照组摄入本来就便宜」——
+    ⭐ 那句话对它是错的：实测 toy 623 篇烧掉 **1386 秒**。
+    ⛔ 真正的阻碍是它没有持久层，而版本号那一格没有外部依赖可填。
+    """
+    from amb.adapters import create
+    from amb.adapters.embedding import EmbeddingConfig, METER
+    from amb.core import Document
+    from amb.runner import Plan, run_one
+
+    import worlds.toy as toy
+
+    calls: list[int] = []
+
+    class _Fake:
+        def __init__(self, cfg=None) -> None: ...
+
+        def embed(self, texts: list[str]) -> list[list[float]]:
+            calls.append(len(texts))
+            return [[1.0 if i == len(t) % 8 else 0.0 for i in range(8)]
+                    for t in texts]
+
+    monkeypatch.setattr(
+        "amb.adapters.impl.naive_rag.adapter.EmbeddingClient", _Fake)
+    monkeypatch.chdir(tmp_path)     # ⚠️ 快照根是相对 cwd 的 `.external/snapshots`
+    cfg = EmbeddingConfig(model="fake", base_url="http://x", api_key_env="NONE")
+    docs = [Document(doc_id=f"d{i}", text=f"第{i}段：海马体负责快速编码。")
+            for i in range(4)]
+    plan = Plan(manifest=toy.MANIFEST, documents=docs)
+
+    def _go(store: Path):
+        return run_one("naive_rag",
+                       create("naive_rag", embedding=cfg, storage_dir=str(store)),
+                       plan, tmp_path / "w", is_control=True, backbone="bb")[0]
+
+    first = _go(tmp_path / "s1")
+    assert first.ingest_snapshot == "已存", first.ingest_snapshot
+    assert max(calls) == len(docs), f"⛔ 第一次本来就该真算向量：{calls}"
+
+    # ⭐ 换一个空 store：⚠️ 只能靠快照恢复，恢复不了就会重算
+    calls.clear()
+    before = METER.as_dict()
+    second = _go(tmp_path / "s2")
+    assert second.ingest_snapshot.startswith("命中"), second.ingest_snapshot
+    # ⚠️ 剩下的都是**单条查询**——指纹要真检索一次才看得出映射在不在。
+    # ⛔ 关键是没有任何一次是批量：那才是摄入。
+    assert max(calls) == 1, f"⛔ 摄入被重跑了：{calls}"
+    assert METER.as_dict() == before, "⚠️ 计量器也不该动"
+
+
+def test_the_snapshot_key_moves_when_our_own_code_moves(monkeypatch, tmp_path):
+    """⭐ 没有外部依赖的臂用**评测器自己的代码指纹**当版本号。
+
+    ⛔ 否则改了切块或向量归一化之后，旧快照还会被当成有效的——
+    ⚠️ 那份库是用旧代码算出来的，而分数会照常算出来，不报错。
+    """
+    from amb.core import Document
+    from amb.runner.phases import Plan, _snapshot_key
+
+    plan = Plan(manifest=None, documents=[Document(doc_id="a", text="x")])
+    key = _snapshot_key("naive_rag", _Arm([str(tmp_path)]), plan, "bb")
+    assert key is not None, "⛔ 对照臂也要有快照"
+    assert key.arm_version.startswith("code:")
+
+    monkeypatch.setattr("amb.runner.resume.code_digest", lambda *a: "deadbeef")
+    moved = _snapshot_key("naive_rag", _Arm([str(tmp_path)]), plan, "bb")
+    assert moved.arm_version == "code:deadbeef"
+    assert moved.digest != key.digest, "⛔ 代码变了，快照键必须跟着变"

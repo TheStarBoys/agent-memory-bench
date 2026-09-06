@@ -273,11 +273,19 @@ def _snapshot_key(name: str, adapter: Adapter, plan: Plan, backbone: str):
     # ⚠️ 版本按**适配器**查（mem0 与 mem0_raw 是同一个类、同一个依赖），
     # ⛔ 但快照键用的是**臂名**——两条臂摄入行为不同（infer 开/关），
     # 键要是共用就会互相拿到对方的库。
-    dependency = getattr(adapter, "name", name)
-    version = (lockfile().get(dependency, {}) or {}).get("actual", "")
+    from amb.runner.build import dependency_of
+
+    dependency = dependency_of(name)
+    version = ((lockfile().get(dependency, {}) or {}).get("actual", "")
+               if dependency else "")
     if not version:
-        # ⚠️ 对照组没有外部版本号——它们摄入本来就便宜，⛔ 不值得冒拿错的风险
-        return None
+        # ⭐ 没有外部依赖的臂（`naive_rag`）用**评测器自己的代码指纹**当版本。
+        # ⚠️ 早先这里直接 `return None`，理由写的是「对照组摄入本来就便宜」——
+        # ⛔ 那句话对 `naive_rag` 是错的：实测 623 篇要 **1386 秒** embedding。
+        # ⚠️ 真正的阻碍是它**没有持久层**，而那个已经补上了。
+        from amb.runner.resume import code_digest
+
+        version = f"code:{code_digest()}"
     return SnapshotKey(arm=name, arm_version=version, backbone=backbone,
                        corpus_digest=corpus_digest(plan.documents))
 

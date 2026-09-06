@@ -21,7 +21,8 @@ from amb.runner import (
     answer_prompt, backbone, build, build_plan, cache_report, context_overflow,
     corpus_fingerprint,
     control_arms,
-    host_unavailable, ingest_identity, now_rfc3339, run_one,
+    host_unavailable, ingest_identity, now_rfc3339,
+    resume_key, resume_load, resume_restore, run_one,
     WorldTampered,
 )
 
@@ -129,6 +130,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="⚠️ 随机抽样的种子——⛔ 进报告，不记就不可复现")
     ap.add_argument("--lane", choices=("library", "agent", "both"),
                     default="library", help="跑哪一档。⛔ 两档的数不可互比")
+    ap.add_argument("--fresh", action="store_true",
+                    help="⛔ 不续跑，从头来。⚠️ 默认会读 --json 那份存档，"
+                         "把已经跑完的臂跳过（键对不上时自动从头）")
     ap.add_argument("--skip-preflight", action="store_true",
                     help="⛔ 跳过跑前自检。⚠️ 只在自检自己坏了的时候用——"
                          "它花几秒，而一次跑要几小时")
@@ -199,6 +203,16 @@ def main(argv: list[str] | None = None) -> int:
         sampling=sampling,
     )
 
+    # ⭐ **续跑**：⛔ 一次几小时的跑不该是全有或全无。
+    # ⚠️ 存档本身就是检查点——不另造一种文件格式（两份迟早不同步）。
+    report.resume_key = resume_key(report)
+    already: set[str] = set()
+    if not args.fresh:
+        done, notes = resume_load(args.json, report.resume_key)
+        for line in notes:
+            print(line, file=sys.stderr, flush=True)
+        already = resume_restore(report, done)
+
     # ⛔ 先自检再花钱。⚠️ 它零网络调用、几秒钟，⭐ 而一次跑要几小时——
     # 实测两次教训：一次报告印出假话，一次语料造错整跑作废，
     # **两次的成因都不需要真跑就能发现**。
@@ -226,6 +240,10 @@ def main(argv: list[str] | None = None) -> int:
             _emit(report, args)
             return 0
         for i, name in enumerate(names, 1):
+            if name in already:
+                print(f"⭐ [{i}/{len(names)}] {name}　（续跑，已完成）",
+                      file=sys.stderr, flush=True)
+                continue
             root = Path(tmp) / name
             # ⚠️ 一条臂可能跑一小时（实测 a_mem 55s/条且随库变贵）。
             # ⛔ 全跑完才出声的话，中途崩了就什么都看不到——进度走 stderr，

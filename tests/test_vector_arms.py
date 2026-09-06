@@ -170,3 +170,75 @@ def test_hybrid_uses_rank_fusion_not_score_addition(fake) -> None:
     from amb.adapters.impl.hybrid.adapter import RRF_K
 
     assert RRF_K == 60, "⚠️ RRF_K 是原论文取值，⛔ 调它等于把混合调好看"
+
+
+# ── ⭐ 这两条臂也要能用摄入快照 ──────────────────────────────────
+@pytest.mark.parametrize("name", ["naive_rag", "hybrid"])
+def test_vector_arms_persist_their_index(fake, tmp_path, name: str) -> None:
+    """⛔ 它们每跑一次要烧几百次 embedding 调用——实测 toy 623 篇 **1386 秒**。
+
+    ⚠️ 而它们此前拿不到摄入快照。⭐ 原因不是「对照组摄入便宜」（那句注释
+    对它们是错的），而是它们**没有可拷贝的持久层**。
+    """
+    from amb.adapters import create
+
+    store = tmp_path / name
+    arm = create(name, embedding=CFG, storage_dir=str(store))
+    assert arm.storage_locations() == [str(store)]
+    for d in DOCS:
+        arm.ingest(d)
+    arm.finalize()
+    assert (store / "index.json").is_file(), "⛔ 没落盘就没法做快照"
+
+    # ⭐ 拷目录 = 恢复快照：⚠️ 新实例不被通知，靠惰性读盘
+    again = create(name, embedding=CFG, storage_dir=str(store))
+    assert again.count() == arm.count() == len(DOCS)
+    for d in DOCS:
+        assert [e.doc_ids for e in again.search(d.text, 3)] == \
+               [e.doc_ids for e in arm.search(d.text, 3)], \
+            f"⛔ {name} 恢复之后排名变了"
+
+
+def test_hybrid_keeps_its_bm25_half_across_a_restore(fake, tmp_path) -> None:
+    """⛔ `df` 与 `avg_len` 不是从 chunks 现推的——⚠️ 不存下来，
+    恢复后 BM25 那一半静默返回空排名，融合只剩向量一条腿。
+    ⭐ 分数照样算得出来，而它测的已经不是「混合」了。
+    """
+    from amb.adapters import create
+
+    store = tmp_path / "h"
+    arm = create("hybrid", embedding=CFG, storage_dir=str(store))
+    for d in DOCS:
+        arm.ingest(d)
+    arm.finalize()
+
+    again = create("hybrid", embedding=CFG, storage_dir=str(store))
+    again.count()                       # ⚠️ 触发惰性读盘
+    q = DOCS[1].text
+    assert again._bm25_rank(q) == arm._bm25_rank(q) != [], "⛔ BM25 那一半没回来"
+    assert again._avg_len == arm._avg_len > 0
+
+
+@pytest.mark.parametrize("name", ["naive_rag", "hybrid"])
+def test_reset_wipes_the_persisted_index(fake, tmp_path, name: str) -> None:
+    """⛔ `reset()` 要**真清盘**：⚠️ 留着盘上那份，下一跑会拿到重的语料——
+    ⭐ 那个 bug 在 mem0 上实测过（每条两份，全程无告警）。
+    """
+    from amb.adapters import create
+
+    store = tmp_path / name
+    arm = create(name, embedding=CFG, storage_dir=str(store))
+    arm.ingest(DOCS[0])
+    arm.finalize()
+    assert (store / "index.json").is_file()
+    arm.reset()
+    assert not (store / "index.json").is_file()
+    assert create(name, embedding=CFG, storage_dir=str(store)).count() == 0
+
+
+@pytest.mark.parametrize("name", ["naive_rag", "hybrid"])
+def test_an_arm_without_a_store_says_so(fake, name: str) -> None:
+    """⚠️ 没配 `storage_dir` 就诚实说没有——⛔ 不假装有持久层。"""
+    from amb.core import Unsupported
+
+    assert isinstance(_arm(name).storage_locations(), Unsupported)

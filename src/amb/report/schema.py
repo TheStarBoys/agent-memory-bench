@@ -78,6 +78,9 @@ class Report:
     sampling: dict[str, Any] = field(default_factory=dict)
     #: ⭐ LLM 缓存状况。⛔ 命中的跑不是独立的延迟测量，必须让读者看见。
     cache: dict[str, Any] = field(default_factory=dict)
+    #: ⭐ 「这是哪一跑」——⛔ 中断之后靠它判断能不能接着跑。
+    #: ⚠️ 任何一项不同就不许续：接着跑出来的分与已跑完的那几条不可比。
+    resume_key: dict[str, str] = field(default_factory=dict)
 
     @property
     def arms(self) -> list[ArmResult]:
