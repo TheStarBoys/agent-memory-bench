@@ -486,9 +486,17 @@ def score_structure(run: SuiteRun) -> Score:
 
     # ⭐ 两条曲线各给一个**跨档汇总**：⚠️ 每档等权，⛔ 不是按题数加权——
     # 高扇形度那几档题多，加权等于让它们说了算。
-    metrics["可达性"] = sum(v for _, v in reach_pts) / len(reach_pts)
+    # ⭐ 记上分母（探到的事实条数）：⚠️ 它们是**逐档比例的均值**，
+    # 不记分母就拿不到区间，⛔ 而「没有区间就不许声称差异」会让这一档
+    # 永远说「分不开」——即便 0.000 与 0.214 是真差别。
+    n_probed = len(run.observations)
+    s.metrics = metrics
+    _rate(s, "可达性", sum(v for _, v in reach_pts) / len(reach_pts) * n_probed,
+          n_probed)
     if precise_pts:
-        metrics["精确检索"] = sum(v for _, v in precise_pts) / len(precise_pts)
+        _rate(s, "精确检索",
+              sum(v for _, v in precise_pts) / len(precise_pts) * n_probed,
+              n_probed)
     # ⭐ 退化斜率：精确检索随 log(扇形度) 的回归斜率，越平越好。
     # ⛔ 它是**形状**，不是质量：⚠️ 一条什么都检索不到的臂每档都是 0.000，
     # 斜率因此是完美的 0.000——实测它凭这个当上了成本×质量表的地板，
@@ -496,7 +504,6 @@ def score_structure(run: SuiteRun) -> Score:
     if precise_pts:
         metrics["扇形退化斜率"] = _slope(precise_pts)
     metrics["可达性增益"] = _slope(reach_pts)
-    s.metrics = metrics
     return _finish(s, run)
 
 

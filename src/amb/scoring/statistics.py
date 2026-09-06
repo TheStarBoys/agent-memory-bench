@@ -266,8 +266,17 @@ NOT_PROPORTION = ("斜率", "增益", "单调性", "相关", "IoU", "置信度",
                   "因子_", "追踪度", "区分度", "Brier", "ECE")
 
 
+#: ⭐ **就是比例、但名字里没有那几个词**的。⛔ 靠关键词猜漏了它们，
+#: ⚠️ 于是走重抽样——而重抽样在**边界值上失效**（`null` 的 0.000
+#: 每次重抽都一样 → 零宽 → 不给区间 → 「没有区间就不许声称差异」→
+#: ⭐ 这一档永远说「分不开」，即便 0.000 与 0.214 是真差别）。
+PROPORTION_NAMES = frozenset({"可达性", "精确检索"})
+
+
 def looks_like_proportion(metric: str) -> bool:
     """⚠️ 先排除，再匹配——⛔ 顺序反了「斜率」会被「率」捞回来。"""
+    if metric in PROPORTION_NAMES:
+        return True
     if any(h in metric for h in NOT_PROPORTION):
         return False
     return any(h in metric for h in PROPORTION_HINTS)
