@@ -6,12 +6,17 @@ from amb.report.floor import best_floor, delta
 from amb.report.schema import LANE_LABEL, LANES, Report
 
 #: 每个套件在对比表里用哪个指标当主指标（其余仍进 JSON）。
-#: ⛔ 不能当**质量轴**的主指标，以及为什么。
-#: ⚠️ 成本×质量那张表默认「越高越好、什么都不做得低分」——
-#: 不满足这一条的指标摆上去会产出反的结论。
-#: ⭐ 实测踩到两次：`扇形退化斜率`（形状，⛔ 检索不到东西的臂斜率完美）
-#: 已经换成 `精确检索`；`ECE` 越低越好，⛔ 留在这里当挡板。
-QUALITY_UNFIT = {"ECE": "⚠️ 越低越好——⛔ 摆进「越高越好」的表里结论是反的"}
+#: ⛔ 不能当**质量轴**的主指标。⚠️ 成本×质量那张表默认「越高越好、
+#: 什么都不做得低分」——不满足的指标摆上去会产出**反的**结论。
+#: ⭐ 由 `floor.LOWER_IS_BETTER` **派生**，⛔ 不再手写一份：
+#: 两份名单迟早会不同步，而不同步的那一刻没有任何征兆。
+def _quality_unfit(metric: str) -> str:
+    from amb.report.floor import LOWER_IS_BETTER
+
+    if metric in LOWER_IS_BETTER:
+        return "⚠️ 越低越好——⛔ 摆进「越高越好」的表里结论是反的"
+    return ""
+
 
 HEADLINE = {
     "retrieval": "top1",
@@ -26,7 +31,9 @@ HEADLINE = {
     "n4_governance": "彻底删除率",
     "n5_observed": "保留追踪度",
     "n5_agent": "保留追踪度",
-    "n6_agent": "精确检索",
+    # ⚠️ agent 档量不到「精确检索」（多轮会话没有 top-1），
+    # ⛔ 所以主指标只能是它真的量得到的那条
+    "n6_agent": "可达性",
     "n6_structure": "精确检索",
     "n7_calibration": "ECE",
     "n8_induction": "全对",
@@ -98,7 +105,7 @@ def _seconds(ms: float | None) -> str:
     return f"{ms / 1000:.3f}s" if ms < 1000 else f"{ms / 1000:.2f}s"
 
 
-def _delta_text(value: float, ci, floor, floor_ci) -> str:
+def _delta_text(value: float, ci, floor, floor_ci, metric: str = "") -> str:
     """⛔ 区间重叠时不许声称谁更好。
 
     ⚠️ 那不是「一样好」，也不是「更好但不显著」——
@@ -106,7 +113,7 @@ def _delta_text(value: float, ci, floor, floor_ci) -> str:
     """
     from amb.scoring.statistics import detectable_difference
 
-    d = delta(value, floor)
+    d = delta(value, floor, metric)
     if d is None:
         return ""
     if ci is not None and floor_ci is not None and ci.overlaps(floor_ci):
@@ -171,7 +178,7 @@ def _render_cost(arms: list, suites: list[str],
 
     candidates = [s for s in suites
                   if s in HEADLINE and scored_count(s) > 0 and publishable(s)
-                  and HEADLINE[s] not in QUALITY_UNFIT]
+                  and not _quality_unfit(HEADLINE[s])]
     if not candidates:
         return []
     # 并列时取名字靠前的，⚠️ 保证同一批数据两次跑挑的是同一个
@@ -197,8 +204,12 @@ def _render_cost(arms: list, suites: list[str],
     floor = (max(controls, key=lambda k: quality[k]) if controls
              else max(quality, key=lambda k: quality[k]))
 
-    # ⛔ 质量列分不开各条臂时，⚠️ 这张表只能报成本，不能报判定——
-    # 「Δ vs 地板 = +0.000」加上「谁被谁压制」是**拿一个不区分的数在排名**。
+    # ⛔ 退化的臂**先剔除再判 flat**：⚠️ 顺序反了的话，`full_context`
+    # 的 1.000 会把 spread 撑开 → `flat=False` → 剩下几条全 0.000 的臂
+    # 照样被排名。⭐ 那正是「不许拿不区分的数排名」想堵的场景。
+    quality = {k: v for k, v in quality.items() if not is_degenerate(k, chosen)}
+    if not quality:
+        return []
     spread = max(quality.values()) - min(quality.values())
     flat = spread < 1e-9
 
@@ -213,8 +224,6 @@ def _render_cost(arms: list, suites: list[str],
                     f"都是 {next(iter(quality.values())):.3f}，"
                     "⚠️ 一个不区分它们的数排不出名次。⭐ 下面只有成本是真的。",
                     ""]
-    # ⛔ 退化的臂不进成本表：它的「1ms 拿满分」既不是质量也不是速度
-    quality = {k: v for k, v in quality.items() if not is_degenerate(k, chosen)}
     for v in judge_cost(quality, profiles, floor):
         p = profiles[v.arm]
         # ⚠️ 质量列分不开时，Δ 与判定都不出——⛔ 不拿不区分的数排名
@@ -337,7 +346,7 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
                 if arm.arm == "full_context" and suite != "qa":
                     dtxt = "⚠️ 退化†"
             else:
-                dtxt = _delta_text(v, ci, floor, floor_ci)
+                dtxt = _delta_text(v, ci, floor, floor_ci, metric)
             out.append(f"| {arm.arm} ({tag}) | {shown} | {dtxt} | scored | |")
         # ⛔ 孤儿脚注最糟：标了 † 却不说它什么意思
         if any(a.arm == "full_context" and (sc := a.scores.get(suite))

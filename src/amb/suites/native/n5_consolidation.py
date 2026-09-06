@@ -10,7 +10,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import statistics
+from dataclasses import dataclass, replace
 from typing import ClassVar
 
 from amb.core import (
@@ -43,6 +44,20 @@ def probes_from(stream: EventStream, curve: NeedCurve, *, now_s: float,
 
     ⚠️ 用最后一次出现算 elapsed——⭐ 这正是「间隔」起作用的地方：
     分散组的最后一次更靠近现在，需求概率更高。
+
+    ## ⛔ 绝对阈值只在曲线**拟合过**之后才成立
+
+    `keep_threshold=0.5` 的意思是「再被需要的概率过半」——⚠️ 那是一句
+    关于**真实世界**的话，只有当曲线的参数来自真实语料时才有意义。
+    ⛔ 占位曲线（`a=1, b=0.5`）在这个时间尺度上让 need 恒 ≈ 0.002，
+    绝对阈值一刀切下去要么全不留、要么只留下「末次出现正好落在 now 上」
+    那一组——⭐ 实测后果：`该留 ≡ (间隔==distributed)`，
+    **频率与显著性的贡献严格是 0**，而 `events.py` 开篇声明三者必须正交。
+
+    ⭐ 所以曲线没拟合时改用**中位数切分**：它不依赖曲线的绝对刻度，
+    而这一类的判据本来就是[单调性而非绝对值](../../../../docs/suites/n5-consolidation.md)。
+    ⚠️ 那一档的分**照旧不得发布**（`not_publishable`），
+    ⛔ 中位数切分只是让机制跑得起来，不是让它的数变得可信。
     """
     last_seen: dict[str, float] = {}
     for occ in stream.occurrences:
@@ -55,8 +70,15 @@ def probes_from(stream: EventStream, curve: NeedCurve, *, now_s: float,
         # ⭐ 频率与显著性抬高需求：一件反复发生、或后果重大的事，更可能再被问起
         need = min(1.0, need * (1.0 + 0.1 * (fact.frequency - 1))
                    * (1.5 if fact.salient else 1.0))
-        out.append(RetentionProbe(fact, fact.text, need, need >= keep_threshold))
-    return out
+        out.append(RetentionProbe(fact, fact.text, need, False))
+
+    # ⛔ 真值：拟合过的曲线用绝对阈值，⚠️ 没拟合的用中位数切分（见上）
+    if curve.fitted:
+        return [replace(p, should_keep=p.need >= keep_threshold) for p in out]
+    if not out:
+        return out
+    cut = statistics.median(p.need for p in out)
+    return [replace(p, should_keep=p.need >= cut) for p in out]
 
 
 #: ⛔ 曲线没拟合时，这一档的数**不得发布**的理由。⚠️ 机制照跑，分照算——

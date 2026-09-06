@@ -11,6 +11,7 @@ import pytest
 
 from amb.agent import AgentTurn
 from amb.agent.verdict_server import VerdictServer
+from amb.core import Observation, SuiteRun
 from amb.scoring import score
 
 
@@ -143,3 +144,79 @@ def test_n8_agent_matches_the_library_lane_categories(policy, expect) -> None:
 
     m = score(AgentInductionSuite(regs).probe(Arm(), None)).metrics
     assert m[expect] == 1.0
+
+
+# ── ⛔ agent 档：三处结构性假分 ─────────────────────────────────
+def test_the_agent_lane_never_fabricates_a_precision_curve() -> None:
+    """⛔ agent 档是多轮会话，量不了「指名要这一条时 top-1 对不对」。
+
+    ⚠️ 早先 `structure_items` 把 `"precise": False` **写死**进 payload，
+    于是「精确检索」对所有臂（含 `null`）恒为 0.000——⭐ 而它正是
+    那一档的主指标。**测不到就不报**，⛔ 不许拿一个恒定的 0.000 冒充测量。
+    """
+    from amb.report.render import HEADLINE
+    from amb.scoring.metrics import score_structure
+    from amb.suites.agent_native import structure_items
+
+    import worlds.toy as toy
+
+    for item in structure_items(toy.TOPOLOGY):
+        assert "precise" not in item.payload, "⛔ 又在伪造精确检索"
+
+    run = SuiteRun("n6_agent", "scored")
+    for fan in (1, 2, 4):
+        run.observations.append(
+            Observation(f"x{fan}", {"fan": fan, "reached": 1, "cues": 3}))
+    m = score_structure(run).metrics
+    assert "精确检索" not in m and "扇形退化斜率" not in m
+    assert HEADLINE["n6_agent"] in m, "⭐ 主指标必须是它真的量得到的那条"
+
+
+def test_the_retention_marker_is_not_a_substring_of_its_own_question() -> None:
+    """⛔ 标记落在问题里 = 复述话题就判「记得住」。
+
+    ⚠️ 实测后果：一条**从不调用记忆插件**的臂拿到 `囤积率 = 1.000`，
+    ⭐ 分数完全由「模型话多不多」决定，与记忆层无关。
+    """
+    from amb.suites.agent_native import retention_items
+    from amb.suites.native.n5_consolidation import probes_from
+
+    import worlds.toy as toy
+
+    items = retention_items(
+        probes_from(toy.EVENT_STREAM, toy.NEED_CURVE, now_s=86_400 * 30.0))
+    assert items
+    for i in items:
+        assert i.marker not in i.question, f"⛔ {i.item_id} 的标记在问题里"
+    # ⛔ 标记还必须**唯一**：⚠️ 早先 `事实 f00` 被 f000~f009 十条共享，
+    # 任何一条被提到，十条全判「留了」
+    assert len({i.marker for i in items}) == len(items), "⛔ 标记撞了"
+
+
+def test_an_unchanged_claim_has_no_changed_signal() -> None:
+    """⛔ 没变的命题不存在「跟上了变化」的信号。
+
+    ⚠️ 早先 c3 的 fresh marker 放的是**正确答案本身**，于是三题全答对的臂
+    拿 `误报率 1.000`，而一无所知的裸宿主拿 `误报率 0.000`——⭐ 判定完全反了。
+    """
+    import worlds.toy as toy
+
+    for cid, truth in toy.TRUTH.items():
+        if truth == "holds":
+            assert not toy.FRESH_MARKERS.get(cid), f"⛔ {cid} 没变却有变更信号"
+            assert toy.STALE_MARKERS.get(cid), f"⚠️ {cid} 要有「如实回答」的信号"
+
+
+def test_the_question_never_teaches_the_answer() -> None:
+    """⛔ 问题里不许出现该题的判定标记——那是在教它怎么答。
+
+    ⚠️ 实测：c1 的问题带着「查不到就说『查不到』」，而「查不到」正是它的
+    fresh marker → ⭐ 一个一无所知的裸宿主照着指令说一句就被记成「检出」。
+    """
+    import worlds.toy as toy
+
+    for cid, question in toy.SPONTANEOUS_QUESTIONS.items():
+        for marker in toy.FRESH_MARKERS.get(cid, ()):
+            assert marker not in question, f"⛔ {cid} 的问题里教了 {marker!r}"
+        stale = toy.STALE_MARKERS.get(cid, "")
+        assert not (stale and stale in question), f"⛔ {cid} 的问题里教了 {stale!r}"

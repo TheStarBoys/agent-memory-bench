@@ -48,10 +48,18 @@ class SnapshotKey:
 
 
 def corpus_digest(documents: list[Document]) -> str:
-    """语料指纹。⛔ 顺序也算进去——摄入顺序会影响归并型系统的结果。"""
+    """语料指纹。⛔ 顺序也算进去——摄入顺序会影响归并型系统的结果。
+
+    ⛔ `Document` 的**每一个字段**都要进：⚠️ 早先漏了 `timestamp` 与 `kind`，
+    而**时间是 N5 的自变量**（事件流按 `span_s` 铺时间、`spacing` 分
+    massed/distributed）。改了时间布局而正文不变 → 指纹相同 → 恢复上一份库
+    → N5 量的是**另一套时间布局**上的行为，而分数看上去很正常。
+    ⭐ 宁可多算一个字段，⛔ 不可漏一个。
+    """
     h = hashlib.sha256()
     for doc in documents:
-        h.update(f"{doc.doc_id}\0{doc.text}\0{doc.principal or ''}\n".encode())
+        h.update(f"{doc.doc_id}\0{doc.text}\0{doc.principal or ''}"
+                 f"\0{doc.timestamp or ''}\0{doc.kind or ''}\n".encode())
     return h.hexdigest()[:16]
 
 

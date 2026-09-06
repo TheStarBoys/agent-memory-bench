@@ -350,8 +350,11 @@ def wrap_openai_client(client: object, *,
             got = _with_retry(original, kwargs)
             METER.add(getattr(got, "usage", None))
             return got
+        # ⛔ `base_url` 必须进键：⚠️ 同名模型换供应商是**另一个模型**，
+        # 而早先键只哈希 kwargs——换端点重跑会命中上一家的响应。
         payload = _jsonable({k: v for k, v in kwargs.items()
                              if k != "extra_headers"})
+        payload["__base_url"] = str(getattr(client, "base_url", "") or "")
         try:
             hit = cache.get(payload)
         except Exception as exc:  # noqa: BLE001 —— 退回真调用，⛔ 但要说话

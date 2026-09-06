@@ -121,8 +121,15 @@ def test_a_frequency_counter_shows_no_spacing_sensitivity() -> None:
     counter = run(lambda f, t: probes[f].fact.frequency >= 3).metrics
     aware = run(lambda f, t: probes[f].should_keep).metrics
     assert counter["因子_间隔"] == 0.0, "只数频次就不该对间隔敏感"
-    # ⭐ 而一个真的追踪需求概率的系统，会在间隔上显出来
-    assert aware["因子_间隔"] > 0.4, "分散复现的最后一次更近，需求概率更高"
+    assert counter["因子_显著性"] == 0.0
+    # ⭐ 而一个真的追踪需求概率的系统，**三个因子都会显出来**。
+    # ⚠️ 阈值从 0.4 降到 0.25 是因为事件流的时间布局修好了：
+    # ⛔ 早先分散组的末次出现被截到 `now`，需求概率饱和 → 间隔独占**全部**
+    # 信号（`该留 ≡ 间隔==distributed`），频率与显著性的贡献严格是 0。
+    # ⭐ 现在三者分别是 0.616 / 0.318 / 0.350——间隔弱了，但另外两个活了。
+    for factor in ("因子_频率", "因子_间隔", "因子_显著性"):
+        assert aware[factor] > 0.25, (
+            f"⛔ {factor} 读不出来——真值可能又塌成单一变量了")
 
 
 def test_an_unfitted_curve_marks_the_score_unpublishable() -> None:
@@ -175,3 +182,58 @@ def test_not_declaring_the_curve_is_not_the_same_as_publishable() -> None:
     s = score(ObservedRetentionSuite(make_probes_with(need.PLACEHOLDER))
               .probe(_Blank(), None))
     assert s.not_publishable, "⚠️ 没申报来源 → 说不清 ground truth 从哪来"
+
+
+# ── ⛔ 真值不许塌成单一变量 ─────────────────────────────────────
+def test_no_factor_contributes_exactly_nothing() -> None:
+    """⛔ `events.py` 开篇声明「三个操纵变量必须正交」——**真值也必须**。
+
+    ⚠️ 实测踩到：`该留 ≡ (间隔 == distributed)`，
+    频率从 1 涨到 10、显著性从 False 到 True，**一条都没能翻过阈值**。
+    ⭐ 两个成因叠在一起：① 分散组的末次出现被截到 `span_s`，
+    而 `now_s == span_s` → elapsed=1 秒 → 需求概率饱和到 1.0000；
+    ② 占位曲线在这个时间尺度上让 need 恒 ≈0.002，绝对阈值一刀切没有意义。
+
+    ⚠️ 这条测试守的是**非退化**，⛔ 不是「三个因子一样强」——
+    幂律下时间差跨数量级，显著性那 1.5 倍推不动多少，⭐ 那是真实的性质。
+    """
+    from collections import defaultdict
+
+    import worlds.toy as toy
+
+    probes = probes_from(toy.EVENT_STREAM, toy.NEED_CURVE, now_s=SPAN)
+    for i, name in ((0, "频率"), (1, "间隔"), (2, "显著性")):
+        buckets = defaultdict(set)
+        for p in probes:
+            level = (p.fact.frequency, p.fact.spacing, p.fact.salient)[i]
+            buckets[level].add(p.should_keep)
+        outcomes = {frozenset(v) for v in buckets.values()}
+        assert len(outcomes) > 1 or outcomes == {frozenset({True, False})}, (
+            f"⛔ {name} 对『该留』的贡献是 0：每一档的结果都一样 {outcomes}")
+
+
+def test_need_is_not_saturated_at_one() -> None:
+    """⛔ 末次出现不许落在 `now` 上——⚠️ 那让需求概率饱和、方差归零。"""
+    import worlds.toy as toy
+
+    needs = [p.need for p in probes_from(toy.EVENT_STREAM, toy.NEED_CURVE,
+                                         now_s=SPAN)]
+    assert max(needs) < 1.0, "⛔ 有事实的需求概率饱和到 1.0"
+    assert len(set(needs)) > len(needs) // 2, "⚠️ 需求概率的取值太少，像个二值"
+
+
+def test_an_unfitted_curve_falls_back_to_a_scale_free_split() -> None:
+    """⭐ 绝对阈值是一句关于**真实世界**的话，只在曲线拟合过之后成立。
+
+    ⛔ 占位曲线用绝对阈值 → 全不留或只留饱和的那一组。
+    ⚠️ 中位数切分只是让机制跑得起来，⛔ 那一档的分照旧不得发布。
+    """
+    import worlds.toy as toy
+
+    probes = probes_from(toy.EVENT_STREAM, toy.NEED_CURVE, now_s=SPAN)
+    kept = sum(p.should_keep for p in probes)
+    assert 0 < kept < len(probes), "⛔ 真值不许全 True 或全 False"
+    # ⭐ 拟合过的曲线仍然走绝对阈值
+    fitted = NeedCurve(a=1e6, b=0.5, source="test", r_squared=0.9)
+    abs_probes = probes_from(toy.EVENT_STREAM, fitted, now_s=SPAN)
+    assert all(p.should_keep == (p.need >= 0.5) for p in abs_probes)

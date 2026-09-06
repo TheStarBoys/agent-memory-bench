@@ -273,7 +273,8 @@ def test_every_quality_axis_punishes_doing_nothing(tmp_path: Path) -> None:
     ⭐ 这条测试拿真的 `null` 与真的 `bm25` 跑一遍，逐个主指标对：
     ⛔ 一个不做事的臂在任何一个质量轴上都不许赢。
     """
-    from amb.report.render import HEADLINE, QUALITY_UNFIT
+    from amb.report.floor import LOWER_IS_BETTER
+    from amb.report.render import HEADLINE
 
     nothing, _ = run_one("null", build("null"), plan(), tmp_path / "n",
                          is_control=True)
@@ -287,7 +288,7 @@ def test_every_quality_axis_punishes_doing_nothing(tmp_path: Path) -> None:
             continue
         if metric not in a.metrics or metric not in b.metrics:
             continue
-        assert metric not in QUALITY_UNFIT, f"{suite} 的主指标方向是反的"
+        assert metric not in LOWER_IS_BETTER, f"{suite} 的主指标方向是反的"
         compared += 1
         assert a.metrics[metric] <= b.metrics[metric], (
             f"⛔ {suite} 的 {metric}：什么都不做的 null 赢了 bm25 "

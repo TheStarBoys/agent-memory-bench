@@ -22,6 +22,21 @@ class Floor:
 #: 踩过，实测 full_context=1.000 当选地板，naive_rag/bm25/mem0_raw 全被判死。
 DEGENERATE_IN_RETRIEVAL = frozenset({"full_context"})
 
+#: ⛔ **越低越好**的指标。⚠️ 少标一个，这个指标上的每一句结论都是反的：
+#: 实测 `ECE` 没标 → `best_floor` 取 `max` → **校准最差**的那条当地板 →
+#: 一个 ECE 从 0.40 降到 0.05 的系统被印成「⚠️帮倒忙」。
+#: ⭐ 加任何新主指标时，先问一句「它是越大越好还是越小越好」。
+LOWER_IS_BETTER = frozenset({
+    "ECE", "Brier", "误报率", "编造率", "囤积率", "误删率", "错链率",
+    "越界率", "蒙对率", "未解析率", "该答却弃权", "自信但不更准",
+    "扇形退化斜率",
+})
+
+
+def better(metric: str) -> int:
+    """指标的方向：⭐ +1 越大越好，⛔ −1 越小越好。"""
+    return -1 if metric in LOWER_IS_BETTER else 1
+
 
 def is_degenerate(arm: str, suite: str) -> bool:
     """这条臂在这个套件里是不是**退化**的（不做该做的事就拿满分）。"""
@@ -44,12 +59,20 @@ def best_floor(arms: list[ArmResult], suite: str, metric: str) -> Floor | None:
         and metric in a.scores[suite].metrics
         and not is_degenerate(a.arm, suite)
     ]
-    return max(candidates, key=lambda f: f.value) if candidates else None
+    if not candidates:
+        return None
+    # ⛔ 按指标的**方向**取最强，⚠️ 不是一律取 max——
+    # 对「越低越好」的指标，max 取到的是**最差**的那条。
+    return max(candidates, key=lambda f: better(metric) * f.value)
 
 
-def delta(value: float, floor: Floor | None) -> float | None:
+def delta(value: float, floor: Floor | None, metric: str = "") -> float | None:
     """相对地板的增量——**这才是记忆系统的贡献**。
 
-    ⚠️ Δ ≤ 0 由渲染层显式标注，不能只是「分低一点」：那意味着帮了倒忙。
+    ⭐ 返回的**永远是「越大越好」口径**：对「越低越好」的指标取反号，
+    ⛔ 这样渲染层的 `Δ ≤ 0 = 帮倒忙` 才对得上。
+    ⚠️ 不给 `metric` 就当越大越好——⛔ 那是老调用点的兼容路径，别新增。
     """
-    return None if floor is None else round(value - floor.value, 4)
+    if floor is None:
+        return None
+    return round(better(metric) * (value - floor.value), 4)

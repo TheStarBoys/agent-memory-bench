@@ -21,10 +21,26 @@ def arms(path: Path) -> dict[str, dict]:
     return {a["arm"]: a for a in data.get("lanes", {}).get("library", [])}
 
 
+def world_of(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8")).get("world", {})
+
+
 def main() -> int:
     if len(sys.argv) != 3:
         print(__doc__)
         return 2
+    # ⛔ 先问「这两跑可比吗」再比分：⚠️ `world.digest` 是**世界状态**哈希，
+    # 它盖不住喂进去的语料——实测 172 篇与 434 篇两份存档 digest 完全相同。
+    # ⭐ 语料指纹对不上，下面每一行都没有意义。
+    wo, wn = world_of(Path(sys.argv[1])), world_of(Path(sys.argv[2]))
+    co, cn = wo.get("corpus"), wn.get("corpus")
+    if co and cn and co != cn:
+        print(f"⛔ **语料指纹不同**（{co} vs {cn}，"
+              f"{wo.get('documents')} 篇 vs {wn.get('documents')} 篇）"
+              f"——⚠️ 这两跑不可比，下面的对账没有意义。\n")
+    elif not (co and cn):
+        print("⚠️ 有一份存档没有语料指纹（旧格式）——⛔ 可比性无法机读核实。\n")
+
     old, new = arms(Path(sys.argv[1])), arms(Path(sys.argv[2]))
 
     print("## 主指标 evidence_recall\n")

@@ -19,6 +19,7 @@ from amb.core import AnswerStyle, HarnessFault, load_dotenv
 from amb.report import ArmResult, Report, render
 from amb.runner import (
     answer_prompt, backbone, build, build_plan, cache_report, context_overflow,
+    corpus_fingerprint,
     control_arms,
     ingest_identity, now_rfc3339, run_one,
 )
@@ -150,7 +151,13 @@ def main(argv: list[str] | None = None) -> int:
     report = Report(
         run_id=f"{world_name}-{now_rfc3339()}",
         at=now_rfc3339(),
-        world={"name": world_name, "seed": args.sample_seed, "digest": ""},
+        # ⛔ `digest` 是**世界状态**哈希（守卫每阶段比对），它盖不住
+        # 喂给被测系统的语料——⚠️ 实测：172 篇与 434 篇两份「公认不可比」的
+        # 存档 `digest` 完全相同。⭐ 所以语料指纹必须单独进存档，
+        # 否则任何自动对账（tools/compare_runs.py）都漏这一类。
+        world={"name": world_name, "seed": args.sample_seed, "digest": "",
+               "corpus": corpus_fingerprint(plan.documents),
+               "documents": len(plan.documents)},
         backbone={"model": llm.model if llm else "—（未跑 answer 档）",
                   "temperature": llm.temperature if llm else None,
                   # ⛔ 受控变量，必须进报告：思考型 backbone 输出 token

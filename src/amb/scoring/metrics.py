@@ -376,24 +376,32 @@ def score_structure(run: SuiteRun) -> Score:
     metrics: dict[str, float] = {}
     reach_pts: list[tuple[float, float]] = []
     precise_pts: list[tuple[float, float]] = []
+    # ⛔ **测不到就不报**：⚠️ agent 档是多轮会话，量不了「指名要这一条时
+    # top-1 对不对」。早先那一档把 `"precise": False` **写死**在 payload 里，
+    # 于是「精确检索」对所有臂（含 `null`）恒为 0.000——⭐ 那不是测量，
+    # 是伪造。⛔ 一个恒定的 0.000 还当上了那一档的主指标。
+    has_precise = all("precise" in o.payload for o in run.observations)
     for fan in sorted(by_fan):
         rows = by_fan[fan]
         reach = sum(r["reached"] / max(1, r["cues"]) for r in rows) / len(rows)
-        precise = sum(float(r["precise"]) for r in rows) / len(rows)
         metrics[f"可达性_fan{fan}"] = reach
-        metrics[f"精确检索_fan{fan}"] = precise
         reach_pts.append((math.log(fan), reach))
-        precise_pts.append((math.log(fan), precise))
+        if has_precise:
+            precise = sum(float(r["precise"]) for r in rows) / len(rows)
+            metrics[f"精确检索_fan{fan}"] = precise
+            precise_pts.append((math.log(fan), precise))
 
     # ⭐ 两条曲线各给一个**跨档汇总**：⚠️ 每档等权，⛔ 不是按题数加权——
     # 高扇形度那几档题多，加权等于让它们说了算。
     metrics["可达性"] = sum(v for _, v in reach_pts) / len(reach_pts)
-    metrics["精确检索"] = sum(v for _, v in precise_pts) / len(precise_pts)
+    if precise_pts:
+        metrics["精确检索"] = sum(v for _, v in precise_pts) / len(precise_pts)
     # ⭐ 退化斜率：精确检索随 log(扇形度) 的回归斜率，越平越好。
     # ⛔ 它是**形状**，不是质量：⚠️ 一条什么都检索不到的臂每档都是 0.000，
     # 斜率因此是完美的 0.000——实测它凭这个当上了成本×质量表的地板，
     # 于是四条真臂全被判「没有存在理由」。⭐ 形状只在检索本身站得住时才有意义。
-    metrics["扇形退化斜率"] = _slope(precise_pts)
+    if precise_pts:
+        metrics["扇形退化斜率"] = _slope(precise_pts)
     metrics["可达性增益"] = _slope(reach_pts)
     s.metrics = metrics
     return _finish(s, run)

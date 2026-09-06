@@ -574,3 +574,59 @@ def test_the_canary_reaches_the_report() -> None:
 
     assert "行为指纹" in text
     assert "不是分数" in text          # ⛔ 别被当成又一个可以排名的数
+
+
+# ── ⛔ 指纹必须盖住它真正在变的东西 ────────────────────────────
+def test_corpus_digest_covers_every_document_field() -> None:
+    """⛔ 漏一个字段就会拿错快照，而那**静默给出别的配置的分**。
+
+    ⚠️ 实测漏过 `timestamp` 与 `kind`，而**时间是 N5 的自变量**——
+    改了事件流的时间布局而正文不变，指纹相同 → 恢复上一份库 →
+    ⭐ N5 量的是另一套时间布局上的行为，分数看上去很正常。
+    """
+    from dataclasses import fields
+
+    from amb.core import Document
+    from amb.runner.snapshot import corpus_digest
+
+    base = dict(doc_id="d", text="t", principal="alice",
+                timestamp="2026-01-01T00:00:00Z", kind="turn")
+    ref = corpus_digest([Document(**base)])
+    # ⭐ 逐字段改一个值，指纹都必须变——⛔ 不变就是漏了它
+    for f in fields(Document):
+        if f.name not in base:
+            continue
+        changed = {**base, f.name: base[f.name] + "-changed"}
+        assert corpus_digest([Document(**changed)]) != ref, f"⛔ 指纹漏了 {f.name}"
+
+
+def test_snapshot_key_covers_the_embedding_configuration(monkeypatch) -> None:
+    """⛔ mem0 的库里存的是**向量**——embedder 决定检索结果的一切。
+
+    ⚠️ 早先键只有 `AMB_LLM_MODEL`：换 embedder 重跑，键一个字节都不变 →
+    恢复上一个 embedder 建的库 → ⭐ 报出旧 embedder 的分，
+    而报告里写的是新配置。
+    """
+    from amb.runner.build import ingest_identity
+
+    monkeypatch.setenv("AMB_LLM_MODEL", "m")
+    for name in ("AMB_LLM_BASE_URL", "AMB_EMBED_MODEL",
+                 "AMB_EMBED_BASE_URL", "AMB_EMBED_DIMS"):
+        monkeypatch.setenv(name, "before")
+        ref = ingest_identity()
+        monkeypatch.setenv(name, "after")
+        assert ingest_identity() != ref, f"⛔ 快照键漏了 {name}"
+
+
+def test_the_archive_carries_a_corpus_fingerprint() -> None:
+    """⛔ `world.digest` 盖不住语料——⚠️ 实测 172 篇与 434 篇两份
+    「公认不可比」的存档 digest **完全相同**。
+
+    ⭐ 所以语料指纹必须单独进存档，否则自动对账永远漏这一类。
+    """
+    import worlds.toy as toy
+    from amb.runner import corpus_fingerprint
+
+    a = corpus_fingerprint(toy.all_documents())
+    b = corpus_fingerprint(toy.all_documents()[:100])
+    assert a and b and a != b, "⛔ 语料变了指纹必须变"

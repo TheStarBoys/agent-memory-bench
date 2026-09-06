@@ -82,7 +82,7 @@ def build(name: str, *, context_budget: int = 24_000,
 
 
 def ingest_identity() -> str:
-    """**影响摄入结果**的那套 LLM 配置，摄入快照的键之一。
+    """**影响摄入结果**的那套配置，摄入快照的键之一。
 
     ⛔ 不是回答档的 backbone——那是两件事：
     `--no-answer` 时没有回答用的 backbone，⚠️ 但被测系统**摄入时照样调 LLM**
@@ -90,13 +90,36 @@ def ingest_identity() -> str:
     早先把键绑在回答 backbone 上，结果 `--no-answer` 的跑一律不存快照。
 
     ⭐ 思考开关也算进来：它把输出 token 变 25 倍，抽出来的东西**不一样**。
+
+    ⛔ **embedding 配置同样必须进**：⚠️ mem0 的库里存的是**向量**，
+    embedder 决定检索结果的一切。早先只有 `AMB_LLM_MODEL`——
+    换 embedder 重跑，键**一个字节都不变** → 恢复上一个 embedder 建的库
+    → 报出的是旧 embedder 的分，而报告里写的是新配置。
+    ⭐ `base_url` 也进：同名模型换供应商是**另一个模型**。
     """
     model = os.environ.get("AMB_LLM_MODEL", "")
     if not model:
         return ""            # ⛔ 说不清摄入用了什么，就不敢复用快照
     thinking = os.environ.get("AMB_LLM_THINKING", "").lower() in (
         "1", "true", "yes", "on")
-    return f"{model}|thinking={int(thinking)}"
+    # ⚠️ 逐项列出而不是 `sorted(os.environ)`：⛔ 后者会把无关变量卷进来，
+    # 键随环境漂移，快照永远命不中。⭐ 加新的影响项时**必须**加到这里。
+    parts = [f"{model}|thinking={int(thinking)}"]
+    for name in ("AMB_LLM_BASE_URL", "AMB_EMBED_MODEL",
+                 "AMB_EMBED_BASE_URL", "AMB_EMBED_DIMS"):
+        parts.append(f"{name}={os.environ.get(name, '')}")
+    return "|".join(parts)
+
+
+def corpus_fingerprint(documents) -> str:
+    """喂给被测系统的那份语料的指纹。⚠️ 经 runner 转出，⛔ cli 不直接依赖 snapshot。
+
+    ⭐ 它与 `world.digest` 是两件事：后者是**世界状态**（守卫每阶段比对），
+    ⛔ 盖不住语料——实测 172 篇与 434 篇两份跑的 `digest` 完全相同。
+    """
+    from amb.runner.snapshot import corpus_digest
+
+    return corpus_digest(documents)
 
 
 def answer_prompt(bench: str):

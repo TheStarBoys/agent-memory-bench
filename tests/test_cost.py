@@ -541,3 +541,71 @@ def test_a_flat_quality_column_prints_no_verdict() -> None:
     text = "\n".join(_render_cost([arm("bm25"), arm("null")], ["retrieval"]))
     assert "不给判定" in text
     assert "没有存在理由" not in text and "被地板压制" not in text
+
+
+# ── ⛔ 指标的方向：少标一个，这个指标上每一句结论都是反的 ──────────
+def test_a_lower_is_better_metric_picks_the_lowest_floor() -> None:
+    """⛔ 实测踩到：`ECE` 没标方向 → `best_floor` 取 `max` →
+    **校准最差**的那条当地板 → 一个 ECE 从 0.40 降到 0.05 的系统
+    被印成「⚠️帮倒忙」。
+    """
+    from amb.report import ArmResult
+    from amb.report.floor import best_floor, delta
+    from amb.scoring import Score
+
+    def arm(name: str, ece: float, control: bool = True) -> ArmResult:
+        a = ArmResult(arm=name, is_control=control)
+        a.scores["n7"] = Score("n7", "scored", metrics={"ECE": ece})
+        return a
+
+    floor = best_floor([arm("null", 0.40), arm("bm25", 0.11),
+                        arm("sys", 0.05, False)], "n7", "ECE")
+    assert floor.arm == "bm25", "⛔ 地板要取校准最**好**的那条对照"
+    # ⭐ Δ 一律是「越大越好」口径：更好的 ECE 出正号
+    assert delta(0.05, floor, "ECE") > 0
+    assert delta(0.30, floor, "ECE") < 0
+
+
+def test_every_headline_metric_has_a_declared_direction() -> None:
+    """⚠️ 新加主指标时必须先回答「越大好还是越小好」。
+
+    ⛔ 这条测试不判断谁对，它只保证**这个问题被回答过**——
+    默认是「越大越好」，所以真正要守的是：越小越好的必须在名单里。
+    """
+    from amb.report.floor import LOWER_IS_BETTER
+    from amb.report.render import HEADLINE, _quality_unfit
+
+    # ⭐ 已知越小越好的几个，必须在名单里
+    for m in ("ECE", "扇形退化斜率"):
+        assert m in LOWER_IS_BETTER
+
+    # ⭐ 越小越好的**可以**当逐套件主指标（`best_floor`/`delta` 已按方向处理），
+    # ⛔ 但一律不许进成本×质量表——那张表默认「越高越好」。
+    for suite, metric in HEADLINE.items():
+        if metric in LOWER_IS_BETTER:
+            assert _quality_unfit(metric), f"{suite} 的 {metric} 没被挡在成本表外"
+
+
+def test_a_degenerate_arm_cannot_widen_the_spread() -> None:
+    """⛔ 退化的臂**先剔除再判 flat**。
+
+    ⚠️ 顺序反了：`full_context` 的 1.000 把 spread 撑开 → `flat=False` →
+    剩下几条全 0.000 的臂照样被排名，⭐ 正是「不许拿不区分的数排名」
+    想堵的那个场景。
+    """
+    from amb.report.render import _render_cost
+    from amb.report.schema import ArmResult
+    from amb.scoring import Score
+
+    def arm(name: str) -> ArmResult:
+        a = ArmResult(arm=name, is_control=True)
+        val = 1.0 if name == "full_context" else 0.0
+        a.scores["retrieval"] = Score("retrieval", "scored", metrics={"top1": val})
+        a.cost_profile = {"items_probed": 10}
+        a.cost = {"probe": 1000}
+        return a
+
+    text = "\n".join(_render_cost(
+        [arm("full_context"), arm("bm25"), arm("null")], ["retrieval"]))
+    assert "不给判定" in text, "⛔ 剔除退化臂之后质量列是平的"
+    assert "没有存在理由" not in text

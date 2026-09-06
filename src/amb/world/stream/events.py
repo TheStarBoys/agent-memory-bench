@@ -86,7 +86,13 @@ def build(
     """
     rng = random.Random(seed)
     stream = EventStream()
-    text_for = text_for or (lambda fid, f, sp, sal: f"事实 {fid}")
+    DETAIL: dict[str, str] = {}
+    # ⭐ 正文 = `事实 <id>：<载荷>`。⛔ 载荷必须与 id **不重合且全局唯一**：
+    # ⚠️ 早先正文就是 `事实 f000`，于是 agent 档拿「问题的前 6 个字」当
+    # 判定标记 → 标记既是**问题的子串**（复述话题就判「记得住」），
+    # 又被 **10 条事实共享**（`事实 f00` 覆盖 f000~f009）。
+    # ⭐ 有了载荷，话题用来提问、载荷用来判定，两者分得开。
+    text_for = text_for or (lambda fid, f, sp, sal: f"事实 {fid}：编号 {DETAIL[fid]}")
 
     combos: list[tuple[int, Spacing, bool]] = []
     for freq, salient in product(frequencies, (False, True)):
@@ -97,14 +103,24 @@ def build(
     for freq, spacing, salient in combos:
         for i in range(per_cell):
             fid = f"f{len(stream.facts):03d}"
-            # ⚠️ 首次出现时刻随机，但要留够复现的余地
-            headroom = massed_window_s if spacing is Spacing.MASSED else span_s * 0.5
-            first = rng.uniform(0.0, max(1.0, span_s - headroom))
+            # ⛔ 载荷全局唯一：⚠️ 撞了就有两条事实共用一个判定标记
+            DETAIL[fid] = f"{7000 + len(DETAIL) * 3}"
+            # ⚠️ 首次出现时刻随机。⛔ headroom 对三种间隔**必须一致**：
+            # 早先分散组用 `span_s * 0.5`、集中组用 `massed_window_s`，
+            # 于是「年龄」被绑死在「间隔」上——⭐ 而那两个正是要正交化的因子。
+            # 实测：集中组 first_at 均值 129 万、分散组 64 万。
+            first = rng.uniform(0.0, max(1.0, span_s - _HEADROOM_S))
             fact = Fact(fid, text_for(fid, freq, spacing, salient),
                         freq, spacing, salient, first)
             stream.facts.append(fact)
             stream.occurrences.extend(_occurrences(fact, span_s, massed_window_s, rng))
     return stream
+
+
+#: ⭐ 观测窗：跨度末尾留出来的一段，**任何事实都不在这里出现**。
+#: ⛔ 不留的话，末次出现落在 `now` 上 → elapsed≈0 → 需求概率饱和到 1.0000，
+#: ⚠️ 于是真值塌成一个二值，频率与显著性再也读不出来。
+_HEADROOM_S = 86_400 * 3.0
 
 
 def _occurrences(fact: Fact, span_s: float, massed_window_s: float,
@@ -116,13 +132,20 @@ def _occurrences(fact: Fact, span_s: float, massed_window_s: float,
         # 集中：全部挤在一个短窗口里
         window = massed_window_s
     else:
-        # 分散：摊开到剩余跨度上
-        window = max(massed_window_s * 2, span_s - fact.first_at)
+        # 分散：摊开到剩余跨度上——⛔ 但要留出观测窗（见 _HEADROOM_S）
+        window = max(massed_window_s * 2,
+                     span_s - _HEADROOM_S - fact.first_at)
 
     step = window / max(1, fact.frequency - 1)
+    # ⛔ 最后一次出现**不许落在 now 上**：⚠️ 早先分散组的末次被
+    # `min(span_s, …)` 截到 span_s，而 toy 的 `now_s == span_s`，
+    # 于是 elapsed = 1 秒 → 需求概率恒等于 1.0000（方差为零）。
+    # ⭐ 后果：`该留 ≡ (间隔==distributed)`，频率与显著性的贡献**严格是 0**,
+    # 而 events.py 开篇声明三者必须正交。
+    ceiling = max(1.0, span_s - _HEADROOM_S)
     return [
         Occurrence(fact.fact_id,
-                   min(span_s, fact.first_at + i * step + rng.uniform(0, step * 0.1)),
+                   min(ceiling, fact.first_at + i * step + rng.uniform(0, step * 0.1)),
                    fact.salient)
         for i in range(fact.frequency)
     ]

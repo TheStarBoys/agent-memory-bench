@@ -69,13 +69,33 @@ class AgentRecallSuite:
         return run
 
 
+def _topic(probe) -> str:
+    """提问用的话题：正文里冒号**之前**那一段。"""
+    return probe.query.rstrip("。").split("：", 1)[0]
+
+
+def _detail(probe) -> str:
+    """判定用的载荷：正文里冒号**之后**那一段。
+
+    ⛔ 没有冒号就退回整段正文，⚠️ 并且那时标记必然落在问题里——
+    ⭐ 由 `test_agent_suites` 守着：载荷必须存在且不在问题里。
+    """
+    body = probe.query.rstrip("。")
+    return body.split("：", 1)[1] if "：" in body else body
+
+
 def retention_items(probes) -> list[RecallItem]:
     """N5：把保留探针变成问答。"""
     return [
         RecallItem(
             item_id=p.fact.fact_id,
-            question=f"关于「{p.query.rstrip('。')}」，你记得什么？",
-            marker=p.query.rstrip("。")[:6],
+            # ⛔ 问**话题**、判**载荷**：⚠️ 早先两者都取自同一段正文
+            # （`marker = 问题[:6]`），于是标记既是问题的子串——复述话题
+            # 就判「记得住」——又被 10 条事实共享。⭐ 实测：一条**从不调用
+            # 记忆插件**的臂拿到 `囤积率 = 1.000`，分数完全由「模型话多不多」
+            # 决定，与记忆层无关。
+            question=f"关于「{_topic(p)}」，你记得什么？",
+            marker=_detail(p),
             payload={
                 "should_keep": p.should_keep, "need": p.need,
                 "frequency": p.fact.frequency, "spacing": str(p.fact.spacing),
@@ -93,7 +113,10 @@ def structure_items(topology) -> list[RecallItem]:
             item_id=f.fact_id,
             question=f.cues[0],
             marker=f.text.split()[-1].rstrip("。"),
-            payload={"fan": f.fan, "cues_list": list(f.cues), "precise": False},
+            # ⛔ 不放 `precise`：⚠️ agent 档是多轮会话，量不了「指名要这一条
+            # 时 top-1 对不对」。早先这里写死 `False`，于是「精确检索」对所有臂
+            # 恒 0.000——⭐ 而它正是这一档的主指标。**测不到就不报**。
+            payload={"fan": f.fan, "cues_list": list(f.cues)},
         )
         for f in topology.facts
     ]
