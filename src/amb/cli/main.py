@@ -299,12 +299,35 @@ def main(argv: list[str] | None = None) -> int:
                     if result.ingest_snapshot == "命中" else "")
             print(f"✓ [{i}/{len(names)}] {name}　{took:.0f}s{snap}",
                   file=sys.stderr, flush=True)
+            # ⛔ **每跑完一条就落盘**：⚠️ 早先只在全部跑完才写 JSON——
+            # 实测踩到：跑到第 5 条被系统 OOM 杀掉，⭐ 前面 4 条臂
+            # （42 分钟、含 naive_rag 1386s 与 mem0_raw 1142s）**全部丢失**。
+            # ⚠️ 一次几小时的跑不该是全有或全无。
+            _checkpoint(report, args)
 
     # ⭐ 缓存状况进报告——⚠️ 包括「为什么没生效」
     report.cache = cache_report()
 
     _emit(report, args)
     return 0
+
+
+def _checkpoint(report: Report, args) -> None:
+    """把**已经跑完的部分**落盘。⛔ 静默失败——⚠️ 存盘出错不该带走这一跑。
+
+    ⭐ 它写的是同一个 `--json` 路径：跑挂了就留下一份「跑了一半」的存档，
+    ⚠️ 而那比什么都没有强得多。⛔ 读的人靠 `lanes` 里有几条臂判断完整性。
+    """
+    if not args.json:
+        return
+    try:
+        args.json.parent.mkdir(parents=True, exist_ok=True)
+        args.json.write_text(
+            json.dumps(report.to_dict(), ensure_ascii=False, indent=2,
+                       default=str), encoding="utf-8")
+    except Exception as exc:  # noqa: BLE001
+        print(f"⚠️ 中途存盘失败（{type(exc).__name__}: {exc}）——⛔ 继续跑",
+              file=sys.stderr, flush=True)
 
 
 def _emit(report: Report, args) -> None:

@@ -114,3 +114,24 @@ def test_a_configuration_error_is_not_a_crashed_arm() -> None:
     assert "except (KeyError, EnvironmentError)" in src
     assert src.index("except (KeyError, EnvironmentError)") < src.index(
         "except Exception as exc:  # noqa: BLE001\n                # ⛔ 不只打到 stderr")
+
+
+def test_each_finished_arm_is_written_to_disk_immediately(tmp_path) -> None:
+    """⛔ 一次几小时的跑不该是**全有或全无**。
+
+    ⚠️ 实测踩到：跑到第 5 条臂被系统 OOM 杀掉，而 CLI 只在全部跑完才写
+    JSON——⭐ 前面 4 条臂（42 分钟，含 naive_rag 1386s、mem0_raw 1142s）
+    **全部丢失**。
+    """
+    import inspect
+    from importlib import import_module
+
+    mod = import_module("amb.cli.main")
+    src = inspect.getsource(mod.main)
+    # ⭐ 每条臂跑完就落盘，⛔ 而且要在那条 `✓` 之后
+    assert "_checkpoint(report, args)" in src
+    assert src.index("✓ [{i}/{len(names)}]") < src.index("_checkpoint(report, args)")
+
+    # ⚠️ 存盘失败不该带走这一跑
+    ck = inspect.getsource(mod._checkpoint)
+    assert "except Exception" in ck and "继续跑" in ck
