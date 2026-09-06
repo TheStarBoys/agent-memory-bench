@@ -46,11 +46,59 @@ def _setup_cmd(argv: list[str]) -> int:
     return 0 if all(r.ok for r in rows) else 1
 
 
+def _show_preflight(report, *, where: str) -> None:
+    """把自检结果打到 stderr。⛔ stdout 留给报告本身。
+
+    ⭐ **样本一定要打**：自动检查覆盖不到「摄入单元读起来像不像真的」，
+    ⚠️ 而那正是最贵的那次浪费（2h45m 全废）的成因——
+    ⛔ 唯一挡得住它的就是人眼看这一下。
+    """
+    print(f"\n── 跑前自检（{where}）" + "─" * 30, file=sys.stderr)
+    for f in report.findings:
+        print(f"  {f}", file=sys.stderr)
+    if not report.findings:
+        print("  · 无发现", file=sys.stderr)
+    print("\n  ⭐ 语料与题面样本——⚠️ **自动检查看不出「像不像真的」，请人眼过一遍**：",
+          file=sys.stderr)
+    for line in report.samples:
+        print(f"    {line[:160]}", file=sys.stderr)
+    if report.budget:
+        print(f"\n  · 预算：{report.budget}", file=sys.stderr)
+    print("─" * 46 + "\n", file=sys.stderr)
+
+
+def _preflight_cmd(argv: list[str]) -> int:
+    """⛔ 零网络调用的跑前自检。⭐ 单独跑一次比跑完再看便宜几个数量级。"""
+    from amb.runner.preflight import estimate, inspect
+
+    ap = argparse.ArgumentParser(prog="amb preflight")
+    ap.add_argument("--bench", choices=("toy", "locomo", "dialogue"), default="toy")
+    ap.add_argument("--condition", default="")
+    ap.add_argument("--arms", default="")
+    ap.add_argument("--max-turns", type=int, default=None)
+    ap.add_argument("--convs", default="")
+    args = ap.parse_args(argv)
+
+    plan, _, name = build_plan(
+        args.bench, condition=args.condition, max_turns=args.max_turns,
+        conversations=tuple(c for c in args.convs.split(",") if c))
+    report = inspect(plan)
+    arms = tuple(a for a in args.arms.split(",") if a)
+    if arms:
+        mins = estimate(len(plan.documents), arms)
+        report.budget["摄入分钟"] = {k: round(v, 1) for k, v in mins.items()}
+        report.budget["合计小时"] = round(sum(mins.values()) / 60, 2)
+    _show_preflight(report, where=name)
+    return 1 if report.fatal else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     load_dotenv()
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "setup":
         return _setup_cmd(argv[1:])
+    if argv and argv[0] == "preflight":
+        return _preflight_cmd(argv[1:])
 
     ap = argparse.ArgumentParser(prog="amb")
     ap.add_argument("--arms", default=",".join(control_arms()),
@@ -76,6 +124,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="⚠️ 随机抽样的种子——⛔ 进报告，不记就不可复现")
     ap.add_argument("--lane", choices=("library", "agent", "both"),
                     default="library", help="跑哪一档。⛔ 两档的数不可互比")
+    ap.add_argument("--skip-preflight", action="store_true",
+                    help="⛔ 跳过跑前自检。⚠️ 只在自检自己坏了的时候用——"
+                         "它花几秒，而一次跑要几小时")
     ap.add_argument("--no-answer", action="store_true",
                     help="不挂 backbone，只跑检索档（省钱、离线可跑）")
     args = ap.parse_args(argv)
@@ -125,6 +176,24 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     names = [a for a in args.arms.split(",") if a]
+
+    # ⛔ 先自检再花钱。⚠️ 它零网络调用、几秒钟，⭐ 而一次跑要几小时——
+    # 实测两次教训：一次报告印出假话，一次语料造错整跑作废，
+    # **两次的成因都不需要真跑就能发现**。
+    if not args.skip_preflight:
+        from amb.runner.preflight import estimate, inspect
+
+        pre = inspect(plan)
+        mins = estimate(len(plan.documents), tuple(names))
+        if mins:
+            pre.budget["摄入分钟"] = {k: round(v, 1) for k, v in mins.items()}
+            pre.budget["合计小时"] = round(sum(mins.values()) / 60, 2)
+        _show_preflight(pre, where=world_name)
+        if pre.fatal:
+            print("⛔ 自检有致命问题，**不开跑**——修掉，或 --skip-preflight 强跑",
+                  file=sys.stderr)
+            return 2
+
     with tempfile.TemporaryDirectory(prefix="amb-world-") as tmp:
         if args.lane in ("agent", "both"):
             _run_agent_lane(report, names, Path(tmp) / "agent")
