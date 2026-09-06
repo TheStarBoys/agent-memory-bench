@@ -11,8 +11,10 @@ from amb.report.schema import LANE_LABEL, LANES, Report
 #: ⭐ 由 `floor.LOWER_IS_BETTER` **派生**，⛔ 不再手写一份：
 #: 两份名单迟早会不同步，而不同步的那一刻没有任何征兆。
 def _quality_unfit(metric: str) -> str:
-    from amb.report.floor import LOWER_IS_BETTER
+    from amb.report.floor import LOWER_IS_BETTER, SHAPE_NOT_QUALITY
 
+    if metric in SHAPE_NOT_QUALITY:
+        return "⛔ 它是**形状**不是质量——什么都不做的臂也能拿满分"
     if metric in LOWER_IS_BETTER:
         return "⚠️ 越低越好——⛔ 摆进「越高越好」的表里结论是反的"
     return ""
@@ -129,6 +131,16 @@ def _delta_text(value: float, ci, floor, floor_ci, metric: str = "") -> str:
     return f"**{d:+.3f} ⚠️帮倒忙**" if d <= 0 else f"{d:+.3f}"
 
 
+def _ci_of(arms: list, arm_name: str, suite: str, metric: str):
+    """取某条臂在某个指标上的区间。⛔ 取不到就是 None，⚠️ 不猜。"""
+    for a in arms:
+        if a.arm != arm_name:
+            continue
+        sc = a.scores.get(suite)
+        return sc.interval(metric) if sc else None
+    return None
+
+
 def _render_cost(arms: list, suites: list[str],
                  backbone_model: str | None = None) -> list[str]:
     """⭐ 成本与质量并排判——⛔ 不给总分，给帕累托关系。
@@ -229,10 +241,20 @@ def _render_cost(arms: list, suites: list[str],
                     f"都是 {next(iter(quality.values())):.3f}，"
                     "⚠️ 一个不区分它们的数排不出名次。⭐ 下面只有成本是真的。",
                     ""]
+    # ⛔ **成本表也要过区间闸门**：⚠️ 早先它完全绕过——同一份报告里，
+    # 逐套件表对某一对臂印「⛔ 分不开（差 +0.021，n=126 只能辨 ≥0.158）」，
+    # 而成本表对**同一对臂、同一个指标**印「⛔ 被地板压制·没有存在理由」。
+    # ⭐ 两张表说反话，读者只会信更醒目的那一张。
+    # ⚠️ 这一层的 `floor` 是**臂名字符串**（与 `_render_lane` 的 Floor 对象不同）
+    floor_ci = _ci_of(arms, floor or "", chosen, HEADLINE[chosen])
     for v in judge_cost(quality, profiles, floor):
         p = profiles[v.arm]
-        # ⚠️ 质量列分不开时，Δ 与判定都不出——⛔ 不拿不区分的数排名
-        d = "—" if (flat or v.quality_delta is None) else f"{v.quality_delta:+.3f}"
+        ci = _ci_of(arms, v.arm, chosen, HEADLINE[chosen])
+        overlaps = (ci is not None and floor_ci is not None
+                    and ci.overlaps(floor_ci))
+        # ⚠️ 质量列分不开、或区间重叠、或缺区间时，Δ 与判定都不出
+        blind = flat or overlaps or ci is None or floor_ci is None
+        d = "—" if (blind or v.quality_delta is None) else f"{v.quality_delta:+.3f}"
         ratio = _ratio_text(v.cost_ratio)
         ing = _seconds(p.ingest_ms_per_item)
         # ⚠️ 快照命中 → 这一格不是这次真测的
@@ -243,10 +265,11 @@ def _render_cost(arms: list, suites: list[str],
         toks = ("—" if p.tokens_in is None
                 else f"{(p.tokens_in + (p.tokens_out or 0)) / 1000:.0f}k")
         money = "—" if p.money_usd is None else _money(p.money_usd)
-        label = "—" if flat else v.label
+        label = ("⛔ 分不开" if (blind and not flat and v.arm != floor)
+                 else "—" if blind else v.label)
         out.append(f"| {v.arm} | {v.quality:.3f} | {d} | {ratio} | {ing} | {prb} "
                    f"| {toks} | {money} | {label} |")
-        if v.note and not flat:
+        if v.note and not blind:
             out.append(f"| | | | | | | ⚠️ {v.note} |")
     priced = [v.arm for v in judge_cost(quality, profiles, floor)
               if profiles[v.arm].money_usd is not None]
@@ -336,7 +359,17 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
                 # ⛔ 不支持显示 —，不是 0，不参与排名
                 out.append(f"| {arm.arm} ({tag}) | — | | **{sc.status}** | {sc.reason or ''} |")
                 continue
-            v = sc.metrics.get(metric, 0.0)
+            if metric not in sc.metrics:
+                # ⛔ **指标不在就是不在**，⚠️ 不拿 0.000 冒充。
+                # 早先这里是 `sc.metrics.get(metric, 0.0)`：⭐ 于是一个
+                # 「这一档没有这个指标」的臂被印成 `0.000` 且 status=scored，
+                # 而 `best_floor` 因同一原因返回 None → 表头印
+                # 「⚠️ 无地板线——对照组在这一档全部不支持」，
+                # ⛔ 下一行却是一条 scored 的对照臂：两句话互相打脸。
+                out.append(f"| {arm.arm} ({tag}) | — | | 无此指标 | "
+                           f"{metric} 在这一档未产出 |")
+                continue
+            v = sc.metrics[metric]
             # ⭐ 抽样分必须带区间——⛔ 不带区间的分假装自己是全量分
             ci = sc.interval(metric)
             shown = (f"{v:.3f} [{ci.low:.3f}, {ci.high:.3f}]" if ci
@@ -345,9 +378,10 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
             #    拿它们互比再标「帮倒忙」是把参照系当成了选手。
             if arm.is_control:
                 dtxt = "（地板）" if floor and arm.arm == floor.arm else "（参照）"
-                # ⛔ full_context 在检索档里把**全部语料**交出去（query/k 刻意忽略），
-                # 所以 recall 必然是 1.000——⚠️ 不是它检索得好，是它不检索。
-                # ⭐ 不标出来的话，读者会把它当成一个有意义的天花板。
+                # ⛔ full_context **不做选择**：query 刻意忽略，按原顺序交前 k 条。
+                # ⚠️ 它遵守 k（改过了），但仍然不排序——⭐ 所以 recall 高不是
+                # 因为检索得好，是因为它把决定权推给了 backbone。
+                # ⛔ 不标出来的话，读者会把它当成一个有意义的天花板。
                 if arm.arm == "full_context" and suite != "qa":
                     dtxt = "⚠️ 退化†"
             else:
@@ -357,8 +391,9 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
         if any(a.arm == "full_context" and (sc := a.scores.get(suite))
                and sc.status == "scored" for a in arms) and suite != "qa":
             out += ["",
-                    "† `full_context` 在**检索档**里不做检索——它把全部语料交出去"
-                    "（`query` 与 `k` 刻意忽略），所以 recall 必然满分。"
+                    "† `full_context` 在**检索档**里不做检索——它按原顺序交前 "
+                    "`k` 条（`query` 刻意忽略，**不排序**），"
+                    "所以它的分反映的是语料顺序，不是检索质量。"
                     "⛔ 那不是天花板，是**分母被绕过了**"
                     "（见 [baselines](baselines.md#full-context-retrieval)）。"
                     "⭐ 它有意义的地方在回答档：那里 backbone 要自己在全文里找。"]

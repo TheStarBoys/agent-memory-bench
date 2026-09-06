@@ -83,6 +83,8 @@ class Host:
         self._world = world_root
         self._home = home
         self._harness = None
+        #: ⭐ 这条臂的会话。⛔ 跨轮复用——探针的「上一轮」全靠它。
+        self._session = None
 
     def _write_settings(self) -> None:
         """把 backbone 声明成 DSH 的自定义 provider。
@@ -136,18 +138,42 @@ class Host:
         harness = DeepSeekHarness(cfg)
         harness.start()
         self._harness = harness
+        self._session = None
 
     def ask(self, prompt: str) -> AgentTurn:
+        """问一轮。⭐ **同一个会话贯穿整条臂**——⛔ 不是每轮新开。
+
+        ⚠️ 早先这里是 `start_session().run(prompt)`，每次都 uuid4 新开一个
+        会话，于是宿主**没有任何跨轮上下文**。所有依赖「上一轮」的探针
+        测的都不是它们声称的东西：
+
+        | 探针 | 它以为在测 | 实际 |
+        |---|---|---|
+        | N1 有提示第二轮 | 「现在提交你对 c1 的判定」 | ⛔ 新会话里没见过 c1 |
+        | N4 忘记探针 | 记住 → 问 → 忘掉 → 再问 | ⛔ 四个互不相干的会话 |
+        | N8 规律存活 | 「⭐ 见过例外**之后**」 | ⛔ 新会话没见过例外 |
+        | `host_default` | 「只用 DSH 自带的工作记忆」 | ⛔ 那份工作记忆永远是空的 |
+
+        ⭐ 会话即那条臂的一生：`reset_session()` 由 runner 在**换臂时**调。
+        """
         if self._harness is None:
             raise HostUnavailable("宿主未启动")
-        result = self._harness.start_session().run(prompt)
+        if self._session is None:
+            self._session = self._harness.start_session()
+        result = self._session.run(prompt)
         return AgentTurn(
             text=result.final_response,
             finish_reason=result.finish_reason,
             events=list(result.events),
         )
 
+    def reset_session(self) -> None:
+        """开一个新会话。⛔ **只在换臂时调**——⚠️ 套件之间共用同一个会话
+        是刻意的：探针依赖「上一轮」，而那正是这一档要测的东西。"""
+        self._session = None
+
     def close(self) -> None:
+        self._session = None
         if self._harness is not None:
             self._harness.close()
             self._harness = None

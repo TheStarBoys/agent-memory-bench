@@ -277,6 +277,21 @@ CITATION_PROBES = [
 ]
 
 
+def _balanced(items, *, key, per_group: int) -> list:
+    """每一组取 `per_group` 条。⛔ 不取前 N 条——⚠️ 那是设计矩阵的一个角。
+
+    ⭐ agent 档每题一轮会话、很贵，所以必须切；⛔ 但切法有偏的话，
+    切出来的那一撮**在结构上就答不出某一类**，而分数看上去很正常。
+    """
+    groups: dict = {}
+    for it in items:
+        groups.setdefault(key(it), []).append(it)
+    out = []
+    for k in sorted(groups, key=str):
+        out += groups[k][:per_group]
+    return out
+
+
 def agent_suites(verdict_sink) -> list:
     """agent 档：判分口径与直接调库一致，⛔ 探针完全不同。
 
@@ -308,9 +323,18 @@ def agent_suites(verdict_sink) -> list:
         ]),
         # ⭐ N5/N6 共用通用召回探针——判分口径与直接调库那一档同源
         # ⚠️ agent 档每题一轮会话，很慢；这里只取一小撮验机制
+        # ⛔ 切片必须**分层**，⚠️ 不是取前 N 条：
+        # 早先 `[:4]` 取的是设计矩阵的一个角——前四条必然 freq=1/ONCE，
+        # ⭐ `should_keep` 全是 False，于是「该留」那一侧一条都没有：
+        # 保留追踪度恒 0.000，而一个**什么都不记**的臂拿 `正确遗忘率 = 1.000`。
+        # 同理 `[:2]` 两条 fan 都是 1，扇形曲线只有一个点，斜率恒 0。
         AgentRecallSuite("n5_agent", retention_items(
-            probes_from(EVENT_STREAM, NEED_CURVE, now_s=86_400 * 30.0)[:4])),
-        AgentRecallSuite("n6_agent", structure_items(TOPOLOGY)[:2],
+            _balanced(probes_from(EVENT_STREAM, NEED_CURVE,
+                                  now_s=86_400 * 30.0),
+                      key=lambda p: p.should_keep, per_group=3))),
+        AgentRecallSuite("n6_agent",
+                         _balanced(structure_items(TOPOLOGY),
+                                   key=lambda i: i.payload["fan"], per_group=1),
                          cues_key="cues_list"),
         # ⚠️ agent 档每题一轮会话，很慢；这里都只取一小撮验机制
         AgentReasoningSuite(FACT_GRAPH, questions_from(FACT_GRAPH)[:2],

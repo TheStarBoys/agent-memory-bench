@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -50,8 +51,26 @@ def require_venv(name: str) -> Path:
     return python
 
 
+#: ⛔ 会让 venv **漏进外面的包**的环境变量。⚠️ 全部清掉再起子进程：
+#: 版本核对与 `verify_import` 都在子进程里跑，⭐ 而 `PYTHONPATH` 指向
+#: venv 外面时它们照样能通过——「装好了」是假的，隔离也是假的。
+#: ⚠️ 用户有一条硬规矩：被测系统一律装进独立 venv，
+#: ⛔ 绝不往 anaconda 之类的日常环境装任何东西。
+_LEAKY = ("PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "PIP_TARGET",
+          "PIP_PREFIX", "PYTHONNOUSERSITE", "VIRTUAL_ENV", "CONDA_PREFIX")
+
+
+def _clean_env() -> dict:
+    """⛔ 隔离的子进程环境。⚠️ 继承 os.environ 会让隔离形同虚设。"""
+    env = {k: v for k, v in os.environ.items() if k not in _LEAKY}
+    # ⭐ 明确拒绝用户site-packages——⛔ 那是另一条漏进来的路
+    env["PYTHONNOUSERSITE"] = "1"
+    return env
+
+
 def _run(cmd: list[str], timeout: int = INSTALL_TIMEOUT_S):
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
+                          env=_clean_env())
 
 
 def install_venv(dep: Dependency, *, upgrade: bool = False) -> Installed:

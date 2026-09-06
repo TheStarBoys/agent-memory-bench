@@ -60,3 +60,30 @@ def test_runs_that_disagree_more_than_the_signal_are_called_noise() -> None:
     ⛔ 前者得重做实验，后者要么加题要么认了——⚠️ 改进方向不同。"""
     assert cc.agreement([0.40, 0.05]) == "noise"
     assert cc.agreement([0.05, 0.03]) == "too_small"
+
+
+def test_the_threshold_tightens_when_the_question_count_is_small() -> None:
+    """⛔ 0.13 只是**尺子的抖动**下限，⚠️ 不是统计判据。
+
+    ⭐ 在实验实际的题量上它比统计可分辨差还小：n=120 时
+    `detectable_difference` 是 **0.177**。⛔ 于是同一组数，
+    `statistics.compare()` 说「不许声称谁更好」，而这个工具说「抽取层赢」——
+    **两个判据打架，工具那个更松**。
+    """
+    assert cc.threshold(120) > cc.JITTER_FLOOR
+    assert cc.verdict(0.15, 120) == "⛔ 测不出", "n=120 时 0.15 分不开"
+    # ⭐ 题量够大时回落到抖动下限——⛔ 再大也不许低于它
+    assert cc.threshold(100000) == cc.JITTER_FLOOR
+    assert cc.verdict(0.15, 459) == "⭐ 抽取层赢"
+
+
+def test_run_identity_comes_from_the_archive_not_the_filename() -> None:
+    """⛔ 「两跑同号才算结论」这道闸门不许被 `cp` 绕过。
+
+    ⚠️ 早先跑次身份只从**文件名**推断，⭐ 同一份存档复制成两个名字
+    就被当成两次独立的跑。
+    """
+    import inspect
+
+    src = inspect.getsource(cc.load)
+    assert "run_id" in src and "at" in src, "⛔ 又只看文件名了"

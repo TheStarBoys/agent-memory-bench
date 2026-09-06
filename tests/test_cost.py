@@ -572,17 +572,25 @@ def test_every_headline_metric_has_a_declared_direction() -> None:
     ⛔ 这条测试不判断谁对，它只保证**这个问题被回答过**——
     默认是「越大越好」，所以真正要守的是：越小越好的必须在名单里。
     """
-    from amb.report.floor import LOWER_IS_BETTER
+    from amb.report.floor import (
+        LOWER_IS_BETTER, SHAPE_NOT_QUALITY, is_quality_axis,
+    )
     from amb.report.render import HEADLINE, _quality_unfit
 
-    # ⭐ 已知越小越好的几个，必须在名单里
-    for m in ("ECE", "扇形退化斜率"):
-        assert m in LOWER_IS_BETTER
+    # ⭐ 越小越好的在这一份名单里
+    assert "ECE" in LOWER_IS_BETTER
+    # ⛔ **形状**是另一回事：⚠️ `扇形退化斜率` 的理想值是 0（越平越好），
+    # 而一条什么都检索不到的臂每档 0.000 → 斜率完美等于 0。
+    # ⭐ 它既不是「越高越好」也不是「越低越好」——是**不能当质量轴**。
+    assert "扇形退化斜率" in SHAPE_NOT_QUALITY
+    assert "扇形退化斜率" not in LOWER_IS_BETTER, "⛔ 更负并不更好，标错了"
+    assert not is_quality_axis("扇形退化斜率") and not is_quality_axis("ECE")
+    assert is_quality_axis("top1")
 
     # ⭐ 越小越好的**可以**当逐套件主指标（`best_floor`/`delta` 已按方向处理），
     # ⛔ 但一律不许进成本×质量表——那张表默认「越高越好」。
     for suite, metric in HEADLINE.items():
-        if metric in LOWER_IS_BETTER:
+        if not is_quality_axis(metric):
             assert _quality_unfit(metric), f"{suite} 的 {metric} 没被挡在成本表外"
 
 

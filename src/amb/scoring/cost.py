@@ -170,15 +170,21 @@ def _label(arm: str, floor_arm: str, dq: float | None,
     # ⛔ 「被压制」要求**至少有一轴严格更差**：⚠️ 两轴都打平是并列，不是压制。
     # ⭐ 实测踩到：质量列在所有臂上都是 0.000、耗时比 1.0x，
     # 报告照样印出「bm25 既不如它准，又不比它快——没有存在理由」。
-    strictly_worse = dq < 0 or (ratio or 1) > 1
-    if dq <= 0 and (ratio or 1) >= 1 and strictly_worse:
+    if ratio is None:
+        # ⛔ **成本未知时不给成本方向的判定**：⚠️ 早先 `(ratio or 1)` 把 None
+        # 当成 1.0（打平），于是一条摄入 900 秒、而地板没测到时间的臂
+        # 落到最后一行「⭐ 又快又好·更准且更省」。
+        # ⭐ `CostProfile` 的文档写着「缺就是 None，不是 0」——这里也照办。
+        return ("⚠️ 成本未知", "地板没测到耗时，⛔ 快慢无从判断")
+    strictly_worse = dq < 0 or ratio > 1
+    if dq <= 0 and ratio >= 1 and strictly_worse:
         # 既不如地板准，又不比它快 → ⛔ 全面被压制
         return "⛔ 被地板压制", "既不如它准，又不比它快——没有存在理由"
-    if dq == 0 and (ratio or 1) == 1:
+    if dq == 0 and ratio == 1:
         return "与地板并列", ""
 
     if dq <= 0:
         return "⚠️ 更快但更差", "省了时间，丢了准确率——⛔ 值不值要看用途"
-    if (ratio or 1) > 1:
+    if ratio > 1:
         return "⚠️ 更准但更贵", f"每多 1% 准确率花掉 {(ratio - 1) / (dq * 100):.2f} 倍时间"
     return "⭐ 又快又好", "更准且更省——⭐ 这才是记忆系统该有的样子"

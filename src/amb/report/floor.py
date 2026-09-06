@@ -16,8 +16,8 @@ class Floor:
     value: float
 
 
-#: ⛔ 在**检索档**里不做检索的臂。它们的 recall 必然满分，
-#: ⚠️ 不是因为检索得好，是因为把全部语料交了出去（分母被绕过）。
+#: ⛔ 在**检索档**里不做检索的臂：⚠️ 它遵守 k（改过了），⛔ 但**不排序**——
+#: 交出去的是「原顺序的前 k 条」，⭐ 所以它的分反映的是语料顺序，不是检索。
 #: ⛔ 让这种臂当地板线，会把所有真实臂判成「被地板压制·没有存在理由」——
 #: 踩过，实测 full_context=1.000 当选地板，naive_rag/bm25/mem0_raw 全被判死。
 DEGENERATE_IN_RETRIEVAL = frozenset({"full_context"})
@@ -29,13 +29,33 @@ DEGENERATE_IN_RETRIEVAL = frozenset({"full_context"})
 LOWER_IS_BETTER = frozenset({
     "ECE", "Brier", "误报率", "编造率", "囤积率", "误删率", "错链率",
     "越界率", "蒙对率", "未解析率", "该答却弃权", "自信但不更准",
-    "扇形退化斜率",
 })
+
+#: ⛔ **形状，不是质量**。⚠️ 它们既不是「越高越好」也不是「越低越好」——
+#: `扇形退化斜率` 的理想值是 0（越平越好），⭐ 但一条什么都检索不到的臂
+#: 每档都是 0.000，斜率**完美地等于 0**。所以它不是任何方向上的质量轴：
+#: ⛔ 拿它当地板/Δ/质量列，「什么都不做」就会赢。
+#: ⚠️ 早先把它塞进 `LOWER_IS_BETTER` 是**标错了**（更负并不更好），
+#: 那样只是碰巧把它挡在成本表外面，⭐ 而语义是假的。
+SHAPE_NOT_QUALITY = frozenset({"扇形退化斜率", "可达性增益"})
 
 
 def better(metric: str) -> int:
-    """指标的方向：⭐ +1 越大越好，⛔ −1 越小越好。"""
+    """指标的方向：⭐ +1 越大越好，⛔ −1 越小越好。
+
+    ⚠️ 对 `SHAPE_NOT_QUALITY` 里的指标问这个问题**本身就没有意义**——
+    ⛔ 调用方应当先用 `is_quality_axis()` 把它们挡在外面。
+    """
     return -1 if metric in LOWER_IS_BETTER else 1
+
+
+def is_quality_axis(metric: str) -> bool:
+    """这个指标能不能当质量轴（地板 / Δ / 成本×质量表）。
+
+    ⛔ 两类不行：⚠️ **形状**（什么都不做也能拿满分）与
+    **越低越好**（那张表默认越高越好，摆进去结论是反的）。
+    """
+    return metric not in SHAPE_NOT_QUALITY and metric not in LOWER_IS_BETTER
 
 
 def is_degenerate(arm: str, suite: str) -> bool:

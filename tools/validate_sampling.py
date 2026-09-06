@@ -44,7 +44,14 @@ def run_full(arm_name: str = "bm25") -> tuple[list[dict], dict[str, int]]:
     print(f"  摄入 {arm.count()} 块  {time.perf_counter() - t0:.0f}s", flush=True)
 
     t0 = time.perf_counter()
-    run = LocomoRetrievalSuite(data.questions, k=10).probe(arm, None)
+    # ⛔ 用 **pick() 的有效题池**，⚠️ 不是上游原始的 `data.questions`：
+    # 13 道题在任何语料上都不可能命中（4 道上游没给证据、9 道证据 id 是坏的），
+    # ⭐ 而这份实证是「小样本能给出全量答案」这条方法论主张的唯一支撑——
+    # ⛔ 跑在一个**评测器自己已经判定为不可用**的题池上，主张就悬空了。
+    from amb.suites.public import SampleSpec, Strategy, pick
+
+    pool = pick(data, SampleSpec(Strategy.ALL, seed=0)).items
+    run = LocomoRetrievalSuite(pool, k=10).probe(arm, None)
     print(f"  跑完 {len(run.observations)} 题  {time.perf_counter() - t0:.0f}s",
           flush=True)
 

@@ -54,7 +54,13 @@ def install_pip(dep: Dependency, *, upgrade: bool = False) -> Installed:
         have = installed_pip_version(dep.source)
 
     if have != dep.pin:
-        # ⛔ 装到的不是钉死的那个版本——那已经是另一个被测对象了
+        # ⛔ 装到的不是钉死的那个版本——那已经是另一个被测对象了。
+        # ⚠️ 但**先把「不 ok」落进锁文件再抛**：早先直接 raise，
+        # ⭐ 于是上一次成功的 `ok: true` 那一行原封不动留着——
+        # 报告那张版本表和 `require_installed()` 一起说谎。
+        _record(Installed(dep.name, dep.pin, have or "-", str(dep.kind), "",
+                          ok=False,
+                          detail=f"钉死 {dep.pin}，实际 {have}——⛔ 版本不符"))
         raise VersionMismatch(
             f"{dep.name}: 钉死 {dep.pin}，实际装到 {have}。"
             f"⛔ 拒绝——换版本等于换了被测对象"
@@ -113,6 +119,15 @@ def install(name: str, *, upgrade: bool = False) -> Installed:
     return got
 
 
+def _record(got: "Installed") -> None:
+    """把一行落进锁文件。⛔ **失败也要落**——⚠️ 只落成功的那几行，
+    上一次成功的 `ok: true` 就会原封不动留着，⭐ 而报告那张版本表
+    与 `require_installed()` 会一起说谎。"""
+    lock = load_lock()
+    lock[got.name] = got.as_dict()
+    save_lock(lock)
+
+
 def install_all(names: list[str] | None = None, *,
                 upgrade: bool = False) -> list[Installed]:
     out: list[Installed] = []
@@ -121,8 +136,11 @@ def install_all(names: list[str] | None = None, *,
             out.append(install(name, upgrade=upgrade))
         except (SetupError, ValueError) as exc:
             dep = REGISTRY[name]
-            out.append(Installed(name, dep.pin, "-", str(dep.kind), "",
-                                 ok=False, detail=str(exc)))
+            bad = Installed(name, dep.pin, "-", str(dep.kind), "",
+                            ok=False, detail=str(exc))
+            # ⛔ 失败也落锁文件：⚠️ 否则上一次成功那一行会留下来
+            _record(bad)
+            out.append(bad)
     return out
 
 

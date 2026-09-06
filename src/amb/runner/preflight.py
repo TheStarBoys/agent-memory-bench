@@ -239,7 +239,19 @@ def check_scoring(plan, out: Report, root: Path) -> None:
             continue
         if metric not in a.metrics or metric not in b.metrics:
             continue
-        if a.metrics[metric] > b.metrics[metric]:
+        # ⛔ 按**方向**比，⚠️ 不是裸 `>`：对「越低越好」的主指标
+        # （HEADLINE 里的 n7_calibration=ECE）裸比的结论完全反过来——
+        # ⭐ null 真赢时不报，null 输时反而报。
+        from amb.report.floor import better, is_quality_axis
+
+        # ⛔ 形状类指标（`扇形退化斜率`）**本来就**能被「什么都不做」赢——
+        # ⚠️ 那不是 bug，是它不该当质量轴。⭐ 它当上 HEADLINE 才是 bug。
+        if not is_quality_axis(metric):
+            out.add("fatal", "doing-nothing-wins",
+                    f"{suite} 的主指标是「{metric}」——⛔ 它是形状/反向指标，"
+                    f"不能当质量轴")
+            continue
+        if better(metric) * a.metrics[metric] > better(metric) * b.metrics[metric]:
             out.add("fatal", "doing-nothing-wins",
                     f"{suite} 的「{metric}」：null={a.metrics[metric]:.3f} > "
                     f"bm25={b.metrics[metric]:.3f}——⛔ 这个指标不能当质量轴")
@@ -265,7 +277,14 @@ def check_scoring(plan, out: Report, root: Path) -> None:
         if sc.status != "scored":
             continue
         metric = HEADLINE.get(suite)
-        if metric and metric in sc.metrics and sc.metrics[metric] >= CEILING:
+        if not (metric and metric in sc.metrics):
+            continue
+        from amb.report.floor import LOWER_IS_BETTER
+
+        # ⚠️ 「打满」对越低越好的指标是**逼近 0**，⛔ 不是逼近 1
+        maxed = (sc.metrics[metric] <= 1 - CEILING if metric in LOWER_IS_BETTER
+                 else sc.metrics[metric] >= CEILING)
+        if maxed:
             out.add("warn", "no-headroom",
                     f"{suite} 的「{metric}」：bm25 已经 "
                     f"{sc.metrics[metric]:.3f}——⚠️ 这一档没有判别空间")

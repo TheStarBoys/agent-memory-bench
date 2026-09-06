@@ -43,6 +43,15 @@ class WorldGuard:
                 f"  期望 {self._expected}\n  实际 {actual}"
             )
 
+    def matches(self) -> bool:
+        """世界还是原样吗。⭐ **只问不抛**——agent 档要的是这个。
+
+        ⚠️ 直接调库那一档用 `check()`（动了世界就作废，因为记忆插件
+        本来就不该写世界）；⛔ 但 agent 档里 agent 写文件**是它的工作**，
+        照直 check 会把评测器的过严守卫记成被测系统的错。
+        """
+        return self._now() == self._expected
+
     @property
     def expected(self) -> str:
         return self._expected

@@ -13,8 +13,9 @@ from amb.runner.build import (
     cache_report,
     control_arms,
     host_spec,
+    host_unavailable,
 )
 from amb.runner.guard import WorldGuard, WorldTampered
 from amb.runner.phases import Plan, now_rfc3339, run_one
 
-__all__ = ["AgentPlan", "build_plan", "parse_sample", "agent_arms", "run_one_agent", "Ledger", "answer_prompt", "corpus_fingerprint", "backbone", "build", "context_overflow", "ingest_identity", "cache_report", "host_spec", "control_arms", "Plan", "WorldGuard", "WorldTampered", "now_rfc3339", "run_one"]
+__all__ = ["AgentPlan", "build_plan", "parse_sample", "agent_arms", "run_one_agent", "Ledger", "answer_prompt", "corpus_fingerprint", "backbone", "build", "context_overflow", "ingest_identity", "cache_report", "host_spec", "host_unavailable", "control_arms", "Plan", "WorldGuard", "WorldTampered", "now_rfc3339", "run_one"]

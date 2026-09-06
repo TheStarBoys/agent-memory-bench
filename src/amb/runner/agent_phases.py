@@ -18,7 +18,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from amb.agent import AGENT_ARMS, Host, HostSpec, plan_for, write_patch
-from amb.core import Document, Phase, require
+from amb.core import Document, HarnessFault, SuiteRun, require
 from amb.report import ArmResult
 from amb.runner.accounting import Ledger
 from amb.runner.guard import WorldGuard
@@ -53,6 +53,24 @@ def _plugin_env(spec: HostSpec) -> dict[str, str]:
             env[name] = os.environ[name]
     env[spec.api_key_env] = require(spec.api_key_env)
     return env
+
+
+def _tell_style(host, style) -> None:
+    """把这个套件要的答题口径告诉 agent。
+
+    ⚠️ agent 档没有 `answering.py` 那层 system 提示——指令只能通过会话给。
+    ⭐ 而会话现在是跨轮的，所以说一次就够，⛔ 不必每题重复。
+    """
+    from amb.core import AnswerStyle
+
+    if style is None or style is AnswerStyle.STRICT:
+        return
+    if style is AnswerStyle.INDUCTIVE:
+        host.ask(
+            "接下来的问题里，如果我问到的那个具体个体你没有直接记录，"
+            "请**按你从同类个体归纳出的规律推断作答**，不要回答「不知道」或"
+            "「没有记录」。但如果你确实记着那个个体的情况，以你记着的为准。"
+            "听懂了只回复「好」。")
 
 
 def run_one_agent(name: str, spec: HostSpec, plan: AgentPlan, workdir: Path,
@@ -107,13 +125,30 @@ def run_one_agent(name: str, spec: HostSpec, plan: AgentPlan, workdir: Path,
                   else plan.suites)
         with ledger.measure("probe"):
             for suite in suites:
-                run = suite.probe(host, state)
+                # ⛔ 口径也跟套件走：⚠️ 直接调库那一档由 `phases.py` 的
+                # `_use_style` 挂，⭐ 而这一档早先**一次都没挂过**——
+                # 那正是 N8 四条臂全 0.000 的成因，在这一档原样保留着。
+                _tell_style(host, getattr(suite, "answer_style", None))
+                try:
+                    run = suite.probe(host, state)
+                except HarnessFault as exc:
+                    # ⛔ 与直接调库那一档对齐：⚠️ 框架自己的问题不该带走整条臂
+                    run = SuiteRun(suite.name, "harness_fault",
+                                   reason=str(exc)[:200])
                 result.scores[suite.name] = score(run)
                 items += len(run.observations)
                 for obs in run.observations:
                     memory_calls += len(obs.payload.get("memory_calls", ()))
                     steps += int(obs.payload.get("steps", 0))
-        guard.check(Phase.PROBE)
+        # ⛔ **这一档的守卫必须放宽**（模块文档第一段就是这么写的）：
+        # ⚠️ agent 在 probe 期间写文件是**它的工作**——N4 第一轮就是
+        # 「请记住：内部配方编号 K-7391」，一个带文件工具的 agent 很自然地
+        # 会把它写进 cwd。早先这里照直 `guard.check(Phase.PROBE)`，
+        # ⭐ 于是它被判 `WorldTampered` → 记 `crashed`——**框架的过严守卫
+        # 被记成了被测系统的错**。⚠️ 而同一个行为落在 ingest 阶段却被
+        # 下一行的 rebaseline 抹掉：同一件事，两条臂两种结局。
+        # ⭐ 改成记录**它动了什么**，不再判死。
+        result.cost_profile["world_touched"] = not guard.matches()
     finally:
         host.close()
 

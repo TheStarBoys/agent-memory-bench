@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-from amb.core import Observation, SuiteRun
+from amb.core import AnswerStyle, Observation, SuiteRun
 from amb.suites.agent_spec import AgentDriver, TurnRecord
 from amb.world import WorldState
 from amb.world.stream.regularity import Regularity
@@ -26,6 +26,9 @@ def _yes(text: str) -> bool | None:
 
 class AgentInductionSuite:
     name: ClassVar[str] = "n8_induction"
+    #: ⛔ 与直接调库那一档同一个口径：⚠️ ①③ 问的是**故意没进语料**的个体，
+    #: 默认那套「没有记录就说不知道」会让这一类结构上不可能得分。
+    answer_style: ClassVar[AnswerStyle] = AnswerStyle.INDUCTIVE
 
     def __init__(self, regularities: list[Regularity]) -> None:
         self._regs = regularities

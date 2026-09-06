@@ -21,7 +21,7 @@ from amb.runner import (
     answer_prompt, backbone, build, build_plan, cache_report, context_overflow,
     corpus_fingerprint,
     control_arms,
-    ingest_identity, now_rfc3339, run_one,
+    host_unavailable, ingest_identity, now_rfc3339, run_one,
 )
 
 
@@ -288,12 +288,28 @@ def _run_agent_lane(report: Report, names: list[str], workdir: Path) -> None:
 
     spec = host_spec()
     report.host = {"version": spec.version, "profile": spec.profile}
-    plan = AgentPlan(manifest=toy.MANIFEST, documents=toy.DOCUMENTS,
+    # ⛔ **喂全部语料**，⚠️ 不是只喂 5 篇世界文件：
+    # 早先这里是 `toy.DOCUMENTS`（4 个世界文件 + 1 条 N4 探针语料），
+    # 而 agent 档的探针有 46/57 题问的是 `extra_documents()`（618 篇）里的内容——
+    # ⭐ 那些内容既没进记忆、也不在世界文件里，于是 qa / n3 / n5 / n6 / n8
+    # 对**每一条臂**恒为 0.000，五条臂无从区分。⛔ 一个记忆层再好也拿不到分。
+    plan = AgentPlan(manifest=toy.MANIFEST, documents=toy.all_documents(),
                      changes=toy.CHANGES, suites_for=toy.agent_suites)
     for name in names:
         try:
             result, digest = run_one_agent(name, spec, plan, workdir / name,
                                            is_control=name in agent_arms())
+        except host_unavailable() as exc:
+            # ⛔ **宿主装不上是框架这一侧的事**，⚠️ 不是被测系统跑挂了。
+            # 早先它落进 `except Exception` → 记 `crashed` → 报告印
+            # 「它们不是不支持，也不是 0 分——是跑挂了」，⭐ 而那句
+            # 「记不可用，不是 0 分」原样躺在 crashed 列里。
+            why = str(exc)[:200]
+            print(f"⛔ agent/{name}: 宿主不可用（{why}）", file=sys.stderr)
+            report.lanes.setdefault("agent", []).append(
+                ArmResult(arm=name, is_control=name in agent_arms(),
+                          harness_fault=why))
+            continue
         except HarnessFault as exc:
             why = str(exc)[:200]
             print(f"⛔ agent/{name}: 框架自己的问题（{why}）", file=sys.stderr)

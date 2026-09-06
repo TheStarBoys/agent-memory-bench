@@ -144,6 +144,18 @@ def context_overflow() -> type[Exception]:
     return ContextOverflow
 
 
+def host_unavailable() -> type[Exception]:
+    """「宿主装不上/起不来」那个信号的类型。⚠️ 经 runner 转出，⛔ cli 不直接依赖 agent。
+
+    ⭐ 它是**框架这一侧**的不可用，⛔ 不是被测系统跑挂了——
+    ⚠️ 早先落进 `except Exception` 记成 `crashed`，于是那句
+    「记不可用，不是 0 分」原样躺在「跑挂了」那一列里。
+    """
+    from amb.agent import HostUnavailable
+
+    return HostUnavailable
+
+
 def control_arms() -> tuple[str, ...]:
     """五条对照组的名字。⚠️ 经 runner 转出，cli 不直接依赖 adapters。"""
     return CONTROL_ARMS

@@ -75,3 +75,45 @@ def test_snapshot_shape_is_report_ready() -> None:
 
     for name, row in snapshot().items():
         assert {"declared", "actual", "ok"} <= set(row), f"{name} 快照缺字段"
+
+
+# ── ⛔ 版本表不许说谎 ────────────────────────────────────────────
+def test_a_failed_install_is_written_to_the_lockfile() -> None:
+    """⛔ 只落成功那几行 = 上一次成功的 `ok: true` 原封不动留着。
+
+    ⚠️ 于是报告那张版本表与 `require_installed()` **一起说谎**：
+    ⭐ 而「没记录版本的跑不算数」是本项目的硬规矩。
+    """
+    import inspect
+
+    # ⚠️ `amb.setup.install` 这个名字被同名**函数**遮住了——
+    # ⛔ 这个坑在本仓库已经出现三次（amb.report.render / amb.cli.main / 这里）
+    from importlib import import_module
+
+    src = inspect.getsource(import_module("amb.setup.install"))
+    assert "def _record(" in src, "⛔ 没有「失败也落锁文件」这条路"
+    # ⭐ 版本对不上那条路径必须先落再抛
+    body = src[src.index("if have != dep.pin:"):]
+    assert body.index("_record(") < body.index("raise VersionMismatch")
+
+
+def test_venv_subprocesses_do_not_inherit_a_leaky_environment() -> None:
+    """⛔ 隔离必须是真的：⚠️ 版本核对与 `verify_import` 都在子进程里跑，
+    而 `PYTHONPATH` 指向 venv 外面时它们照样通过——⭐「装好了」是假的。
+
+    ⚠️ 用户的硬规矩：被测系统一律装进独立 venv，
+    ⛔ 绝不往 anaconda 之类的日常环境装任何东西。
+    """
+    from amb.setup.venv import _LEAKY, _clean_env
+
+    import os
+
+    for name in ("PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV", "CONDA_PREFIX"):
+        assert name in _LEAKY, f"⛔ {name} 会把外面的包漏进来"
+    os.environ["PYTHONPATH"] = "/tmp/leak"
+    try:
+        env = _clean_env()
+        assert "PYTHONPATH" not in env
+        assert env.get("PYTHONNOUSERSITE") == "1", "⚠️ 用户 site-packages 也是一条路"
+    finally:
+        os.environ.pop("PYTHONPATH", None)

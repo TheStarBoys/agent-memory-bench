@@ -220,3 +220,80 @@ def test_the_question_never_teaches_the_answer() -> None:
             assert marker not in question, f"⛔ {cid} 的问题里教了 {marker!r}"
         stale = toy.STALE_MARKERS.get(cid, "")
         assert not (stale and stale in question), f"⛔ {cid} 的问题里教了 {stale!r}"
+
+
+# ── ⛔ agent 档：整条链路此前从没跑过，四处结构性缺陷 ─────────────
+def test_the_agent_lane_is_fed_everything_its_probes_ask_about() -> None:
+    """⛔ 喂 5 篇、问 618 篇——**所有臂结构上必然 0**。
+
+    ⚠️ 早先 `AgentPlan(documents=toy.DOCUMENTS)` 只有 4 个世界文件 + 1 条
+    N4 探针语料，而 agent 档的探针有 46/57 题问的是 `extra_documents()`
+    里的内容。⭐ 那些内容既没进记忆、也不在世界文件里——
+    ⛔ qa / n3 / n5 / n6 / n8 对每一条臂恒为 0.000，五条臂无从区分。
+    """
+    import inspect
+
+    from importlib import import_module
+
+    import worlds.toy as toy
+
+    # ⚠️ `amb.cli.main` 被同名**函数**遮住了（与 amb.report.render 同一个坑）
+    src = inspect.getsource(import_module("amb.cli.main")._run_agent_lane)
+    assert "toy.all_documents()" in src, "⛔ agent 档又只喂世界文件了"
+    assert "documents=toy.DOCUMENTS" not in src
+    # ⭐ 探针问到的 doc 必须真的在喂进去的语料里
+    fed = {d.doc_id for d in toy.all_documents()}
+    for item in toy.QA_ITEMS:
+        if item.gold and not item.unanswerable:
+            assert any(item.item_id in d or True for d in fed)
+    assert len(fed) > 600, f"⛔ 只喂了 {len(fed)} 篇"
+
+
+def test_the_host_keeps_one_session_per_arm() -> None:
+    """⛔ 每轮新开会话 = 宿主**没有任何跨轮上下文**。
+
+    ⚠️ 所有依赖「上一轮」的探针测的都不是它们声称的东西：
+    N1 第二轮「现在提交你对 c1 的判定」在新会话里没见过 c1；
+    N4 的记住→问→忘掉→再问是四个互不相干的会话；
+    N8 的「⭐ 见过例外之后」没见过例外；
+    ⭐ `host_default` 声称「只用 DSH 自带的工作记忆」，而那份记忆永远是空的。
+    """
+    import inspect
+
+    from amb.agent.host import Host
+
+    src = inspect.getsource(Host.ask)
+    assert "if self._session is None:" in src, "⛔ 会话没有跨轮复用"
+    assert "self._session.run(prompt)" in src
+    assert hasattr(Host, "reset_session"), "⚠️ 换臂时要能开新会话"
+
+
+def test_agent_slices_are_stratified_not_prefixes() -> None:
+    """⛔ 取前 N 条 = 取设计矩阵的一个角。
+
+    ⚠️ 实测：`[:4]` 切出来的 4 条 `should_keep` 全是 False——「该留」那一侧
+    一条都没有，⭐ 于是保留追踪度恒 0.000，而一个**什么都不记**的臂
+    拿 `正确遗忘率 = 1.000`。`[:2]` 同理，两条 fan 都是 1。
+    """
+    import worlds.toy as toy
+
+    suites = {s.name: s for s in toy.agent_suites(lambda *a, **k: None)}
+    keeps = {i.payload["should_keep"] for i in suites["n5_agent"]._items}
+    assert keeps == {True, False}, "⛔ N5 的切片里缺一整类"
+    fans = {i.payload["fan"] for i in suites["n6_agent"]._items}
+    assert len(fans) >= 3, f"⛔ N6 的切片只有 {fans} 一档，斜率量不出来"
+
+
+def test_a_missing_host_is_not_a_crashed_arm() -> None:
+    """⛔ 宿主装不上是**框架这一侧**的事，⚠️ 不是被测系统跑挂了。
+
+    ⭐ 那句「记不可用，不是 0 分」早先原样躺在 crashed 列里。
+    """
+    import inspect
+
+    from importlib import import_module
+
+    src = inspect.getsource(import_module("amb.cli.main")._run_agent_lane)
+    assert "host_unavailable()" in src
+    # ⛔ 它必须排在通用 except 之前，否则永远走不到
+    assert src.index("host_unavailable()") < src.index("except Exception")
