@@ -229,6 +229,12 @@ def bootstrap(observations: list, recompute, metric_names: list[str], *,
         values.sort()
         lo = values[int(0.025 * len(values))]
         hi = values[min(len(values) - 1, int(0.975 * len(values)))]
+        if hi - lo < 1e-12:
+            # ⛔ **零宽区间不给**：⚠️ 每次重抽都得到同一个值，说明这个指标
+            # 在这批观测上是常数（退化臂尤其如此）。⭐ 那不是「估得很准」，
+            # 是「重抽样在这里没有信息」——而下游会把零宽读成
+            # 「与任何别的点估计都不重叠」→ 声称显著差异，证据是零方差。
+            continue
         out[m] = Interval(float(base.get(m, 0.0)), lo, hi, n)
     return out
 
@@ -239,8 +245,17 @@ PROPORTION_HINTS = (
     "率", "准确", "召回", "recall", "top1", "命中", "占比", "全对",
 )
 
+#: ⛔ **名字里带「率」但不是比例**的。⚠️ 实测踩到：`扇形退化斜率` 因为
+#: 「斜率」里有个「率」被判成比例，于是一个**回归斜率**被套上 Wilson，
+#: 当成 24 次伯努利试验；而同源的 `可达性增益`（没有「率」字）走重抽样——
+#: ⭐ 两个同类量走了两条路。
+NOT_PROPORTION = ("斜率", "增益", "单调性", "相关", "IoU", "置信度")
+
 
 def looks_like_proportion(metric: str) -> bool:
+    """⚠️ 先排除，再匹配——⛔ 顺序反了「斜率」会被「率」捞回来。"""
+    if any(h in metric for h in NOT_PROPORTION):
+        return False
     return any(h in metric for h in PROPORTION_HINTS)
 
 

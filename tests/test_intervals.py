@@ -44,7 +44,31 @@ def test_raw_counts_do_not_get_intervals() -> None:
 
 
 def test_non_proportion_metrics_get_bootstrap_intervals() -> None:
-    """⭐ 秩相关不是比例——⛔ 套 Wilson 是错的，但也不能不给区间。"""
+    """⭐ 秩相关不是比例——⛔ 套 Wilson 是错的，但也不能不给区间。
+
+    ⚠️ 夹具**刻意留了噪声**（每 7 条翻一次）：⛔ 完美相关时每次重抽都得到
+    1.000，零方差——而 bootstrap 在边界上本来就失效，那时候**不给区间**
+    才是对的（见下一条）。
+    """
+    r = SuiteRun("n5_observed", "scored")
+    for i in range(40):
+        keep = i % 3 != 0
+        r.observations.append(Observation(f"f{i}", {
+            "should_keep": keep, "retained": keep if i % 7 else not keep,
+            "need": 0.9 if keep else 0.1,
+            "frequency": 10 if keep else 1,
+            "spacing": "distributed" if keep else "once", "salient": keep}))
+    ci = score(r).interval("保留追踪度")
+    assert ci is not None and ci.low <= ci.point <= ci.high
+
+
+def test_a_zero_width_bootstrap_interval_is_not_reported() -> None:
+    """⛔ 零宽区间会被下游读成「与任何别的点估计都不重叠」→ 声称显著差异，
+    ⚠️ 而证据是**零方差**。
+
+    ⭐ 每次重抽都得到同一个值，说明这个指标在这批观测上是常数
+    （退化臂尤其如此）——那不是「估得很准」，是「重抽样在这里没有信息」。
+    """
     r = SuiteRun("n5_observed", "scored")
     for i in range(40):
         keep = i % 3 != 0
@@ -52,8 +76,7 @@ def test_non_proportion_metrics_get_bootstrap_intervals() -> None:
             "should_keep": keep, "retained": keep, "need": 0.9 if keep else 0.1,
             "frequency": 10 if keep else 1,
             "spacing": "distributed" if keep else "once", "salient": keep}))
-    ci = score(r).interval("保留追踪度")
-    assert ci is not None and ci.low <= ci.point <= ci.high
+    assert score(r).interval("保留追踪度") is None
 
 
 def test_smaller_samples_give_wider_intervals() -> None:
@@ -119,3 +142,49 @@ def test_documented_interval_widths_match_the_code() -> None:
 def test_detectable_difference_shrinks_with_n() -> None:
     xs = [detectable_difference(0.52, n) for n in (7, 50, 200, 1986)]
     assert all(a > b for a, b in zip(xs[:-1], xs[1:], strict=True))
+
+
+# ── ⛔ 区间的分母必须是**这个指标自己的**分母 ────────────────────
+def test_each_rate_gets_its_own_denominator() -> None:
+    """⛔ 这是本项目**唯一**阻止「声称 A 比 B 好」的机制的地基。
+
+    ⚠️ 早先所有 Wilson 区间都用 `len(观测数)`，而 14 个比例指标的真实分母
+    不是它——⭐ 区间被压窄 → 与地板不重叠 → 报告直接印显著差异。
+    实测：40 题里只有 2 道该弃权，`编造率` 却按 n=40 配区间。
+    """
+    r = SuiteRun("qa", "scored")
+    for i in range(40):
+        r.observations.append(Observation(f"q{i}", {
+            "text": "新皮层", "gold": ["新皮层"], "unanswerable": i >= 38}))
+    sc = score(r)
+    assert sc.interval("准确率").n == 38, "⛔ 准确率的分母是**可答题数**"
+    assert sc.interval("编造率").n == 2, "⛔ 编造率的分母是**该弃权的题数**"
+    # ⭐ 分母小 → 区间宽。⛔ 这正是早先被压掉的东西
+    assert sc.interval("编造率").half_width > sc.interval("准确率").half_width
+
+
+def test_a_metric_with_no_denominator_is_absent_not_zero() -> None:
+    """⛔ 实测：`dialogue` 世界一道弃权题都没有，却印出
+    「编造率 0.000，95% 区间 [0.000, 0.031]」——⚠️ 那不是「测出来很低」，
+    是「没测」，⭐ 而读者分不出来。
+    """
+    r = SuiteRun("qa", "scored")
+    for i in range(20):
+        r.observations.append(Observation(f"q{i}", {
+            "text": "新皮层", "gold": ["新皮层"], "unanswerable": False}))
+    m = score(r).metrics
+    assert "准确率" in m
+    assert "编造率" not in m and "正确弃权率" not in m
+
+
+def test_a_slope_is_never_given_a_wilson_interval() -> None:
+    """⛔ `扇形退化斜率` 里有个「率」字，⚠️ 但它是**回归斜率**不是比例——
+    早先被当成 24 次伯努利试验套上了 Wilson，⭐ 而同源的 `可达性增益`
+    （没有「率」字）走重抽样：**两个同类量走了两条路**。
+    """
+    from amb.scoring.statistics import looks_like_proportion
+
+    for m in ("扇形退化斜率", "可达性增益", "规律强度单调性"):
+        assert not looks_like_proportion(m), f"⛔ {m} 不是比例"
+    for m in ("准确率", "top1", "全对"):
+        assert looks_like_proportion(m)

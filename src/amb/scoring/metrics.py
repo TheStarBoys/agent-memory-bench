@@ -30,6 +30,12 @@ class Score:
     #: ⭐ 不得发布的理由（⚠️ 空串 = 可发布）。⛔ 与 status 是两件事：
     #: 分算得出来，但 ground truth 本身立不住——见 SuiteRun.not_publishable。
     not_publishable: str = ""
+    #: ⭐ **每个指标各自的分母**。⛔ 不给就退回观测数——⚠️ 而那正是那个 bug：
+    #: `准确率` 的分母是可答题数、`检出率` 是该 broken 的题数、
+    #: `精确匹配率` 是给出了区间的题数……早先一律按观测数配 Wilson 区间，
+    #: ⭐ 区间被压窄 → 与地板不重叠 → 报告直接印显著差异。
+    #: ⛔ 而区间重叠是这个项目**唯一**阻止「声称 A 比 B 好」的机制。
+    denominators: dict[str, int] = field(default_factory=dict)
 
     def interval(self, metric: str) -> Interval | None:
         return self.intervals.get(metric)
@@ -40,12 +46,35 @@ class Score:
 UNTRUSTED_THRESHOLD = 0.20
 
 
+def _rate(s: Score, name: str, num: float, den: int) -> None:
+    """记一个比例，**连同它自己的分母**。
+
+    ⛔ 分母为 0 就**不记这个指标**：⚠️ 早先靠 `or 1` 变成 0.000 照常进报告，
+    实测 `dialogue` 世界一道弃权题都没有，却印出
+    「编造率 0.000，95% 区间 [0.000, 0.031]」——⭐ 那不是「测出来很低」，
+    是「没测」，⛔ 而读者分不出来。
+    """
+    if den <= 0:
+        return
+    s.metrics[name] = num / den
+    s.denominators[name] = den
+
+
 def _finish(score: Score, run: SuiteRun) -> Score:
     # ⛔ 一路带到报告：⚠️ 断在这里的话，一个「不得发布」的数会照常进对比表
     score.not_publishable = run.not_publishable
     total = len(run.observations) + run.failed
     score.denominator = total
     score.failed_rate = run.failed / total if total else 0.0
+    if total == 0 and score.status == "scored":
+        # ⛔ **一题都没跑不是「有分」**：⚠️ 早先各 scorer 的 `or 1` 把 0/0
+        # 变成 0.000，status 仍是 scored，于是一整排 0.000 进对比表，
+        # ⭐ 读作「这个系统一条都做不对」，而真相是「一道题都没出」。
+        # 实测入口：`factgraph(depth=1)` 产出 0 道题。
+        score.status = "unsupported"
+        score.reason = "这一跑没有观测——⛔ 不是 0 分，是没题"
+        score.metrics = {}
+        return score
     if score.failed_rate > UNTRUSTED_THRESHOLD:
         score.status = "untrusted"
         score.reason = f"Failed 率 {score.failed_rate:.0%} 超过 {UNTRUSTED_THRESHOLD:.0%}"
@@ -61,8 +90,9 @@ def score_retrieval(run: SuiteRun) -> Score:
         gold = set(obs.payload["gold"])
         hit1 += bool(obs.payload["top1"] in gold)
         hitk += bool(gold & set(obs.payload["retrieved"]))
-    n = len(run.observations) or 1
-    s.metrics = {"top1": hit1 / n, "recall@k": hitk / n}
+    n = len(run.observations)
+    _rate(s, "top1", hit1, n)
+    _rate(s, "recall@k", hitk, n)
     return _finish(s, run)
 
 
@@ -97,18 +127,15 @@ def score_provenance(run: SuiteRun) -> Score:
         elif a < g0 or b > g1:
             overrun += 1
 
-    n = len(run.observations) or 1
     ious.sort()
-    s.metrics = {"回链率": given / n}
+    _rate(s, "回链率", given, len(run.observations))
     if given:
         # ⛔ 后四个的分母是「给出的区间」。一条都没给出时它们**未定义**，
         #    不是 0——0 会被读成「给了但全错」，而那是编造，不是沉默。
-        s.metrics |= {
-            "精确匹配率": exact / given,
-            "IoU_p50": ious[len(ious) // 2],
-            "越界率": overrun / given,
-            "错链率": wrong / given,
-        }
+        _rate(s, "精确匹配率", exact, given)
+        _rate(s, "越界率", overrun, given)
+        _rate(s, "错链率", wrong, given)
+        s.metrics["IoU_p50"] = ious[len(ious) // 2]
     return _finish(s, run)
 
 
@@ -131,18 +158,18 @@ def score_reality(run: SuiteRun) -> Score:
     # ⚠️ agent 档才有：它是不是被提醒了才提交
     reminded = [o for o in run.observations if o.payload.get("needed_reminder")]
 
-    holds_side = sum(cell[f"holds→{r}"] for r in ("holds", "broken", "unknown")) or 1
-    broken_side = sum(cell[f"broken→{r}"] for r in ("holds", "broken", "unknown")) or 1
-    total = len(run.observations) or 1
-    s.metrics = {
-        **{k: float(v) for k, v in cell.items()},
-        "检出率": cell["broken→broken"] / broken_side,
-        "误报率": cell["holds→broken"] / holds_side,
-        "弃权率": (cell["holds→unknown"] + cell["broken→unknown"]) / total,
-    }
+    holds_side = sum(cell[f"holds→{r}"] for r in ("holds", "broken", "unknown"))
+    broken_side = sum(cell[f"broken→{r}"] for r in ("holds", "broken", "unknown"))
+    total = len(run.observations)
+    s.metrics = {k: float(v) for k, v in cell.items()}
+    # ⛔ 三个率三个**不同的分母**：⚠️ 检出率只看该 broken 的那一侧，
+    # 误报率只看该 holds 的那一侧——按观测数配区间会把两者都压窄。
+    _rate(s, "检出率", cell["broken→broken"], broken_side)
+    _rate(s, "误报率", cell["holds→broken"], holds_side)
+    _rate(s, "弃权率", cell["holds→unknown"] + cell["broken→unknown"], total)
     if reminded:
         # ⚠️ 这一格量的是指令遵循，不是记忆能力——⛔ 不进主指标，但要看得见
-        s.metrics["需提醒率"] = len(reminded) / total
+        _rate(s, "需提醒率", len(reminded), total)
     return _finish(s, run)
 
 
@@ -192,16 +219,17 @@ def score_qa(run: SuiteRun) -> Score:
         else:
             correct += any(_normalize(g) in text for g in obs.payload["gold"])
 
-    answerable = sum(1 for o in run.observations if not o.payload["unanswerable"]) or 1
-    unanswerable = sum(1 for o in run.observations if o.payload["unanswerable"]) or 1
-    s.metrics = {
-        "准确率": correct / answerable,
-        "该答却弃权": abstained_wrong / answerable,
-        # ⭐ 这两个必须与准确率同屏：只报准确率的话，
-        #    一个见题就编的系统会比一个诚实弃权的系统好看。
-        "正确弃权率": abstained_right / unanswerable,
-        "编造率": fabricated / unanswerable,
-    }
+    answerable = sum(1 for o in run.observations if not o.payload["unanswerable"])
+    unanswerable = sum(1 for o in run.observations if o.payload["unanswerable"])
+    # ⛔ 两组各有各的分母，⚠️ 且一组为空时那两个指标**不出现**——
+    # 实测 `dialogue` 世界一道弃权题都没有，早先照样印
+    # 「编造率 0.000 [0.000, 0.031]」，⭐ 那不是「很低」，是「没测」。
+    _rate(s, "准确率", correct, answerable)
+    _rate(s, "该答却弃权", abstained_wrong, answerable)
+    # ⭐ 这两个必须与准确率同屏：只报准确率的话，
+    #    一个见题就编的系统会比一个诚实弃权的系统好看。
+    _rate(s, "正确弃权率", abstained_right, unanswerable)
+    _rate(s, "编造率", fabricated, unanswerable)
     return _finish(s, run)
 
 
@@ -228,12 +256,14 @@ def score_governance(run: SuiteRun) -> Score:
     for obs in run.observations:
         by_group.setdefault(obs.payload["group"], []).append(obs.payload)
 
-    metrics: dict[str, float] = {}
+    s.metrics = {}
+    metrics = s.metrics
 
     attribution = by_group.get("attribution") or []
     if attribution:
-        total = attribution[0]["total"] or 1
-        metrics["归属率"] = attribution[0]["with_principal"] / total
+        # ⛔ 分母是**那次检索命中的条数**，⚠️ 与观测数（3 条汇总行）无关
+        _rate(s, "归属率", attribution[0]["with_principal"],
+              attribution[0]["total"])
 
     isolation = by_group.get("isolation") or []
     if isolation:
@@ -248,12 +278,14 @@ def score_governance(run: SuiteRun) -> Score:
     if deletion:
         n = len(deletion)
         for step in _DELETE_STEPS:
+            # ⚠️ 这几个走 `_COUNT_HINTS` 的「删除_」前缀，不配区间；
+            # ⛔ 但分母仍要记对——`彻底删除率` 是从它派生的
             metrics[f"删除_{step}"] = sum(
                 1 for d in deletion if d["reached"] == step) / n
-        # ⛔ 只有走完第四步才算彻底删除
-        metrics["彻底删除率"] = metrics["删除_gone_from_storage"]
+        # ⛔ 只有走完第四步才算彻底删除。⚠️ 分母是**删除探针数**
+        _rate(s, "彻底删除率",
+              sum(1 for d in deletion if d["reached"] == "gone_from_storage"), n)
 
-    s.metrics = metrics
     return _finish(s, run)
 
 
@@ -269,20 +301,19 @@ def score_agent_provenance(run: SuiteRun) -> Score:
     if run.status != "scored":
         return s
 
-    n = len(run.observations) or 1
+    n = len(run.observations)
     via_memory = [o.payload for o in run.observations if o.payload["used_memory"]]
-    m = len(via_memory) or 1
-    s.metrics = {
-        "经记忆作答率": len(via_memory) / n,
-        # 下面三个的分母是「经记忆作答的题」——⛔ 不含它自己去读文件的
-        "来源正确率": sum(1 for o in via_memory if o["cited_gold"]) / m,
-        "来源说错率": sum(
-            1 for o in via_memory if o["cited_wrong"] and not o["cited_gold"]) / m,
-        "来源说不出率": sum(1 for o in via_memory if o["said_unsure"]) / m,
-        # ⚠️ 这一格越高，上面三个越不能代表记忆层
-        "绕过记忆率": sum(1 for o in run.observations
-                          if not o.payload["used_memory"]) / n,
-    }
+    m = len(via_memory)
+    _rate(s, "经记忆作答率", len(via_memory), n)
+    # ⛔ 下面三个的分母是「经记忆作答的题」——⚠️ 不含它自己去读文件的，
+    # 且一条都没有时它们**未定义**，不是 0.000
+    _rate(s, "来源正确率", sum(1 for o in via_memory if o["cited_gold"]), m)
+    _rate(s, "来源说错率", sum(
+        1 for o in via_memory if o["cited_wrong"] and not o["cited_gold"]), m)
+    _rate(s, "来源说不出率", sum(1 for o in via_memory if o["said_unsure"]), m)
+    # ⚠️ 这一格越高，上面三个越不能代表记忆层
+    _rate(s, "绕过记忆率",
+          sum(1 for o in run.observations if not o.payload["used_memory"]), n)
     return _finish(s, run)
 
 
@@ -329,21 +360,22 @@ def score_retention(run: SuiteRun) -> Score:
         keep, kept = obs.payload["should_keep"], obs.payload["retained"]
         cell[f"{'该留' if keep else '该丢'}-{'留了' if kept else '丢了'}"] += 1
 
-    keep_side = cell["该留-留了"] + cell["该留-丢了"] or 1
-    drop_side = cell["该丢-留了"] + cell["该丢-丢了"] or 1
+    keep_side = cell["该留-留了"] + cell["该留-丢了"]
+    drop_side = cell["该丢-留了"] + cell["该丢-丢了"]
 
     payloads = [o.payload for o in run.observations]
-    metrics: dict[str, float] = {
-        **{k: float(v) for k, v in cell.items()},
-        "正确保留率": cell["该留-留了"] / keep_side,
-        # ⭐ 这一个不报，从不遗忘的系统就满分了
-        "正确遗忘率": cell["该丢-丢了"] / drop_side,
-        "囤积率": cell["该丢-留了"] / drop_side,
-        "误删率": cell["该留-丢了"] / keep_side,
-        # 保留行为是否追踪需求概率
-        "保留追踪度": _spearman([p["need"] for p in payloads],
-                                 [float(p["retained"]) for p in payloads]),
-    }
+    s.metrics = {k: float(v) for k, v in cell.items()}
+    # ⛔ 两侧各有各的分母：⚠️ 该留那一侧一条都没有时，
+    # 「正确保留率」是**未定义**，不是 0.000
+    _rate(s, "正确保留率", cell["该留-留了"], keep_side)
+    # ⭐ 这一个不报，从不遗忘的系统就满分了
+    _rate(s, "正确遗忘率", cell["该丢-丢了"], drop_side)
+    _rate(s, "囤积率", cell["该丢-留了"], drop_side)
+    _rate(s, "误删率", cell["该留-丢了"], keep_side)
+    metrics = s.metrics
+    # 保留行为是否追踪需求概率
+    metrics["保留追踪度"] = _spearman([p["need"] for p in payloads],
+                                       [float(p["retained"]) for p in payloads])
 
     # ⭐ 三个因子各自的贡献——正交设计就是为了这三行
     metrics["因子_频率"] = _spearman([float(p["frequency"]) for p in payloads],
@@ -463,21 +495,24 @@ def score_calibration(run: SuiteRun) -> Score:
         low = sum(float(r["correct"]) for r in ordered[:half]) / half
         high = sum(float(r["correct"]) for r in ordered[-half:]) / half
 
-    metrics = {"ECE": ece, "Brier": brier, "区分度": high - low, **diagram}
+    s.metrics = {"ECE": ece, "Brier": brier, "区分度": high - low, **diagram}
+    metrics = s.metrics
 
     # ⭐ 显著性子测：自信但不更准 —— 复现了闪光灯记忆那个已知的人类 bug
     salient = [r for r in rows if r["salient"]]
     plain = [r for r in rows if not r["salient"]]
     if salient and plain:
-        sa = sum(float(r["correct"]) for r in salient) / len(salient)
+        # ⛔ 两组各有各的分母：⚠️ 按观测数配区间会把两个准确率都压窄
+        _rate(s, "显著_准确率", sum(float(r["correct"]) for r in salient),
+              len(salient))
+        _rate(s, "普通_准确率", sum(float(r["correct"]) for r in plain),
+              len(plain))
+        sa, pa = metrics["显著_准确率"], metrics["普通_准确率"]
         sc = sum(r["confidence"] for r in salient) / len(salient)
-        pa = sum(float(r["correct"]) for r in plain) / len(plain)
         pc = sum(r["confidence"] for r in plain) / len(plain)
-        metrics |= {"显著_准确率": sa, "显著_置信度": sc,
-                    "普通_准确率": pa, "普通_置信度": pc,
+        metrics |= {"显著_置信度": sc, "普通_置信度": pc,
                     # ⛔ 这一格 > 0 是失分项：准确率没涨而自信涨了
                     "自信但不更准": max(0.0, (sc - pc) - (sa - pa))}
-    s.metrics = metrics
     return _finish(s, run)
 
 
@@ -509,15 +544,16 @@ def score_induction(run: SuiteRun) -> Score:
         rates.append(p["rate"])
         applied.append(float(p["generalises"]))
 
-    n = len(run.observations) or 1
-    metrics = {k: v / n for k, v in behaviour.items()}
-    metrics |= {f"计数_{k}": float(v) for k, v in behaviour.items()}
+    n = len(run.observations)
+    s.metrics = {f"计数_{k}": float(v) for k, v in behaviour.items()}
+    for k, v in behaviour.items():
+        _rate(s, k, v, n)
+    metrics = s.metrics
     # ⚠️ 判分口径是单调性不是绝对值：
     # 「95% 的规律比 60% 的更常被应用」可判，「60% 该被应用多少次」不可判
     metrics["规律强度单调性"] = _spearman(rates, applied)
-    metrics["未解析率"] = sum(
-        1 for o in run.observations if o.payload["unparsed"]) / n
-    s.metrics = metrics
+    _rate(s, "未解析率",
+          sum(1 for o in run.observations if o.payload["unparsed"]), n)
     return _finish(s, run)
 
 
@@ -532,22 +568,19 @@ def score_reasoning(run: SuiteRun) -> Score:
         return s
 
     rows = [o.payload for o in run.observations]
-    n = len(rows) or 1
+    n = len(rows)
     right = [r for r in rows if r["conclusion_ok"]]
-    r_n = len(right) or 1
     with_chain = [r for r in rows if r["gave_chain"]]
 
-    s.metrics = {
-        "结论准确率": len(right) / n,
-        # ⭐ 结论对 **且** 每一步都成立
-        "链条完好率": sum(1 for r in rows
-                          if r["conclusion_ok"] and r["chain_ok"]) / n,
-        # ⭐ 这一个就是表面共现的贡献
-        "蒙对率": sum(1 for r in right if not r["chain_ok"]) / r_n,
-        "给链条率": len(with_chain) / n,
-        # ⚠️ 未决不算错——说「我缺前提 X」比直接答「否」更有用
-        "未决率": sum(1 for r in rows if r["undecided"]) / n,
-    }
+    _rate(s, "结论准确率", len(right), n)
+    # ⭐ 结论对 **且** 每一步都成立
+    _rate(s, "链条完好率",
+          sum(1 for r in rows if r["conclusion_ok"] and r["chain_ok"]), n)
+    # ⭐ 这一个就是表面共现的贡献——⛔ 分母是**结论对的题**，不是全部
+    _rate(s, "蒙对率", sum(1 for r in right if not r["chain_ok"]), len(right))
+    _rate(s, "给链条率", len(with_chain), n)
+    # ⚠️ 未决不算错——说「我缺前提 X」比直接答「否」更有用
+    _rate(s, "未决率", sum(1 for r in rows if r["undecided"]), n)
     return _finish(s, run)
 
 
@@ -615,19 +648,18 @@ def score_locomo_answer(run: SuiteRun) -> Score:
             correct += any(_normalize(str(g)) in text for g in r["gold"])
             loose += _loose_hit(r["text"], r["gold"])
 
-    answerable = sum(1 for r in rows if not r["unanswerable"]) or 1
-    unanswerable = sum(1 for r in rows if r["unanswerable"]) or 1
-    s.metrics = {
-        "准确率": correct / answerable,
-        # ⭐ 判分上界。⛔ 不是分数——它与准确率的差就是这把尺的不确定度
-        "宽松准确率": loose / answerable,
-        "该答却弃权": abstained_wrong / answerable,
-        # ⭐ 这两个必须与准确率同屏：只报准确率的话，
-        #    一个见题就编的系统会比一个诚实弃权的系统好看
-        "正确弃权率": abstained_right / unanswerable,
-        "编造率": fabricated / unanswerable,
-        "题数": float(len(rows)),
-    }
+    answerable = sum(1 for r in rows if not r["unanswerable"])
+    unanswerable = sum(1 for r in rows if r["unanswerable"])
+    # ⛔ 两组各有各的分母，⚠️ 一组为空时那几个指标**不出现**
+    _rate(s, "准确率", correct, answerable)
+    # ⭐ 判分上界。⛔ 不是分数——它与准确率的差就是这把尺的不确定度
+    _rate(s, "宽松准确率", loose, answerable)
+    _rate(s, "该答却弃权", abstained_wrong, answerable)
+    # ⭐ 这两个必须与准确率同屏：只报准确率的话，
+    #    一个见题就编的系统会比一个诚实弃权的系统好看
+    _rate(s, "正确弃权率", abstained_right, unanswerable)
+    _rate(s, "编造率", fabricated, unanswerable)
+    s.metrics["题数"] = float(len(rows))
     # ⭐ 逐类分开——⛔ 22% 是弃权题，总分会把那一类糊掉
     by_cat: dict[str, list] = {}
     for r in rows:
@@ -637,12 +669,12 @@ def score_locomo_answer(run: SuiteRun) -> Score:
         if subset[0]["unanswerable"]:
             # ⛔ 弃权类没有 gold，「准确率」在这一类无意义——报正确弃权率
             right = sum(1 for r in subset if _said_abstain(r["text"]))
-            s.metrics[f"正确弃权率_{stratum}"] = right / len(subset)
+            _rate(s, f"正确弃权率_{stratum}", right, len(subset))
         else:
             ok = sum(1 for r in subset
                      if any(_normalize(str(g)) in _normalize(r["text"])
                             for g in r["gold"]))
-            s.metrics[f"准确率_{stratum}"] = ok / len(subset)
+            _rate(s, f"准确率_{stratum}", ok, len(subset))
         s.metrics[f"题数_{stratum}"] = float(len(subset))
     return _finish(s, run)
 
@@ -658,28 +690,25 @@ def score_locomo_retrieval(run: SuiteRun) -> Score:
         return s
 
     rows = [o.payload for o in run.observations]
-    n = len(rows) or 1
+    n = len(rows)
 
-    def recall(subset: list) -> float:
-        got = sum(len(r["hit"]) for r in subset)
-        want = sum(len(r["gold"]) for r in subset) or 1
-        return got / want
+    def recall_of(subset: list) -> tuple[int, int]:
+        """⛔ 分母是 **gold 证据的条数**，⚠️ 不是题数——通常大得多。"""
+        return (sum(len(r["hit"]) for r in subset),
+                sum(len(r["gold"]) for r in subset))
 
-    def hit_any(subset: list) -> float:
-        return sum(1 for r in subset if r["hit"]) / (len(subset) or 1)
-
-    s.metrics = {
-        "evidence_recall": recall(rows),
-        "命中任一率": hit_any(rows),
-        "题数": float(n),
-    }
+    got, want = recall_of(rows)
+    _rate(s, "evidence_recall", got, want)
+    _rate(s, "命中任一率", sum(1 for r in rows if r["hit"]), n)
+    s.metrics["题数"] = float(n)
     # ⭐ 逐类分开——⛔ 总分会把弃权那一类糊掉
     by_cat: dict[str, list] = {}
     for r in rows:
         by_cat.setdefault(r["stratum"], []).append(r)
     for stratum in sorted(by_cat):
         subset = by_cat[stratum]
-        s.metrics[f"recall_{stratum}"] = recall(subset)
+        sub_got, sub_want = recall_of(subset)
+        _rate(s, f"recall_{stratum}", sub_got, sub_want)
         s.metrics[f"题数_{stratum}"] = float(len(subset))
     return _finish(s, run)
 
@@ -739,9 +768,12 @@ def _intervals_for(run: SuiteRun, scorer, got: Score, *,
     boot_needed: list[str] = []
     for m in wanted:
         value = got.metrics[m]
-        if looks_like_proportion(m) and 0.0 <= value <= 1.0:
-            # ⚠️ 用比例还原成功数——分母是观测数，⛔ 不是别的
-            out[m] = wilson(value * n, n)
+        # ⛔ 用**这个指标自己的**分母，⚠️ 不是观测数：
+        # `准确率` 的分母是可答题数、`检出率` 是该 broken 的题数……
+        # ⭐ 用观测数会把区间压窄，而区间重叠是唯一阻止「声称 A 比 B 好」的闸门。
+        den = got.denominators.get(m, n)
+        if looks_like_proportion(m) and 0.0 <= value <= 1.0 and den >= 1:
+            out[m] = wilson(value * den, den)
         else:
             boot_needed.append(m)
 

@@ -229,7 +229,7 @@ def test_our_own_fault_is_not_the_systems_fault() -> None:
 
 def test_a_harness_fault_does_not_take_down_the_whole_arm(tmp_path) -> None:
     """⭐ 一个套件撞上框架问题，别的套件照跑——⛔ 不整条臂判死。"""
-    from amb.core import Capability, HarnessFault, SuiteRun
+    from amb.core import Capability, HarnessFault, Observation, SuiteRun
     from amb.runner import Plan, build, run_one
 
     import worlds.toy as toy
@@ -246,7 +246,11 @@ def test_a_harness_fault_does_not_take_down_the_whole_arm(tmp_path) -> None:
         requires = frozenset({Capability.SEARCH})
 
         def probe(self, adapter, world):
-            return SuiteRun(self.name, "scored")
+            run = SuiteRun(self.name, "scored")
+            # ⚠️ 必须有观测：⛔ 空观测现在判 `unsupported`（那不是 0 分，是没题）
+            run.observations.append(Observation("q", {
+                "gold": ["d"], "retrieved": ["d"], "top1": "d"}))
+            return run
 
     r, _ = run_one("bm25", build("bm25"),
                    Plan(manifest=toy.MANIFEST, documents=toy.DOCUMENTS,

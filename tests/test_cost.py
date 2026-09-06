@@ -609,3 +609,17 @@ def test_a_degenerate_arm_cannot_widen_the_spread() -> None:
         [arm("full_context"), arm("bm25"), arm("null")], ["retrieval"]))
     assert "不给判定" in text, "⛔ 剔除退化臂之后质量列是平的"
     assert "没有存在理由" not in text
+
+
+def test_no_interval_means_refuse_to_claim() -> None:
+    """⛔ 没有区间时**拒绝声称差异**，⚠️ 而不是免检。
+
+    ⭐ 区间缺席（n<2、重抽样算不出来、零宽被压掉）说明这一跑
+    **答不了这个问题**——早先这里直接落到「声称」分支，方向正好反了。
+    """
+    from amb.report.floor import Floor
+    from amb.report.render import _delta_text
+
+    text = _delta_text(0.9, None, Floor("bm25", 0.2), None, "top1")
+    assert "不作判断" in text and "无区间" in text
+    assert "帮倒忙" not in text

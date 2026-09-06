@@ -116,7 +116,12 @@ def _delta_text(value: float, ci, floor, floor_ci, metric: str = "") -> str:
     d = delta(value, floor, metric)
     if d is None:
         return ""
-    if ci is not None and floor_ci is not None and ci.overlaps(floor_ci):
+    if ci is None or floor_ci is None:
+        # ⛔ **没有区间就不许声称差异**。⚠️ 早先这里直接落到声称分支——
+        # 方向正好反了：区间缺席（n<2、重抽样算不出来、名字撞上计数前缀）
+        # 说明这一跑**答不了这个问题**，⭐ 而不是「不必检查重叠」。
+        return f"（差 {d:+.3f}，⛔ 无区间，不作判断）"
+    if ci.overlaps(floor_ci):
         n = min(ci.n, floor_ci.n)
         mde = detectable_difference(min(value, floor.value), n)
         return (f"⛔ 分不开（差 {d:+.3f}，n={n} 只能辨 ≥{mde:.3f}）")

@@ -212,7 +212,10 @@ def test_reading_the_file_directly_does_not_count_as_provenance() -> None:
     m = score(run).metrics
     assert m["绕过记忆率"] == 1.0
     assert m["经记忆作答率"] == 0.0
-    assert m["来源正确率"] == 0.0, "⛔ 没经记忆的正确不算记忆层的功劳"
+    # ⛔ 一条都没经记忆 → 「来源正确率」的分母是 0 → **这个指标不出现**。
+    # ⚠️ 早先它是 0.000，⭐ 但那读起来像「试过了、全错」，
+    # 而真相是「压根没有可判的题」——不拿 0 冒充未定义。
+    assert "来源正确率" not in m, "⛔ 没经记忆的正确不算记忆层的功劳"
 
 
 def test_provenance_counted_only_when_memory_was_used() -> None:
