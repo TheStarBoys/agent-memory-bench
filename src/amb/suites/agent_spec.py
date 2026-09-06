@@ -42,6 +42,10 @@ class TurnRecord:
     text: str
     memory_calls: list[str] = field(default_factory=list)
     steps: int = 0
+    #: ⭐ 会话怎么结束的。⛔ 早先采集了却**全仓库无人使用**——
+    #: ⚠️ 一次以 error/canceled 结束的会话产出 `text=""`，
+    #: 被当成「答错了」计进分母，⭐ 而那是**没做成**，不是做错。
+    finish_reason: str | None = None
 
     @classmethod
     def of(cls, prompt: str, turn: AgentTurn) -> "TurnRecord":
@@ -53,7 +57,14 @@ class TurnRecord:
             text=turn.text,
             memory_calls=[c.short for c in parse_calls(turn.events)],
             steps=parse_steps(turn.events),
+            finish_reason=turn.finish_reason,
         )
+
+    @property
+    def incomplete(self) -> bool:
+        """这一轮**没跑完**吗。⛔ 那是 Failed，⚠️ 不是「答错了」。"""
+        return bool(self.finish_reason) and self.finish_reason not in (
+            "completed", "stop", "end_turn", "length")
 
     def as_observation(self, item_id: str, **extra: object) -> Observation:
         return Observation(item_id, {
@@ -61,5 +72,6 @@ class TurnRecord:
             # ⭐ 「它主动查了记忆吗」——直接调库那一档量不到
             "memory_calls": list(self.memory_calls),
             "steps": self.steps,
+            "finish_reason": self.finish_reason,
             **extra,
         })

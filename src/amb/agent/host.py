@@ -47,9 +47,18 @@ class HostSpec:
         from importlib.metadata import PackageNotFoundError, version
 
         try:
-            return version("deepseek-harness-sdk")
+            got = version("deepseek-harness-sdk")
         except PackageNotFoundError:  # pragma: no cover
-            return "unknown"
+            return "⛔ 未安装"
+        # ⛔ **与钉死的版本对账**：⚠️ 早先自己查完就印，
+        # ⭐ 「换 DSH 版本等于换尺子」这句话没有任何一处在执行
+        try:
+            from amb.setup.spec import REGISTRY
+
+            pin = REGISTRY["dsh"].pin
+        except Exception:  # noqa: BLE001
+            return got
+        return got if got == pin else f"{got} ⚠️与钉死的 {pin} 不同"
 
 
 def spec_from_env(patches: tuple[str, ...] = ()) -> HostSpec:

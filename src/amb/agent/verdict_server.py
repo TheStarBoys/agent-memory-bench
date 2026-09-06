@@ -10,6 +10,13 @@ Failed 率 67% 直接把套件打成 untrusted。⭐ 工具调用是结构化的
 
 表态写进一个 JSONL 文件，评测器读它——⛔ stdio 只在 DSH 与本进程之间，
 评测器拿不到，所以要落盘。
+
+## ⚠️ 一个 sink 被三个套件共用
+
+N1 有提示 / N3 / N7 都往同一个文件写，⛔ 而 `claim_id` **没有套件命名空间**，
+`read_verdicts` 又以**最后一次**为准。⭐ toy 世界目前不撞车（c* / q* / k*），
+⛔ 但那是命名巧合不是保证——加新题时 id 撞了会静默取错那一条。
+⚠️ 由 `tests/test_agent_suites.py` 守着 id 互不相交。
 """
 
 from __future__ import annotations

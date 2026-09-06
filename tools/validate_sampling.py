@@ -61,6 +61,13 @@ def run_full(arm_name: str = "bm25") -> tuple[list[dict], dict[str, int]]:
     from amb.suites.public import SampleSpec, Strategy, pick
 
     pool = pick(data, SampleSpec(Strategy.ALL, seed=0)).items
+    # ⛔ **参数校验放在花钱之前**：⚠️ 早先在跑完最贵那一步
+    # （全量 bm25 摄入 + 判分）之后才抛裸栈，⭐ 前面所有档的结果一起丢掉。
+    too_big = [n for n in sizes if n > len(pool)]
+    if too_big:
+        raise SystemExit(
+            f"⛔ --sizes 里的 {too_big} 超过题池 {len(pool)}——"
+            f"⚠️ 先改参数，别等跑完才发现")
     run = LocomoRetrievalSuite(pool, k=10).probe(arm, None)
     print(f"  跑完 {len(run.observations)} 题  {time.perf_counter() - t0:.0f}s",
           flush=True)

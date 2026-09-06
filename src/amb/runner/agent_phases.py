@@ -153,7 +153,11 @@ def run_one_agent(name: str, spec: HostSpec, plan: AgentPlan, workdir: Path,
         host.close()
 
     result.participation = {
+        # ⚠️ 这两个是我们**替臂写死**的常量，⛔ 不是它自己声明的——
+        # agent 档没有能力自述（插件挂上就有、没挂就没有）。
+        # ⭐ 标出来，免得读者把它当成「声明与参与」那张表的同类数据。
         "declared": len(result.declared), "total_caps": 2, "items": items,
+        "declared_is_inferred": 1,
     }
     result.cost = dict(ledger.wall_ms_harness)
     result.cost_profile = {

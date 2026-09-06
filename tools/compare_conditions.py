@@ -178,6 +178,12 @@ def main() -> int:
             "noise": "⛔ 两跑差得比信号还大——⚠️ 这是在测噪声，得重做",
             "too_small": "⛔ 达不到阈值，记**测不出**，⛔ 不记持平",
         }
+        # ⛔ **缺数的条件也要有一行结论**：⚠️ 早先它的 bullet 整条消失，
+        # ⭐ 而「一个数字要跑两次才算数」那句话恰恰是给这种情况准备的。
+        for cond in conditions:
+            if cond not in deltas:
+                print(f"- `{cond}`：⚠️ 这一档取不到 Δ（某条臂没有这个指标）"
+                      f"——⛔ 不算数")
         for cond, ds in deltas.items():
             nums = " / ".join(f"{d:+.3f}" for d in ds)
             got = [x for x in ns.get(cond, []) if x]

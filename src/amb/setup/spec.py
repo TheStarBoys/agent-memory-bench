@@ -135,15 +135,27 @@ def dependency(name: str) -> Dependency:
 
 
 def load_lock(path: Path = LOCKFILE) -> dict[str, dict]:
+    """⛔ 读坏了就当**没有**，⚠️ 不让一个截断的 json 把整个 setup 炸掉。
+
+    ⭐ 「锁文件坏了」与「没装过」在行为上是同一件事：都得重装。
+    """
     if not path.is_file():
         return {}
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        got = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+    return got if isinstance(got, dict) else {}
 
 
 def save_lock(entries: dict[str, dict], path: Path = LOCKFILE) -> None:
+    """⭐ **原子写**：⛔ 写到一半被打断会留下半截 json，
+    ⚠️ 而它是「这次跑用了什么版本」的唯一凭据。"""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(entries, ensure_ascii=False, indent=2, sort_keys=True),
-                    encoding="utf-8")
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(entries, ensure_ascii=False, indent=2, sort_keys=True),
+                   encoding="utf-8")
+    tmp.replace(path)
 
 
 def require_installed(name: str, path: Path = LOCKFILE) -> dict:

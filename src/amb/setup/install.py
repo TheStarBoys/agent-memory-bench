@@ -196,9 +196,12 @@ def status(names: list[str] | None = None) -> list[Installed]:
             out.append(Installed(name, dep.pin, "-", str(dep.kind), "",
                                  ok=False, detail="未安装"))
         else:
-            out.append(Installed(**{k: row[k] for k in
-                                    ("name", "declared", "actual", "kind",
-                                     "location", "ok", "detail")}))
+            # ⛔ 缺键不许炸：⚠️ 锁文件是外部状态，格式变过就会缺字段，
+            # ⭐ 而 `status()` 的全部意义是「告诉我现在是什么情况」
+            out.append(Installed(**{
+                k: row.get(k, "" if k != "ok" else False)
+                for k in ("name", "declared", "actual", "kind",
+                          "location", "ok", "detail")}))
     return out
 
 

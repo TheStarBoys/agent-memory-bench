@@ -83,7 +83,14 @@ def probe(model: str, base_url: str, key: str, *, thinking: bool) -> dict:
     except Exception as exc:  # noqa: BLE001
         return {"model": model, "错": f"{type(exc).__name__}: {exc}"[:90]}
     dt = time.perf_counter() - t0
-    text = body["choices"][0]["message"].get("content") or ""
+    # ⛔ **响应结构也可能是坏的**：⚠️ HTTP 200 但内容被过滤 / 软限流时
+    # `choices` 会是空的——早先这一行在 try 之外，⭐ 于是整张对照表崩掉，
+    # 而它的全部意义是「有一个 backbone 挂了也要看到其余的」。
+    try:
+        text = body["choices"][0]["message"].get("content") or ""
+    except (KeyError, IndexError, TypeError):
+        return {"model": model,
+                "错": f"响应结构异常：{str(body)[:70]}"}
     try:
         parsed = json.loads(text)
         ok, sample = "✓", ",".join(parsed.get("keywords", [])[:4])[:30]

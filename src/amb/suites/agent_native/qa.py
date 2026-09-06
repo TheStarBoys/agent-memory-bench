@@ -25,6 +25,10 @@ class AgentQASuite:
         for item in self._items:
             # ⛔ 不给资料、不提示用哪个工具——查不查、怎么查是它自己的事
             record = TurnRecord.of(item.question, driver.ask(item.question))
+            if rec.incomplete:
+                # ⛔ 会话没跑完 = 这次**没做成**，⚠️ 不是「答错了」
+                run.failed += 1
+                continue
             run.observations.append(record.as_observation(
                 item.item_id,
                 gold=list(item.gold),

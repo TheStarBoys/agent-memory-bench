@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from amb.report.floor import best_floor, delta
+from amb.report.floor import best_floor, delta, is_degenerate
 from amb.report.schema import LANE_LABEL, LANES, Report
 
 #: 每个套件在对比表里用哪个指标当主指标（其余仍进 JSON）。
@@ -53,7 +53,13 @@ def render(report: Report) -> str:
     head = [
         f"# {report.run_id}",
         "",
-        f"世界 {report.world['name']} · 种子 {report.world['seed']} · {report.world['digest'][:19]}…",
+        # ⛔ **语料指纹要进表头**：⚠️ `digest` 是世界状态哈希，
+        # 四个 dialogue 条件在它上面**逐字相同**——⭐ 而它们互不可比。
+        f"世界 {report.world['name']} · 种子 {report.world['seed']}"
+        + (f" · 语料 {report.world['corpus']}"
+           f"（{report.world.get('documents', '?')} 篇）"
+           if report.world.get("corpus") else "")
+        + f" · {report.world['digest'][:19]}…",
         f"backbone {report.backbone.get('model', '—')}"
         # ⚠️ 思考开关直接改变成本与输出长度，⛔ 不能只躺在 JSON 里
         + (" · ⚠️ 思考开" if report.backbone.get("thinking")
@@ -63,9 +69,12 @@ def render(report: Report) -> str:
         head.append(f"宿主 dsh-sdk {report.host.get('version', '?')}")
     if report.externals:
         # ⛔ 没记录版本的跑不算数——外部依赖的实际版本必须可追
+        # ⛔ **装失败的也要印**：⚠️ 早先 `if row.get("ok")` 静默丢掉它们，
+        # ⭐ 于是读者看到的是一份干净的钉版清单，而实际有依赖没装上。
         pins = " · ".join(
             f"{n}@{(row.get('actual') or '?')[:12]}"
-            for n, row in sorted(report.externals.items()) if row.get("ok")
+            + ("" if row.get("ok") else " ⛔未装上")
+            for n, row in sorted(report.externals.items())
         )
         head.append(f"外部依赖 {pins or '（无）'}")
     if report.cache:
@@ -239,8 +248,6 @@ def _render_cost(arms: list, suites: list[str],
     # ⚠️ full_context 在检索档里不检索，recall 恒为 1.000 且总耗时约 1ms。
     # 拿它当分母，所有真实臂的耗时比会变成天文数字（实测 938102x），
     # 并被判成「被地板压制·没有存在理由」——⛔ 两个结论都是错的。
-    from amb.report.floor import is_degenerate
-
     controls = [a.arm for a in arms
                 if a.is_control and a.arm in quality
                 and not is_degenerate(a.arm, chosen)]
@@ -271,10 +278,15 @@ def _render_cost(arms: list, suites: list[str],
            "| | 质量 | Δ vs 地板 | 总耗时 | 每条摄入 | 每次回答 | token | 钱 | 判定 |",
            "|---|---:|---:|---:|---:|---:|---:|---:|---|"]
     if flat:
-        out[3:3] = [f"⛔ **这一跑不给判定**：`{HEADLINE[chosen]}` 在所有臂上"
-                    f"都是 {next(iter(quality.values())):.3f}，"
-                    "⚠️ 一个不区分它们的数排不出名次。⭐ 下面只有成本是真的。",
-                    ""]
+        only_one = len(quality) == 1
+        out[3:3] = [
+            (f"⛔ **这一跑不给判定**：只有 **1 条臂**在 "
+             f"`{HEADLINE[chosen]}` 上有分——⚠️ 一条臂排不出名次。"
+             if only_one else
+             f"⛔ **这一跑不给判定**：`{HEADLINE[chosen]}` 在所有臂上"
+             f"都是 {next(iter(quality.values())):.3f}，"
+             "⚠️ 一个不区分它们的数排不出名次。")
+            + "⭐ 下面只有成本是真的。", ""]
     # ⛔ **成本表也要过区间闸门**：⚠️ 早先它完全绕过——同一份报告里，
     # 逐套件表对某一对臂印「⛔ 分不开（差 +0.021，n=126 只能辨 ≥0.158）」，
     # 而成本表对**同一对臂、同一个指标**印「⛔ 被地板压制·没有存在理由」。
@@ -435,13 +447,13 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
                 # ⚠️ 它遵守 k（改过了），但仍然不排序——⭐ 所以 recall 高不是
                 # 因为检索得好，是因为它把决定权推给了 backbone。
                 # ⛔ 不标出来的话，读者会把它当成一个有意义的天花板。
-                if arm.arm == "full_context" and suite != "qa":
+                if is_degenerate(arm.arm, suite):
                     dtxt = "⚠️ 退化†"
             else:
                 dtxt = _delta_text(v, ci, floor, floor_ci, metric)
             out.append(f"| {arm.arm} ({tag}) | {shown} | {dtxt} | scored | |")
         # ⛔ 孤儿脚注最糟：标了 † 却不说它什么意思
-        if any(a.arm == "full_context" and (sc := a.scores.get(suite))
+        if any(is_degenerate(a.arm, suite) and (sc := a.scores.get(suite))
                and sc.status == "scored" for a in arms) and suite != "qa":
             out += ["",
                     "† `full_context` 在**检索档**里不做检索——它按原顺序交前 "

@@ -297,3 +297,31 @@ def test_a_missing_host_is_not_a_crashed_arm() -> None:
     assert "host_unavailable()" in src
     # ⛔ 它必须排在通用 except 之前，否则永远走不到
     assert src.index("host_unavailable()") < src.index("except Exception")
+
+
+def test_verdict_ids_do_not_collide_across_suites() -> None:
+    """⛔ 一个 sink 被三个套件共用（N1 有提示 / N3 / N7），
+    ⚠️ `claim_id` 没有套件命名空间，而 `read_verdicts` 以**最后一次**为准。
+    ⭐ 目前不撞车靠的是命名巧合（c* / q* / k*）——⛔ 这条测试把它钉住。
+    """
+    import worlds.toy as toy
+    from amb.suites.native.n3_reasoning import questions_from
+
+    n1 = {c.claim_id for c in toy.CLAIMS}
+    n3 = {q.item_id for q in questions_from(toy.FACT_GRAPH)[:2]}
+    n7 = {"k1", "k2"}
+    assert not (n1 & n3) and not (n1 & n7) and not (n3 & n7), (
+        f"⛔ 表态 id 撞车：n1={n1 & n3 | n1 & n7} n3={n3 & n7}")
+
+
+def test_an_incomplete_turn_is_failed_not_wrong() -> None:
+    """⛔ 会话以 error/canceled 结束 → `text=""` → 早先被当成「答错了」
+    计进分母，⚠️ 而那是**没做成**。⭐ `finish_reason` 采集了却无人使用。
+    """
+    from amb.agent import AgentTurn
+    from amb.suites.agent_spec import TurnRecord
+
+    ok = TurnRecord.of("问", AgentTurn(text="答", finish_reason="completed"))
+    bad = TurnRecord.of("问", AgentTurn(text="", finish_reason="error"))
+    assert not ok.incomplete and bad.incomplete
+    assert ok.as_observation("x").payload["finish_reason"] == "completed"

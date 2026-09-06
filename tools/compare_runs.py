@@ -15,6 +15,12 @@ from pathlib import Path
 
 SUITE = "locomo_retrieval"
 
+#: ⛔ 两跑之差小于它就当「对上了」。⚠️ 依据是**实测的尺子抖动**：
+#: 不带 LLM 的臂两跑 ±0.000，`naive_rag` ±0.007，⭐ 而 `mem0` ±0.061。
+#: 所以 0.02 只够认「不带 LLM 抽取的臂复现了」——⛔ 对 `mem0` 那种臂，
+#: 它**小于**那条臂自己的抖动，⚠️ 报「对不上」是预期之内的，不是异常。
+SAME_ENOUGH = 0.02
+
 #: ⛔ 三态压成一句假话：⚠️ 「⚠️ 只在一份里」早先同时用于
 #: 「这条臂只在一份存档里」「两份都有但这个套件没分」「两份都有但记 N/A」——
 #: ⭐ 本项目专门设计了 N/A 这第三态，对账表却把它抹平了。
@@ -53,7 +59,14 @@ def usable(arm: dict, suite: str) -> str:
 
 def arms(path: Path) -> dict[str, dict]:
     data = json.loads(path.read_text(encoding="utf-8"))
-    return {a["arm"]: a for a in data.get("lanes", {}).get("library", [])}
+    lanes = data.get("lanes", {})
+    rows = lanes.get("library") or []
+    if not rows and lanes.get("agent"):
+        # ⛔ **别静默出三张空表**：⚠️ 这个工具只对账 library 档，
+        # ⭐ 两份 agent 档存档并排比早先产出三张空表并 exit 0，一个字都没有。
+        print(f"⚠️ {path.name} 只有 agent 档——⛔ 本工具只对账 library 档",
+              file=sys.stderr)
+    return {a["arm"]: a for a in rows}
 
 
 def world_of(path: Path) -> dict:
@@ -84,11 +97,13 @@ def main() -> int:
     for name in sorted(set(old) | set(new)):
         a, b = _recall(old.get(name)), _recall(new.get(name))
         if a is None or b is None:
-            print(f"| {name} | {_fmt(a)} | {_fmt(b)} | — | ⚠️ 只在一份里 |")
+            # ⛔ 三态不许压成一句话——⚠️ 本项目专门设计了 N/A 这第三态
+            print(f"| {name} | {_fmt(a)} | {_fmt(b)} | — | "
+                  f"{why_missing(old, new, name, SUITE)} |")
             continue
         d = b - a
         mark = "⭐ 一致" if abs(d) < 1e-9 else (
-            "⚠️ 有差" if abs(d) < 0.02 else "⛔ 对不上")
+            "⚠️ 有差" if abs(d) < SAME_ENOUGH else "⛔ 对不上")
         print(f"| {name} | {a:.3f} | {b:.3f} | {d:+.3f} | {mark} |")
 
     print("\n## 行为指纹　（⛔ 不是分数）\n")

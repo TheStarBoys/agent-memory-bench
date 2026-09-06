@@ -22,6 +22,7 @@ from amb.runner import (
     corpus_fingerprint,
     control_arms,
     host_unavailable, ingest_identity, now_rfc3339, run_one,
+    WorldTampered,
 )
 
 
@@ -62,7 +63,10 @@ def _show_preflight(report, *, where: str) -> None:
     print("\n  ⭐ 语料与题面样本——⚠️ **自动检查看不出「像不像真的」，请人眼过一遍**：",
           file=sys.stderr)
     for line in report.samples:
-        print(f"    {line[:160]}", file=sys.stderr)
+        # ⚠️ 截断要**看得出来**：⛔ 这几条样本是唯一挡得住
+        # 「摄入单元像不像真的」那类错的手段，⭐ 悄悄截掉半句就白摆了
+        print(f"    {line[:200]}" + ("…（截断）" if len(line) > 200 else ""),
+              file=sys.stderr)
     if report.budget:
         print(f"\n  · 预算：{report.budget}", file=sys.stderr)
     print("─" * 46 + "\n", file=sys.stderr)
@@ -262,6 +266,12 @@ def main(argv: list[str] | None = None) -> int:
                     ArmResult(arm=name, is_control=name in control_arms(),
                               harness_fault=why))
                 continue
+            except WorldTampered as exc:
+                # ⛔ 守卫自己的 docstring 写着「**本次跑作废**」——
+                # ⚠️ 早先它落进通用 except 被记成这条臂 crashed，
+                # ⭐ 其余臂照跑、报告照出，「整跑作废」这句话从没被执行过。
+                print(f"⛔ 世界被动过——**本次跑作废**：{exc}", file=sys.stderr)
+                return 3
             except (KeyError, EnvironmentError) as exc:
                 # ⛔ **评测器侧的配置错**：臂名打错、必需环境变量没设、
                 # 依赖没装——⚠️ 那不是「这个系统跑挂了」，

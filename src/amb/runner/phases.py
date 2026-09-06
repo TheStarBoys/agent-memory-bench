@@ -225,6 +225,11 @@ def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
     profile |= {k: v - embed_before.get(k, 0)
                 for k, v in _embed_snapshot().items()
                 if v - embed_before.get(k, 0)}
+    # ⭐ 走子进程的臂那份**另有来源**：⚠️ 不并进来的话，同一个 `embed_*`
+    # 字段在不同臂上含义不同（宿主臂有、子进程臂空），⛔ 而读者会把
+    # 「没有」读成「0 次」。
+    sub = getattr(adapter, "embed_stats", lambda: {})()
+    profile |= {k: v for k, v in sub.items() if v}
     result.cost_profile = profile
     return result, guard.expected
 

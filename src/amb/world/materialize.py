@@ -24,6 +24,12 @@ def materialize(manifest: WorldManifest, root: Path) -> Path:
     for spec in sorted(manifest.files, key=lambda f: f.path):  # ⚠️ 字典序，可复现
         target = root / spec.path
         target.parent.mkdir(parents=True, exist_ok=True)
+        # ⛔ **二次物化不许炸**：⚠️ 文件被 chmod 成 0444（只读），
+        # 对同一个 root 再 materialize 一次直接 `PermissionError`。
+        # ⭐ CLI 每条臂用独立目录所以碰不到，⛔ 但那是巧合不是保证——
+        # 而脏 root 里的残留文件会静默进 `digest`。
+        if target.exists():
+            os.chmod(target, 0o644)
         target.write_text(spec.text, encoding="utf-8")
         os.chmod(target, spec.mode)
         os.utime(target, (stamp, stamp))

@@ -95,7 +95,10 @@ def best_floor(arms: list[ArmResult], suite: str, metric: str) -> Floor | None:
         return None
     # ⛔ 按指标的**方向**取最强，⚠️ 不是一律取 max——
     # 对「越低越好」的指标，max 取到的是**最差**的那条。
-    return max(candidates, key=lambda f: better(metric) * f.value)
+    # ⚠️ 并列时按**名字**定序：⛔ 否则同一份数据换个 `--arms` 顺序，
+    # 报告里「地板线 = 谁」会变。
+    return max(sorted(candidates, key=lambda f: f.arm),
+               key=lambda f: better(metric) * f.value)
 
 
 def delta(value: float, floor: Floor | None, metric: str = "") -> float | None:

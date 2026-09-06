@@ -39,6 +39,10 @@ class EmbedMeter:
     retries: int = 0
     waited_s: float = 0.0
 
+    # ⛔ **一次跑里必须串行**：⚠️ 这是**进程级**计量器，评测器靠
+    # 「这条臂跑前跑后的差」归账，而 `+=` 不是原子的——
+    # ⭐ 并行跑臂会立刻给出互相污染的成本数字。
+    # 见 docs/adapters/protocol.md#并发一次跑里必须串行
     def add(self, *, texts: int, ms: float) -> None:
         self.calls += 1
         self.texts += texts

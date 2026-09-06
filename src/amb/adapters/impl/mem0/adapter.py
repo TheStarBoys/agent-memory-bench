@@ -223,12 +223,24 @@ class Mem0Adapter(Answerable, AdapterBase):
                 out.append(Usage(phase="ingest", tokens_in=got["tokens_in"],
                                  tokens_out=got["tokens_out"],
                                  llm_calls=got["llm_calls"]))
+                # ⭐ **子进程的 embedding 计量也要带回来**：⚠️ worker 采集了
+                # 它，而适配器早先直接丢掉——⛔ 于是同一个 `embed_*` 字段
+                # 在不同臂上含义不同（宿主臂有、子进程臂没有），
+                # 而读者会把「没有」读成「0 次」。
+                self._embed_stats = {
+                    k: got[k] for k in
+                    ("embed_calls", "embed_wall_ms", "embed_retries")
+                    if k in got}
         # ⭐ 答题走的是**宿主**的 backbone，⛔ 不在子进程的计量器里
         if self._llm is not None:
             out += usage_of(self._llm)
         if not out:
             return Unsupported("没跑过，无从计量")
         return out
+
+    def embed_stats(self) -> dict:
+        """子进程里发出的 embedding 调用。⛔ 没取到就是空的，⚠️ 不拿 0 冒充。"""
+        return dict(getattr(self, "_embed_stats", {}) or {})
 
     def storage_locations(self) -> list[str]:
         """⭐ 申报持久层，让带外取证那一步能做。"""
