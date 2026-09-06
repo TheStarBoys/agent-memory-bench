@@ -81,6 +81,12 @@ def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
             # 新摄入的 30 条」= 每条两份——实测 recall 0.789 → 0.474。
             # ⭐ 先清空再重摄。
             adapter.reset()
+            # ⛔ **reset 之后必须重新 setup**：⚠️ `reset()` 会把世界句柄
+            # 一起清掉（bm25 的 `_reader = None`），⭐ 而这一段早先不再 setup——
+            # 一条既声明 REALITY 又有持久层的臂此后 `audit()` 返回 Failed，
+            # 按协议 Failed 计入分母记为未答对 → N1 被压成 0 而不是「不支持」。
+            adapter.setup(WorldHandle(str(root), server.clock_url,
+                                      server.facts_url))
             restored = False
         # ⛔ 摄入前库必须是空的。⚠️ 这是那个 bug 的检测网：
         # 残留可以来自快照，也可以来自**上一跑留在盘上的库**（reset() 曾是
@@ -157,6 +163,10 @@ def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
         _try_save(snap, adapter, canary=canary, cost={
             "ingest_ms": ledger.wall_ms_harness.get("ingest", 0),
             "items": len(plan.documents),
+            # ⛔ **带上缓存状况**：⚠️ 一次靠 LLM 缓存跑出来的摄入耗时与 token，
+            # 早先会被后续每一次快照命中原样报成「存快照那次实测」——
+            # ⭐ 而那不是真实测量，是缓存回放。
+            **_cache_state(),
             # ⛔ 只取 **ingest** 那一份：⚠️ 回答档里 usage() 还会带回
             # 答题的 token（那是宿主 backbone 花的），
             # 把它存进「摄入成本」，下次命中快照就会虚报一次摄入的钱。
@@ -180,7 +190,12 @@ def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
     carried = _carried_cost(snap) if restored else None
     if carried:
         result.cost["ingest"] = int(carried.get("ingest_ms", 0))
-        result.ingest_snapshot = "命中（摄入成本取自存快照那次实测）"
+        # ⛔ 存快照那次**命中过缓存**的话，它的耗时不是独立测量——
+        # ⚠️ 必须原样传下去，否则每一次命中都在复述一个缓存回放的数字。
+        hits = int(carried.get("cache_hits", 0) or 0)
+        result.ingest_snapshot = (
+            f"命中（摄入成本取自存快照那次，⚠️ 那次缓存命中 {hits} 次，不是独立测量）"
+            if hits else "命中（摄入成本取自存快照那次实测）")
     # ⭐ 成本画像：⚠️ 没测到就是 None，⛔ 不拿 0 冒充「没花钱」。
     profile: dict[str, object] = {
         "items_ingested": len(plan.documents),
@@ -297,6 +312,15 @@ def _ingest_tokens(usage) -> dict[str, int]:
     return {"tokens_in": sum(u.tokens_in for u in rows),
             "tokens_out": sum(u.tokens_out for u in rows),
             "llm_calls": sum(u.llm_calls for u in rows)}
+
+
+def _cache_state() -> dict[str, int]:
+    """存快照时的 LLM 缓存状况。⛔ 命中过就说清——⚠️ 那次不是独立测量。"""
+    from amb.adapters.llm_cache import global_cache
+
+    st = global_cache().stats
+    return {"cache_hits": int(getattr(st, "hits", 0) or 0),
+            "cache_misses": int(getattr(st, "misses", 0) or 0)}
 
 
 def _embed_snapshot() -> dict[str, int]:

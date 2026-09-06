@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import os
 import sys
 from pathlib import Path
 
@@ -43,9 +44,39 @@ def installed_pip_version(module_or_dist: str) -> str | None:
         return None
 
 
+def _is_user_daily_env() -> str:
+    """当前解释器像不像**用户的日常环境**。⛔ 返回原因，空串 = 看着是隔离的。
+
+    ⚠️ 用户有一条硬规矩：被测系统一律装进独立 venv，
+    ⛔ **绝不往 anaconda 之类的日常环境装任何东西**。
+    而 `Kind.PIP` 装的是 `sys.executable`——⭐ 那可能正是它。
+    """
+    # ⭐ 判据是**解释器本身在不在 venv 里**，⚠️ 不是外层 shell 开着什么：
+    # 实测踩到——项目自己的 `.venv/bin/python` 在一个开着 conda 的 shell 里
+    # 跑，早先被误判成「日常环境」并拒绝安装。
+    if sys.prefix != sys.base_prefix:
+        return ""                       # 在 venv / virtualenv 里，⭐ 是隔离的
+    exe = sys.executable.lower()
+    for mark in ("anaconda", "miniconda", "/usr/bin/python",
+                 "/usr/local/bin/python"):
+        if mark in exe:
+            return f"当前解释器是日常环境：{sys.executable}"
+    if os.environ.get("CONDA_PREFIX"):
+        return f"在 conda 的 base 环境里：{os.environ['CONDA_PREFIX']}"
+    return ""
+
+
 def install_pip(dep: Dependency, *, upgrade: bool = False) -> Installed:
     have = installed_pip_version(dep.source)
     if have != dep.pin or upgrade:
+        # ⛔ 装之前先问：这是不是用户的日常环境？
+        # ⚠️ `AMB_ALLOW_SYSTEM_PIP=1` 是**明示同意**的出口，⭐ 默认拒绝。
+        if (why := _is_user_daily_env()) and not os.environ.get(
+                "AMB_ALLOW_SYSTEM_PIP"):
+            raise SetupError(
+                f"⛔ 拒绝往日常环境装 {dep.source}：{why}\n"
+                f"⚠️ 被测系统一律装进独立 venv。⭐ 确实要装就先建一个 venv，"
+                f"或显式设 AMB_ALLOW_SYSTEM_PIP=1")
         proc = _run([sys.executable, "-m", "pip", "install", "-q",
                      f"{dep.source}=={dep.pin}"])
         if proc.returncode != 0:
@@ -114,7 +145,17 @@ def install(name: str, *, upgrade: bool = False) -> Installed:
     else:
         got = install_git(dep)
     lock = load_lock()
-    lock[name] = got.as_dict()
+    # ⛔ **「命令没成功」与「环境里没有」是两件事**：⚠️ 早先无条件覆盖，
+    # 于是一次联网失败的 setup 会把好端端的装机状态改写成「未接入」。
+    # ⭐ 失败时保留旧行，只把失败原因附上去。
+    old = lock.get(name)
+    if not got.ok and old and old.get("ok"):
+        old = dict(old)
+        old["detail"] = (f"⚠️ 上一次 setup 没成功（{got.detail[:120]}），"
+                         f"⛔ 但环境里那份仍在——下面是它的记录")
+        lock[name] = old
+    else:
+        lock[name] = got.as_dict()
     save_lock(lock)
     return got
 

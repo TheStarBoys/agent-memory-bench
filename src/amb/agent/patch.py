@@ -53,9 +53,12 @@ def write_patch(arm: str | None, out: Path, *, world_root: Path,
             ["--arm", arm, "--server-name", SERVER_NAME], world_root, env,
         ))
     if verdict_sink is not None:
+        # ⛔ 表态服务器**不需要任何密钥**：它只往文件里追加一行。
+        # ⚠️ 早先把 backbone 的 key 一起发给它——⭐ 最小权限：
+        # 一个用不到密钥的进程就不该拿到密钥。
         rows.append(_mcp_row(
             "amb-verdict", VERDICT_SERVER, "amb.agent.verdict_server",
-            ["--sink", str(verdict_sink)], world_root, env,
+            ["--sink", str(verdict_sink)], world_root, None,
         ))
     out.parent.mkdir(parents=True, exist_ok=True)
     # YAML 是 JSON 的超集，⚠️ 免掉一个依赖

@@ -152,7 +152,10 @@ class LocomoRetrievalSuite:
     def probe(self, adapter: Adapter, world: WorldState) -> SuiteRun:
         run = SuiteRun(self.name, "scored")
         for q in self._questions:
-            hits = adapter.search(q.question, self._k)
+            # ⛔ **k 要真截断**：⚠️ 它对适配器只是建议，不遵守的臂
+            # （`full_context` 早先就是）等于免费扩召回，
+            # ⭐ 而 `evidence_recall` 是单调递增的——返回越多分越高。
+            hits = adapter.search(q.question, self._k)[:self._k]
             # ⛔ **保留对话前缀**：⚠️ 轮次 id 大面积跨对话重名——实测
             # 1033 个 id 里 871 个出现在多个对话里（`D1:1` 十个对话都有），
             # 2815 处 gold 引用里 2773 处受影响。剥掉前缀之后，
@@ -161,6 +164,8 @@ class LocomoRetrievalSuite:
             gold = {f"{q.conversation_id}/{e}" for e in q.evidence}
             run.observations.append(Observation(q.qa_id, {
                 "category": q.category,
+                # ⭐ 返回量进 payload：⛔ 判分要能看出「捞得准」还是「捞得多」
+                "returned": len(got),
                 "stratum": q.stratum,
                 "unanswerable": q.unanswerable,
                 "gold": sorted(gold),

@@ -157,7 +157,10 @@ def run_one_agent(name: str, spec: HostSpec, plan: AgentPlan, workdir: Path,
     }
     result.cost = dict(ledger.wall_ms_harness)
     result.cost_profile = {
-        "items_ingested": len(plan.documents),
+        # ⛔ 裸宿主那条臂**根本没跑 ingest**（`is_bare_host` 跳过了整段），
+        # ⚠️ 早先无条件写 `len(plan.documents)`——⭐ 报告替它报了几百条
+        # 它从没见过的语料，而「每条摄入」那一列由它做分母。
+        "items_ingested": 0 if arm_plan.is_bare_host else len(plan.documents),
         "items_probed": items,
         # ⭐ agent 档独有：它主动查了几次记忆、走了几步
         "memory_calls": memory_calls,

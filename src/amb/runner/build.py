@@ -32,10 +32,15 @@ def build(name: str, *, context_budget: int = 24_000,
     if name == "full_context":
         arm = create(name, budget_chars=context_budget)
     elif name in ("naive_rag", "hybrid"):
+        # ⛔ **维度要与被测系统一致**：⚠️ mem0 显式请求
+        # `embedding_dims=AMB_EMBED_DIMS`（默认 2560），而这两条臂早先
+        # 不带 `dimensions` 字段——⭐ 端点若支持维度裁剪，
+        # 两类臂就**不在同一个向量空间**里，而报告只写一行「同一个 embedding 模型」。
         arm = create(name, embedding=EmbeddingConfig(
             model=require("AMB_EMBED_MODEL"),
             base_url=require("AMB_EMBED_BASE_URL"),
             api_key_env=os.environ.get("AMB_EMBED_API_KEY_ENV", "SILICONFLOW_API_KEY"),
+            dimensions=int(os.environ.get("AMB_EMBED_DIMS", "0")) or None,
         ))
     elif name in ("mem0", "mem0_raw"):
         # ⛔ 没 setup 就拒绝，不静默跑出一个分

@@ -7,7 +7,19 @@
 Anderson & Schooler 用的报纸标题、亲子对话、邮件也是这个思路。
 
     python tools/fit_need_curve.py <repo> --out corpora/need-<name>.json
+
+## ⛔ 三道必须有的闸门
+
+⚠️ 这个工具产出的曲线是 **N5 的 ground truth**，而「参数不能自己编」
+是这一类存在的前提。⛔ 所以它不能「拟合出个东西就写 fitted: true」：
+
+| 闸门 | 为什么 |
+|---|---|
+| `R² ≥ MIN_R2` | ⚠️ R² 在这里区分不出「幂律」与「根本不是幂律」，⛔ 太低就是没拟合上 |
+| 样本量 ≥ `MIN_SAMPLES` | ⛔ 十来个点的幂律拟合是在拟合噪声 |
+| `provenance` 记 **HEAD sha** | ⚠️ 只记目录名的话，同一个 repo 隔一段时间重跑会产出**不同的曲线而 provenance 一模一样** |
 """
+
 
 from __future__ import annotations
 
@@ -47,6 +59,26 @@ def reuse_intervals(repo: Path, *, max_commits: int = 20_000) -> list[float]:
     return intervals
 
 
+#: ⛔ 低于它就是**没拟合上**。⚠️ R² 区分不出「幂律」与「根本不是幂律」，
+#: ⭐ 但它至少能拦住「随便一条线也叫拟合」。
+MIN_R2 = 0.30
+#: ⛔ 十来个点的幂律拟合是在拟合噪声。
+MIN_SAMPLES = 200
+
+
+def _head_sha(repo: Path) -> str:
+    """⭐ 记 HEAD sha：⛔ 只记目录名的话，同一个 repo 隔一段时间重跑会
+    产出**不同的曲线而 provenance 一模一样**。"""
+    import subprocess
+
+    try:
+        out = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"],
+                             capture_output=True, text=True, timeout=20)
+        return out.stdout.strip()[:40] or "?"
+    except Exception:  # noqa: BLE001
+        return "?"
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="fit-need-curve")
     ap.add_argument("repo", type=Path)
@@ -55,10 +87,20 @@ def main(argv: list[str] | None = None) -> int:
 
     intervals = reuse_intervals(args.repo)
     curve = fit_from_reuse_intervals(intervals)
+    # ⛔ **闸门**：⚠️ 这条曲线是 N5 的 ground truth，
+    # 「拟合出个东西就写 fitted: true」等于自己定义什么叫「该记住」。
+    if len(intervals) < MIN_SAMPLES:
+        print(f"⛔ 只有 {len(intervals)} 个间隔样本（要 ≥{MIN_SAMPLES}）"
+              f"——⚠️ 这个量级的幂律拟合是在拟合噪声", file=sys.stderr)
+        return 2
+    if (curve.r_squared or 0) < MIN_R2:
+        print(f"⛔ R²={curve.r_squared:.4f} < {MIN_R2}——⚠️ 没拟合上，"
+              f"⭐ 这份语料多半不是幂律，换一份", file=sys.stderr)
+        return 2
     payload = {
         **curve.provenance(),
         # ⚠️ 来源要可追——换语料就是换了一把尺子
-        "source": f"git:{args.repo.name}",
+        "source": f"git:{args.repo.name}@{_head_sha(args.repo)}",
         "samples": len(intervals),
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)

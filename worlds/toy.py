@@ -68,7 +68,11 @@ _HAND_QUERIES = [
     Query("q1", "哪个结构学得慢？", frozenset({"notes/neocortex.md"})),
     Query("q2", "什么动物喜欢晒太阳？", frozenset({"notes/cat.md"})),
     Query("q3", "一次就能记住靠什么？", frozenset({"notes/hippocampus.md"})),
-    Query("q4", "保留多少天？", frozenset({"config/retention.txt"})),
+    # ⛔ 中文问句 vs 纯 ASCII 的 `retention_days=7`——**共享 token 为零**，
+    # ⚠️ 对任何词法臂结构性不可答（固定 −1/40 的惩罚，与被测系统无关）。
+    # ⭐ 问句里带上那个键名，才是「问这条配置」而不是「猜一个跨语言映射」。
+    Query("q4", "retention_days 保留多少天？",
+          frozenset({"config/retention.txt"})),
 ]
 
 #: ⚠️ 手写的两条留着——⛔ 它们的语料同时被 N1 引用，删了 N1 就没了参照。
@@ -191,7 +195,8 @@ CORPUS = {**_FILES, **{f.doc_id: f.text for f in CORPUS_GEN.facts}}
 _CALIBRATION_ANSWERABLE = (
     ("哪个脑结构学得慢？", ("新皮层",)),
     ("一次暴露就能记住靠哪个结构？", ("海马",)),
-    ("保留多少天？", ("7",)),
+    # ⚠️ 与 `q4` 同一道题：⛔ 问句要带键名，否则词法臂结构性答不出
+    ("retention_days 保留多少天？", ("7",)),
     ("E00一次最多能用多少？", (CORPUS_GEN.facts[0].value,)),
 )
 

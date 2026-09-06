@@ -135,6 +135,13 @@ def _delta_text(value: float, ci, floor, floor_ci, metric: str = "") -> str:
     return f"**{d:+.3f} ⚠️帮倒忙**" if d <= 0 else f"{d:+.3f}"
 
 
+def _is_count(metric: str) -> bool:
+    """这是**原始计数**还是比例。⚠️ 与 `scoring._COUNT_HINTS` 同一份口径。"""
+    from amb.scoring.metrics import _COUNT_HINTS
+
+    return any(h in metric for h in _COUNT_HINTS)
+
+
 def _ci_of(arms: list, arm_name: str, suite: str, metric: str):
     """取某条臂在某个指标上的区间。⛔ 取不到就是 None，⚠️ 不猜。"""
     for a in arms:
@@ -237,8 +244,16 @@ def _render_cost(arms: list, suites: list[str],
     controls = [a.arm for a in arms
                 if a.is_control and a.arm in quality
                 and not is_degenerate(a.arm, chosen)]
-    floor = (max(controls, key=lambda k: quality[k]) if controls
-             else max(quality, key=lambda k: quality[k]))
+    if not controls:
+        # ⛔ **没有够格的对照组就不出这张表**：⚠️ 早先兜底 `max(quality, …)`
+        # 在剔除退化臂**之前**取值、也不要求是对照组——⭐ 于是没有对照时
+        # 把**被测系统**当地板、对照全退化时把 `full_context` 当地板，
+        # 正是那次「四条真臂全部没有存在理由」的成因。
+        return ["## 成本 × 质量", "",
+                "⚠️ **不出这张表**：⛔ 这一档没有够格的对照组当地板"
+                "（对照组要么没参加，要么是退化臂）。"
+                "⭐ 绝对分不单独读——见 docs/baselines.md。", ""]
+    floor = max(controls, key=lambda k: quality[k])
 
     # ⛔ 退化的臂**先剔除再判 flat**：⚠️ 顺序反了的话，`full_context`
     # 的 1.000 会把 spread 撑开 → `flat=False` → 剩下几条全 0.000 的臂
@@ -383,8 +398,14 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
                 out.append(f"| {arm.arm} ({tag}) | — | | 未跑 | |")
                 continue
             if sc.status != "scored":
-                # ⛔ 不支持显示 —，不是 0，不参与排名
-                out.append(f"| {arm.arm} ({tag}) | — | | **{sc.status}** | {sc.reason or ''} |")
+                # ⛔ **四种 status 占不同位置**（schema.DISPLAY 那张表）：
+                # ⚠️ 早先一律压成 `—` + 加粗英文名，⭐ 于是「没这个能力」
+                # 与「验到过滤层为止」与「Failed 率太高」在视觉上一模一样。
+                from amb.report.schema import DISPLAY
+
+                shown = DISPLAY.get(sc.status, sc.status)
+                out.append(f"| {arm.arm} ({tag}) | {shown} | | "
+                           f"**{sc.status}** | {sc.reason or ''} |")
                 continue
             if metric not in sc.metrics:
                 # ⛔ **指标不在就是不在**，⚠️ 不拿 0.000 冒充。
@@ -439,8 +460,16 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
                 parts = []
                 for k, v in sc.metrics.items():
                     ci = sc.interval(k)
-                    parts.append(f"{k}={v:.3f}[{ci.low:.2f},{ci.high:.2f}]"
-                                 if ci else f"{k}={v:.3f}")
+                    if ci:
+                        parts.append(f"{k}={v:.3f}[{ci.low:.2f},{ci.high:.2f}]"
+                                     f"n={ci.n}")
+                    elif _is_count(k):
+                        # ⛔ **原始计数不许套比例的格式**：⚠️ 早先
+                        # `broken→broken=2.000` 印出来，读者无从分辨那是
+                        # **两道题**还是 200%。⭐ 计数就印成整数。
+                        parts.append(f"{k}={int(v)}")
+                    else:
+                        parts.append(f"{k}={v:.3f}")
                 out.append(f"- `{arm.arm}` " + " · ".join(parts))
         out.append("")
 

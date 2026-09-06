@@ -41,6 +41,8 @@ CHECKS = {
     "verdict-on-flat-metric": "质量列分不开各条臂，报告却仍在下判定",
     "no-headroom": "最便宜的词法臂已经打满——⛔ 这一档没有判别空间，跑再多臂也分不开",
     "unpinned-externals": "要跑被测系统，而它的版本没记录——⛔ 没记录版本的跑不算数",
+    "suite-not-inspected": "这个套件的探针在自检里跑挂了——⚠️ 它没被检查",
+    "recorder-blind": "录制器答不上来的方法——⚠️ 走它们的套件是自检盲区",
 }
 
 #: ⛔ 词法臂到了这个分就没有留给别人的空间了。⚠️ 不是「它很强」，
@@ -91,6 +93,10 @@ class _Recorder:
         self.queries: list[tuple[str, str, str]] = []
         self.golds: list[tuple[str, str, tuple[str, ...]]] = []
         self.suite = "?"
+        #: ⭐ 录制器答不上来的方法——⛔ 那些套件在自检里是盲区
+        self.unsupported: set[str] = set()
+        #: ⭐ 探针跑挂了的套件（名字 → 原因）。⛔ 不吞掉
+        self.broken: dict[str, str] = {}
 
     # ── Adapter 协议：⚠️ 只实现会被探针碰到的那几个 ───────────────
     def capabilities(self):
@@ -116,16 +122,29 @@ class _Recorder:
         return Answer(text="")
 
     def __getattr__(self, name):
-        # ⚠️ 其余方法一律回「不支持」——⛔ 录制器不该假装有能力
+        # ⚠️ 其余方法一律回「不支持」——⛔ 录制器不该假装有能力。
+        # ⭐ 但**记下来是哪个方法**：走 `audit()` / `recall()` 的套件
+        # （n1_prompted、n5_self_reported…）会因此整档拿不到探针，
+        # ⛔ 而早先这件事一点痕迹都没有。
         from amb.core import Unsupported
 
+        self.unsupported.add(name)
         return lambda *a, **k: Unsupported("preflight 录制器")
 
 
 def _suites_of(plan):
-    """⚠️ 两种 plan 形态都要认：直接给 suites 的，和给工厂的。"""
+    """⚠️ 两种 plan 形态都要认：直接给 suites 的，和给工厂的。
+
+    ⛔ 给 `rebuild=None` 会让 N4 那一档**无声消失**（`worlds/toy.py` 里
+    `rebuild is None` 就不放 `GovernanceSuite`）——⚠️ 于是 preflight 的
+    六条检查一条都盖不到治理档。⭐ 给一个**不会被真调用**的占位工厂：
+    录制器只发查询，从不走到 N4 第 3 步的重开。
+    """
     if plan.suites_for is not None:
-        return plan.suites_for(None, None)
+        def _never_called():
+            raise AssertionError("preflight 不该走到重开适配器那一步")
+
+        return plan.suites_for(_never_called, lambda: None)
     return list(plan.suites)
 
 
@@ -135,7 +154,11 @@ def _record(plan) -> _Recorder:
         rec.suite = getattr(suite, "name", type(suite).__name__)
         try:
             run = suite.probe(rec, None)
-        except Exception:  # noqa: BLE001 —— ⚠️ 录不到的套件跳过，⛔ 别拖垮自检
+        except Exception as exc:  # noqa: BLE001 —— ⚠️ 别拖垮自检
+            # ⛔ **不吞掉**：⚠️ 早先 `continue` 什么都不留，
+            # 于是「某个套件一条查询也没录到」与「这个套件本来就没查询」
+            # ⭐ 长得一模一样。
+            rec.broken[rec.suite] = f"{type(exc).__name__}: {exc}"[:120]
             continue
         for obs in getattr(run, "observations", []):
             if not isinstance(obs.payload, dict):
@@ -172,7 +195,10 @@ def check_queries(plan, rec: _Recorder, out: Report) -> None:
     texts = {d.text for d in plan.documents}
     # ⚠️ 子串检查是 O(查询 × 语料)，⛔ 大语料上要限量——
     # ⭐ 抽样足够：这类错是**系统性**的，不是个别的
-    sample = list(texts)[:2000]
+    # ⛔ **排序后再切**：⚠️ `texts` 是 set，Python 字符串哈希是随机化的，
+    # ⭐ 于是同一份 plan 每次跑抽到的是**不同的 2000 篇**——
+    # 一条时有时无的警告比没有更糟。
+    sample = sorted(texts)[:2000]
     by_suite: dict[str, dict[str, list[str]]] = {}
     for suite, _kind, raw in rec.queries:
         q = raw.strip().rstrip("？?。.")
@@ -301,8 +327,16 @@ INGEST_S = {"null": 0.0, "bm25": 0.0, "naive_rag": 0.36,
 
 
 def estimate(documents: int, arms: tuple[str, ...]) -> dict[str, float]:
-    """⭐ 跑之前就说清要多久。⛔ 瓶颈从来是墙钟，不是钱。"""
-    return {a: documents * INGEST_S[a] / 60 for a in arms if a in INGEST_S}
+    """⭐ 跑之前就说清要多久。⛔ 瓶颈从来是墙钟，不是钱。
+
+    ⛔ 单价表里没有的臂**要说出来**，⚠️ 不静默丢弃——
+    「跑之前就说清要多久」漏掉一条臂，那句话就不成立了。
+    """
+    out = {a: documents * INGEST_S[a] / 60 for a in arms if a in INGEST_S}
+    unknown = [a for a in arms if a not in INGEST_S]
+    if unknown:
+        out["⚠️ 单价未知"] = float(len(unknown))
+    return out
 
 
 def check_externals(arms: tuple[str, ...], out: Report) -> None:
@@ -340,6 +374,15 @@ def inspect(plan, *, root: Path | None = None, samples: int = 3,
     rec = _record(plan)
     check_queries(plan, rec, out)
     check_gold(plan, rec, out)
+    # ⭐ 把自检自己的盲区摆出来——⛔ 「没查到问题」与「没查」是两件事
+    if rec.broken:
+        for name, why in sorted(rec.broken.items()):
+            out.add("warn", "suite-not-inspected",
+                    f"{name} 的探针在自检里跑挂了（{why}）——⚠️ 这一档没被检查")
+    if rec.unsupported:
+        out.add("info", "recorder-blind",
+                f"录制器答不上来：{sorted(rec.unsupported)}——"
+                f"⚠️ 走这些方法的套件在自检里是盲区")
     if root is not None:
         check_scoring(plan, out, root)
     else:

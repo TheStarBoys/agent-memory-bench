@@ -32,6 +32,10 @@ class Regularity:
     category: str
     prop: str
     #: 成立率，⚠️ 判分口径是**单调性**不是绝对值
+    #: 成立率。⚠️ 判分口径是**单调性**不是绝对值。
+    #: ⛔ 它必须与 `seen` 里的**实际**正例比一致——早先声称 0.6/0.8/0.95
+    #: 而实际是 0.571/0.762/0.905（例外额外追加进 seen 却没算进分母），
+    #: ⭐ 而这个字段会进 observation payload 并写进报告。
     rate: float
     seen: tuple[Instance, ...] = ()
     #: ⭐ 留出来不进世界的正例——泛化探针要用没见过的
@@ -85,9 +89,16 @@ def build(*, seed: int, rates: tuple[float, ...] = (
         rng.shuffle(seen)
         # ⭐ 例外：明确地不具有那个性质，且**在世界里出现过**
         exception = Instance(f"{category}-X", category, False, is_exception=True)
+        # ⛔ 例外**不许永远是最后一句**：⚠️ 摄入顺序即时间信号，
+        # ⭐ recency 单独就能指认它——那时候量到的是「记不记得最后一条」，
+        # 不是「例外压不压得过规律」。
+        with_exception = [*seen, exception]
+        rng.shuffle(with_exception)
+        # ⭐ 报**实际**的正例比，⛔ 不是名义上那个
+        actual = sum(1 for i in with_exception if i.has_property) / len(with_exception)
         out.append(Regularity(
-            category, prop, rate,
-            seen=(*seen, exception),
+            category, prop, round(actual, 4),
+            seen=tuple(with_exception),
             held_out=tuple(
                 Instance(f"{category}-H{i}", category, True) for i in range(held_out)
             ),

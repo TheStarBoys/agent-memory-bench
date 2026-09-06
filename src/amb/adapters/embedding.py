@@ -76,6 +76,11 @@ class EmbeddingConfig:
     max_retries: int = 3
     #: 单次最多几条。⛔ 太大就撞上截断，⚠️ 太小则调用次数暴涨
     max_batch: int = 16
+    #: ⭐ 请求的向量维度。⛔ **必须与被测系统一致**：⚠️ mem0 显式请求
+    #: `embedding_dims`（默认 2560），而这一层早先不带 `dimensions`——
+    #: 端点若支持维度裁剪，两类臂就**不在同一个向量空间**里，
+    #: 而报告只写一行「同一个 embedding 模型」。⚠️ None = 用端点原生维度。
+    dimensions: int | None = None
 
     def api_key(self) -> str:
         load_dotenv()  # 幂等；已存在的环境变量不覆盖
@@ -147,7 +152,12 @@ class EmbeddingClient:
             f"embedding 调用失败（重试 {self.cfg.max_retries} 次）：{last}")
 
     def _post(self, texts: list[str]) -> list[list[float]]:
-        payload = json.dumps({"model": self.cfg.model, "input": texts}).encode()
+        body: dict = {"model": self.cfg.model, "input": texts}
+        # ⭐ 只在显式配了维度时才带这个字段——⚠️ 不配就用端点原生维度，
+        # ⛔ 但那时被测系统那边也不该配，否则两类臂不在同一个向量空间
+        if self.cfg.dimensions:
+            body["dimensions"] = self.cfg.dimensions
+        payload = json.dumps(body).encode()
         req = urllib.request.Request(
             f"{self.cfg.base_url.rstrip('/')}/embeddings",
             data=payload,

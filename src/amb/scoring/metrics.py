@@ -78,6 +78,12 @@ def _finish(score: Score, run: SuiteRun) -> Score:
     if score.failed_rate > UNTRUSTED_THRESHOLD:
         score.status = "untrusted"
         score.reason = f"Failed 率 {score.failed_rate:.0%} 超过 {UNTRUSTED_THRESHOLD:.0%}"
+        # ⛔ **把分清掉**：⚠️ 早先它们留在 `Score.metrics` 里、进 JSON 存档，
+        # ⭐ 而 `tools/compare_runs.py` 无条件当有效分读回来——
+        # 一个 Failed 率 67% 的臂的分就那样进了对账表。
+        score.metrics = {}
+        score.intervals = {}
+        score.denominators = {}
     return score
 
 
@@ -213,6 +219,22 @@ def _normalize(text: str) -> str:
     return "".join(c for c in text.strip().lower() if c not in drop)
 
 
+#: ⛔ 答案比 gold 长这么多倍就不算「答对了」。⚠️ 早先是无约束的子串包含：
+#: ⭐ 把**整段语料**当答案返回，每个 gold 都是它的子串 → 准确率 1.000。
+#: ⚠️ 阈值是拍的，⛔ 所以它只挡住最粗暴的那一种；
+#: 判分要确定性，而「答得对不对」的精细判断需要评委——那是本项目拒绝的。
+_ANSWER_BLOAT = 8
+
+
+def _hit(text: str, gold) -> bool:
+    """⛔ 逐字比对 + **长度约束**。⚠️ 两者缺一：没有约束就能靠转储蒙对。"""
+    for g in gold:
+        want = _normalize(str(g))
+        if want and want in text and len(text) <= max(20, len(want) * _ANSWER_BLOAT):
+            return True
+    return False
+
+
 def score_qa(run: SuiteRun) -> Score:
     """⛔ 确定性：逐字比对，不用评委。
 
@@ -237,7 +259,7 @@ def score_qa(run: SuiteRun) -> Score:
         elif said_abstain:
             abstained_wrong += 1                # 该答却弃权——不算错，单列
         else:
-            correct += any(_normalize(g) in text for g in obs.payload["gold"])
+            correct += _hit(text, obs.payload["gold"])
 
     answerable = sum(1 for o in run.observations if not o.payload["unanswerable"])
     unanswerable = sum(1 for o in run.observations if o.payload["unanswerable"])
@@ -685,7 +707,7 @@ def score_locomo_answer(run: SuiteRun) -> Score:
         elif said_abstain:
             abstained_wrong += 1                  # 该答却弃权——单列，不算错
         else:
-            correct += any(_normalize(str(g)) in text for g in r["gold"])
+            correct += _hit(text, r["gold"])
             loose += _loose_hit(r["text"], r["gold"])
 
     answerable = sum(1 for r in rows if not r["unanswerable"])
@@ -741,6 +763,12 @@ def score_locomo_retrieval(run: SuiteRun) -> Score:
     _rate(s, "evidence_recall", got, want)
     _rate(s, "命中任一率", sum(1 for r in rows if r["hit"]), n)
     s.metrics["题数"] = float(n)
+    # ⛔ **配对指标**：⚠️ `evidence_recall` 单调递增——返回越多分越高，
+    # 而早先没有任何一个指标会因为多返回而下降。
+    # ⭐ 「每题平均返回几篇」与它同屏，读者才看得出是「捞得准」还是「捞得多」。
+    returned = [r.get("returned") for r in rows if r.get("returned") is not None]
+    if returned:
+        s.metrics["每题返回篇数"] = sum(returned) / len(returned)
     # ⭐ 逐类分开——⛔ 总分会把弃权那一类糊掉
     by_cat: dict[str, list] = {}
     for r in rows:
@@ -791,6 +819,9 @@ def score(run: SuiteRun, *, with_intervals: bool = True,
     return got
 
 
+#: ⛔ 观测是**汇总行**而不是逐题的套件。⚠️ 对它们重抽样没有意义。
+_GROUPED_SUITES = frozenset({"n4_governance", "n4_governance_agent"})
+
 #: 计数类指标不配区间——⚠️ 它们是**原始计数**，⛔ 不是被估计的比例。
 #: 给一个计数配「置信区间」会让人以为它是个估计量，那是误导。
 _COUNT_HINTS = ("题数", "计数_", "→", "该留-", "该丢-", "删除_", "隔离_", "桶")
@@ -816,6 +847,13 @@ def _intervals_for(run: SuiteRun, scorer, got: Score, *,
             out[m] = wilson(value * den, den)
         else:
             boot_needed.append(m)
+
+    # ⛔ **分组型观测不做重抽样**：⚠️ `score_governance` 的观测是三条
+    # **汇总行**（attribution / isolation / trail 各一条），对它们重抽等于
+    # 对 3 个不可交换的对象抽样——⭐ 刚加的 `治理_合格` 因此拿到
+    # `[0.000, 1.000] n=6` 这种毫无意义的区间。
+    if run.suite in _GROUPED_SUITES:
+        boot_needed = []
 
     if boot_needed:
         def recompute(obs: list) -> dict[str, float]:

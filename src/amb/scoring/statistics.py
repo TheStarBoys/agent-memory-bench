@@ -147,13 +147,22 @@ def detectable_difference(baseline: float, n: int, z: float = Z95,
     """
     if n <= 0:
         return 1.0
-    lo, hi = 0.0, 1.0 - baseline
+    # ⛔ 二分的上界是 `1 - baseline`（差异不可能超过剩余空间）。
+    # ⚠️ baseline 接近 1 时**上界本身就很小**，于是返回的其实是
+    # 「还剩多少空间」而不是「最小可辨差异」——⭐ 那个数会被读成
+    # 「这个题量已经能分辨很小的差」，方向正好反了。
+    ceiling = 1.0 - baseline
+    lo, hi = 0.0, ceiling
     for _ in range(60):                      # 二分
         mid = (lo + hi) / 2
         if required_n(baseline, mid, z, power_z) <= n:
             hi = mid
         else:
             lo = mid
+    if hi >= ceiling - 1e-9 and required_n(baseline, ceiling, z, power_z) > n:
+        # ⭐ 连「剩余空间那么大的差」都分辨不出来——⛔ 那就是分辨不了，
+        # ⚠️ 不要报一个看着很小的数
+        return 1.0
     return hi
 
 

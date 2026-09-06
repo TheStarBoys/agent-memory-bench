@@ -8,6 +8,16 @@
     4. 看 P 落在 95% 区间里的比例是否接近 95%
 
     python tools/validate_sampling.py --out corpora/sampling-validity.json
+
+## ⚠️ 它验的是哪个估计量
+
+⛔ 这份实证跑的是 `stratified()`，⚠️ 而**生产上分层抽的样本用的是不加权的
+`wilson()`**——`stratified()` 在 `src/amb` 里一次都没被调用过。
+⭐ 所以这份证据支持的是「分层抽样**配上有限总体校正**能给出全量的答案」，
+⛔ 而报告里那些分层抽样的区间**没有走那条路**。
+
+⚠️ 两条路的差在小样本上不可忽略（有限总体校正会收窄区间）。
+⭐ 要么把 `stratified()` 接进判分，要么这份证据只能当**上界**读。
 """
 
 from __future__ import annotations

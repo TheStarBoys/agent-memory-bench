@@ -148,6 +148,7 @@ def main(argv: list[str] | None = None) -> int:
 
     from amb.setup import snapshot
 
+    names = [a for a in args.arms.split(",") if a]
     report = Report(
         run_id=f"{world_name}-{now_rfc3339()}",
         at=now_rfc3339(),
@@ -155,7 +156,11 @@ def main(argv: list[str] | None = None) -> int:
         # 喂给被测系统的语料——⚠️ 实测：172 篇与 434 篇两份「公认不可比」的
         # 存档 `digest` 完全相同。⭐ 所以语料指纹必须单独进存档，
         # 否则任何自动对账（tools/compare_runs.py）都漏这一类。
-        world={"name": world_name, "seed": args.sample_seed, "digest": "",
+        # ⛔ **世界种子与抽样种子是两件事**：⚠️ 早先这里填的是
+        # `--sample-seed`，而 toy / dialogue 的世界种子写死在 `manifest.seed`
+        # ——⭐ 报告说的种子复现不出那个世界。
+        world={"name": world_name, "seed": plan.manifest.seed,
+               "sample_seed": args.sample_seed, "digest": "",
                "corpus": corpus_fingerprint(plan.documents),
                "documents": len(plan.documents)},
         backbone={"model": llm.model if llm else "—（未跑 answer 档）",
@@ -172,17 +177,23 @@ def main(argv: list[str] | None = None) -> int:
                   # ⭐ 跟**套件**走的那一层变体：⚠️ 默认口径要求「资料里没有
                   # 就弃权」，而 N8 问的是故意没进语料的个体——⛔ 两者相反。
                   # ⚠️ 变体同样是尺子的一部分，一并进报告。
+                  # ⛔ `--budget` 决定 `full_context` 是 N/A 还是有分，
+                  # ⚠️ 而它早先完全不进报告——⭐ 两份对同一语料给出**相反
+                  # 结论**的存档，provenance 上一个字节都不差。
+                  "context_budget": args.budget,
                   "answer_prompt_styles": (
                       {v.value: prompt.styled(v).system
                        for v in AnswerStyle if v is not AnswerStyle.STRICT}
                       if llm else None)},
         # ⭐ 外部依赖的实际版本，⛔ 没有它这次跑不算数
-        externals=snapshot(),
+        # ⛔ 只报**这次跑真正用到的**依赖：⚠️ 早先把整份锁文件原样倒进去，
+        # ⭐ 于是版本表既**漏报**（用到但没记）也**超报**（记了但这次没用）。
+        externals={k: v for k, v in snapshot().items()
+                   if k in set(names) | {"dsh"} | (
+                       {"locomo"} if args.bench == "locomo" else set())},
         # ⚠️ 抽样方式进报告——⛔ 抽样变了分数就不可比
         sampling=sampling,
     )
-
-    names = [a for a in args.arms.split(",") if a]
 
     # ⛔ 先自检再花钱。⚠️ 它零网络调用、几秒钟，⭐ 而一次跑要几小时——
     # 实测两次教训：一次报告印出假话，一次语料造错整跑作废，
@@ -205,6 +216,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.lane in ("agent", "both"):
             _run_agent_lane(report, names, Path(tmp) / "agent")
         if args.lane == "agent":
+            # ⛔ 这条早退路径早先跳过了 `cache_report()`：⚠️ 命中率高的跑
+            # 测出来的延迟不是真延迟，⭐ 而那一行会整个消失
+            report.cache = cache_report()
             _emit(report, args)
             return 0
         for i, name in enumerate(names, 1):

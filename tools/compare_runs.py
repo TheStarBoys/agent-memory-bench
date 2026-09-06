@@ -15,6 +15,24 @@ from pathlib import Path
 
 SUITE = "locomo_retrieval"
 
+#: ⛔ 三态压成一句假话：⚠️ 「⚠️ 只在一份里」早先同时用于
+#: 「这条臂只在一份存档里」「两份都有但这个套件没分」「两份都有但记 N/A」——
+#: ⭐ 本项目专门设计了 N/A 这第三态，对账表却把它抹平了。
+def why_missing(old: dict, new: dict, arm: str, suite: str) -> str:
+    o, n = old.get(arm), new.get(arm)
+    if o is None or n is None:
+        return "⚠️ 这条臂只在一份存档里"
+    for label, a in (("旧", o), ("新", n)):
+        if a.get("not_applicable"):
+            return f"⭐ {label}的记 N/A（{str(a['not_applicable'])[:40]}）——⛔ 不是 0 分"
+        if a.get("harness_fault"):
+            return f"⛔ {label}的是**框架自己**没跑成"
+        if a.get("crashed"):
+            return f"⛔ {label}的跑挂了"
+        if (bad := usable(a, suite)):
+            return f"⚠️ {label}的这一档：{bad}"
+    return "⚠️ 两份都有，但对不上"
+
 
 def usable(arm: dict, suite: str) -> str:
     """这条臂在这个套件上的分**能不能拿来对账**。⛔ 返回不能用的理由。
