@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from amb.core import AdapterBase, BASELINE, Document, Entry
+from amb.core import AdapterBase, BASELINE, Document, Entry, Observation, SuiteRun
 from amb.scoring import score
 from amb.suites.native.n6_structure import StructureSuite
 from amb.world.stream.topology import build
@@ -186,3 +186,73 @@ def test_asking_for_a_wider_fan_than_the_pool_is_refused() -> None:
 def test_the_curve_reaches_fan64() -> None:
     """⭐ fan1~fan8 全是 1.000——⛔ 一条前段全平的曲线量不出退化斜率。"""
     assert max(f.fan for f in build(seed=3).facts) == 64
+
+
+# ── ⛔ 边界值最需要区间，⚠️ 而它们恰恰最容易丢 ──────────────────
+def _run_with(rows) -> SuiteRun:
+    run = SuiteRun("n6_structure", "scored")
+    for i, payload in enumerate(rows):
+        run.observations.append(Observation(f"i{i}", payload))
+    return run
+
+
+def _fan_metrics(got) -> list[str]:
+    return [k for k in got.metrics if k.startswith(("可达性_fan", "精确检索_fan"))]
+
+
+def test_a_degenerate_arm_still_gets_intervals_per_fan() -> None:
+    """⛔ 全 0.000 的臂，每一档都要有区间。
+
+    ⚠️ 2026-09-07 真跑实测：`null` 的 **14 个分档全部无区间**——
+    ⭐ 因为它们名字里没有「率」，被判成非比例走了重抽样，
+    而重抽样对常数每次都得同一个值 → 零宽 → 按规矩不给区间。
+    ⛔ 于是「没有区间就不许声称差异」把这一档永远判成「分不开」。
+    """
+    got = score(_run_with([
+        {"fan": 2 ** (i % 7), "reached": 0, "cues": 3, "precise": False}
+        for i in range(112)]))
+    missing = [k for k in _fan_metrics(got) if k not in got.intervals]
+    assert not missing, f"⛔ 这些分档没有区间：{missing}"
+
+
+def test_a_perfect_arm_still_gets_intervals_per_fan() -> None:
+    """⛔ 1.000 也一样。
+
+    ⚠️ 实测：`bm25` 的 `可达性_fan2=1.000` 不带区间印出来，
+    ⭐ 读起来比同一列的 `0.938[0.87,1.00]` **更确定**——而两者 n 一样。
+    """
+    got = score(_run_with([
+        {"fan": 2 ** (i % 7), "reached": 3, "cues": 3, "precise": True}
+        for i in range(112)]))
+    missing = [k for k in _fan_metrics(got) if k not in got.intervals]
+    assert not missing, f"⛔ 这些分档没有区间：{missing}"
+
+
+def test_each_fan_interval_uses_its_own_denominator() -> None:
+    """⛔ 分档的分母是**这一档的条数**，⚠️ 不是全部观测数。
+
+    ⭐ 用观测数会把区间压窄，⛔ 而区间重叠是唯一阻止「声称 A 比 B 好」的闸门。
+    """
+    got = score(_run_with([
+        {"fan": 2 ** (i % 7), "reached": 0, "cues": 3, "precise": False}
+        for i in range(112)]))
+    for k in _fan_metrics(got):
+        assert got.denominators.get(k) == 16, \
+            f"⛔ {k} 的分母是 {got.denominators.get(k)}，⚠️ 该是这一档的 16"
+        assert got.intervals[k].n == 16, f"⛔ {k} 区间的 n 也该是 16"
+    # ⭐ 汇总仍然用全部观测数——⚠️ 它是跨档的
+    assert got.intervals["可达性"].n == 112
+
+
+def test_a_narrow_stratum_gets_a_wider_interval() -> None:
+    """⭐ 分母小 → 区间宽。⛔ 这才是区间该有的行为。
+
+    ⚠️ 反过来（分档与汇总一样宽）说明分母用错了。
+    """
+    got = score(_run_with([
+        {"fan": 2 ** (i % 7), "reached": 0, "cues": 3, "precise": False}
+        for i in range(112)]))
+    per_fan = got.intervals["可达性_fan1"]
+    overall = got.intervals["可达性"]
+    assert per_fan.high > overall.high, \
+        f"⛔ 一档 16 条的区间不该比 112 条的还窄：{per_fan.high} vs {overall.high}"

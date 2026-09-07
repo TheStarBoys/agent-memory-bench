@@ -188,3 +188,56 @@ def test_a_slope_is_never_given_a_wilson_interval() -> None:
         assert not looks_like_proportion(m), f"⛔ {m} 不是比例"
     for m in ("准确率", "top1", "全对"):
         assert looks_like_proportion(m)
+
+
+# ── ⛔ 同一组互斥分类必须走同一条路 ─────────────────────────────
+def test_a_mutually_exclusive_family_shares_one_estimator() -> None:
+    """⛔ N8 那四个加起来正好 1.000——⚠️ 它们必须走同一条路。
+
+    ⭐ 实测 2026-09-07：只有 `全对` 撞上了关键词走 Wilson，
+    另外三个走重抽样，于是边界值上没有区间——
+    ⛔ `bm25` 三个全 0.000 无区间而同一行的 `全对=1.000` 有区间。
+    ⚠️ 一张表里两把尺，读者看不出来。
+    """
+    from amb.scoring.statistics import looks_like_proportion
+
+    family = ("全对", "过度修正", "过度泛化", "未归纳")
+    verdicts = {m: looks_like_proportion(m) for m in family}
+    assert len(set(verdicts.values())) == 1, f"⛔ 同组走了两条路：{verdicts}"
+
+
+def test_the_qa_family_shares_one_estimator() -> None:
+    """⚠️ `qa` 的另外三个都带「率」字，⛔ 只有 `该答却弃权` 漏了。"""
+    from amb.scoring.statistics import looks_like_proportion
+
+    family = ("准确率", "正确弃权率", "编造率", "该答却弃权")
+    verdicts = {m: looks_like_proportion(m) for m in family}
+    assert len(set(verdicts.values())) == 1, f"⛔ 同组走了两条路：{verdicts}"
+
+
+def test_a_stratified_metric_follows_its_own_summary() -> None:
+    """⭐ `可达性_fan16` 与 `可达性` 是同一个量在某一档上的值。
+
+    ⛔ 两者走不同的路就会一个有区间一个没有——⚠️ 而它们并排印在同一行里。
+    """
+    from amb.scoring.statistics import looks_like_proportion
+
+    for base in ("可达性", "精确检索"):
+        assert looks_like_proportion(base)
+        for fan in (1, 2, 16, 64):
+            assert looks_like_proportion(f"{base}_fan{fan}"), \
+                f"⛔ {base}_fan{fan} 与它的汇总走了两条路"
+
+
+def test_things_that_are_not_proportions_stay_out() -> None:
+    """⛔ 反向：⚠️ 把非比例塞进 Wilson 是另一个方向的错。
+
+    ⭐ 秩相关值域 [-1,1]，⛔ 而 Wilson 的下界结构上排除负数——
+    负相关会被静默截断成 0。
+    """
+    from amb.scoring.statistics import looks_like_proportion
+
+    for m in ("扇形退化斜率", "可达性增益", "规律强度单调性",
+              "因子_频率", "因子_间隔", "因子_显著性", "IoU_p50",
+              "保留追踪度", "ECE", "Brier"):
+        assert not looks_like_proportion(m), f"⛔ {m} 不是比例"

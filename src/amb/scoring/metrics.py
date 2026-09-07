@@ -467,6 +467,7 @@ def score_structure(run: SuiteRun) -> Score:
         by_fan.setdefault(obs.payload["fan"], []).append(obs.payload)
 
     metrics: dict[str, float] = {}
+    denominators: dict[str, int] = {}
     reach_pts: list[tuple[float, float]] = []
     precise_pts: list[tuple[float, float]] = []
     # ⛔ **测不到就不报**：⚠️ agent 档是多轮会话，量不了「指名要这一条时
@@ -478,10 +479,15 @@ def score_structure(run: SuiteRun) -> Score:
         rows = by_fan[fan]
         reach = sum(r["reached"] / max(1, r["cues"]) for r in rows) / len(rows)
         metrics[f"可达性_fan{fan}"] = reach
+        # ⛔ 记上**这一档自己的**分母：⚠️ 不记的话区间会退回用全部观测数
+        # （112 而不是这一档的 16），⭐ 那把区间压窄了——
+        # 而区间重叠是唯一阻止「声称 A 比 B 好」的闸门。
+        denominators[f"可达性_fan{fan}"] = len(rows)
         reach_pts.append((math.log(fan), reach))
         if has_precise:
             precise = sum(float(r["precise"]) for r in rows) / len(rows)
             metrics[f"精确检索_fan{fan}"] = precise
+            denominators[f"精确检索_fan{fan}"] = len(rows)
             precise_pts.append((math.log(fan), precise))
 
     # ⭐ 两条曲线各给一个**跨档汇总**：⚠️ 每档等权，⛔ 不是按题数加权——
@@ -491,6 +497,7 @@ def score_structure(run: SuiteRun) -> Score:
     # 永远说「分不开」——即便 0.000 与 0.214 是真差别。
     n_probed = len(run.observations)
     s.metrics = metrics
+    s.denominators = denominators
     _rate(s, "可达性", sum(v for _, v in reach_pts) / len(reach_pts) * n_probed,
           n_probed)
     if precise_pts:

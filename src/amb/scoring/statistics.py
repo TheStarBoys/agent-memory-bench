@@ -15,6 +15,8 @@
 
 from __future__ import annotations
 
+import re
+
 import math
 from dataclasses import dataclass
 
@@ -270,12 +272,33 @@ NOT_PROPORTION = ("斜率", "增益", "单调性", "相关", "IoU", "置信度",
 #: ⚠️ 于是走重抽样——而重抽样在**边界值上失效**（`null` 的 0.000
 #: 每次重抽都一样 → 零宽 → 不给区间 → 「没有区间就不许声称差异」→
 #: ⭐ 这一档永远说「分不开」，即便 0.000 与 0.214 是真差别）。
-PROPORTION_NAMES = frozenset({"可达性", "精确检索"})
+#:
+#: ⛔ **分档的也算**：⚠️ 早先只补了汇总的两个，漏掉 `可达性_fan16` 这 14 个
+#: **同源**的量。⭐ 2026-09-07 真跑实测后果：`null` 的 14 个分档全部无区间，
+#: `bm25` 的 `可达性_fan2=1.000` 与 `精确检索_fan64=0.000` 也无区间——
+#: ⛔ 而 `1.000` 不带区间印出来，读起来比 `0.938[0.87,1.00]` **更确定**，
+#: ⚠️ 实际两者 n 一样。⭐ 0 和 1 恰恰是最需要区间的：
+#: `0/16` 与 `0/1000` 都印成 `0.000`，置信度差 60 倍而看不出来。
+#: ⛔ **同一组互斥分类必须走同一条路**：⚠️ N8 的四个
+#: （`全对` / `过度修正` / `过度泛化` / `未归纳`）加起来正好 1.000，
+#: ⭐ 而只有 `全对` 撞上了关键词——其余三个走重抽样，边界值上就没了区间。
+#: 实测 2026-09-07：`bm25` 三个全 0.000 无区间、`null` 的 `未归纳=1.000` 无区间，
+#: ⛔ 而同一行的 `全对` 有区间。⚠️ 一张表里两把尺，读者看不出来。
+#: ⭐ `该答却弃权` 同理：`qa` 另外三个都带「率」字，只有它漏了。
+PROPORTION_NAMES = frozenset({
+    "可达性", "精确检索",
+    "全对", "过度修正", "过度泛化", "未归纳",
+    "该答却弃权",
+})
+
+#: ⭐ 分档后缀：`可达性_fan16` 与 `可达性` 是同一个量在某一档上的值。
+_STRATUM_SUFFIX = re.compile(r"_fan\d+$")
 
 
 def looks_like_proportion(metric: str) -> bool:
     """⚠️ 先排除，再匹配——⛔ 顺序反了「斜率」会被「率」捞回来。"""
-    if metric in PROPORTION_NAMES:
+    # ⭐ 分档与它的汇总是同一个量：⛔ 两者走不同的路就会一个有区间一个没有
+    if metric in PROPORTION_NAMES or _STRATUM_SUFFIX.sub("", metric) in PROPORTION_NAMES:
         return True
     if any(h in metric for h in NOT_PROPORTION):
         return False
