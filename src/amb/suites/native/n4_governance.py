@@ -67,6 +67,14 @@ class GovernanceSuite:
 
     name: ClassVar[str] = "n4_governance"
     requires: ClassVar[frozenset[Capability]] = frozenset({Capability.GOVERNANCE})
+    #: ⭐ 查询在这一档只是**定位工具**：⚠️ 判定用 `doc_id`，不是文本匹配，
+    #: ⛔ 所以查询是不是子串对分数没有影响。
+    #: ⭐ 而且删完那一步**必须**用最强的查询去验「真没了吗」——
+    #: ⚠️ 弱查询捞不到，可能只是检索不给力，⛔ 那会把「没删干净」读成「删了」。
+    query_overlap: ClassVar[dict[str, str]] = {
+        "substring": "查询只是定位工具（判定用 doc_id），⭐ 删完那步要用最强的"
+                     "查询验「真没了吗」——⛔ 弱查询捞不到会把没删干净读成删了",
+    }
 
     def __init__(self, probes: list[DeletionProbe],
                  rebuild: Callable[[], Adapter],

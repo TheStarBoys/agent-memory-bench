@@ -28,6 +28,14 @@ class ProvenanceSuite:
     requires: ClassVar[frozenset[Capability]] = frozenset(
         {Capability.SEARCH, Capability.PROVENANCE}
     )
+    #: ⭐ 查询**就是要找的那一段原文**——⚠️ 这一档问的是
+    #: 「你能不能指出它在原文的哪个位置」，⛔ 不是「你找不找得到」。
+    #: ⚠️ 查询难度在这里是**噪声**：找不到就没有区间可评，
+    #: ⭐ 那样量到的是检索，不是溯源。
+    query_overlap: ClassVar[dict[str, str]] = {
+        "substring": "查询就是要定位的那段原文，⭐ 这一档量的是「指得出位置吗」，"
+                     "⛔ 不是「找不找得到」",
+    }
 
     def __init__(self, probes: list[SpanProbe], corpus: dict[str, str]) -> None:
         self._probes = probes

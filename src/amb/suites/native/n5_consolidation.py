@@ -100,6 +100,14 @@ class ObservedRetentionSuite:
 
     name: ClassVar[str] = "n5_observed"
     requires: ClassVar[frozenset[Capability]] = frozenset({Capability.SEARCH})
+    #: ⭐ 查询**就是原文**，这是设计不是失误：这一档问的是
+    #: 「这条还在不在」，⛔ 不是「换个说法找不找得到」。
+    #: ⚠️ 用最强的信号去查，正是为了把**检索能力**这个变量消掉——
+    #: 连原文都捞不到，那才叫遗忘了。
+    query_overlap: ClassVar[dict[str, str]] = {
+        "identity": "保留度用原文查，⭐ 为的是消掉检索能力这个混淆变量——"
+                    "⛔ 连原文都捞不到才叫遗忘",
+    }
 
     def __init__(self, probes: list[RetentionProbe],
                  curve: NeedCurve | None = None) -> None:

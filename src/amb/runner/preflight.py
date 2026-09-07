@@ -185,12 +185,20 @@ def check_queries(plan, rec: _Recorder, out: Report) -> None:
     三个线索又全是原文的子串（⛔ 加大扇形度也改不了）。
     ⭐ 拿原文查原文，兄弟条目没有可分摊的东西——量不到挤压。
 
-    ⛔ **但它只能是警告，不能是致命**：有两个套件**故意**这么问——
+    ⛔ **但它只能是警告，不能是致命**：有几个套件**故意**这么问——
     N5 问「给你原文你还找不找得到」（那是保留度，不是检索难度），
-    N2 的查询本来就是原文的一段。
+    N2 的查询本来就是原文的一段，N6 的三个线索里有两个刻意是子串
+    （⭐ 那是难度梯度：指名道姓 → 换个说法 → 线索不足）。
     ⚠️ 一刀切成致命的话，每次都刷屏，⛔ 人就开始忽略它——
     **那正是原来那些 bug 溜过去的方式**。
-    ⭐ 所以归因到套件：判断权交给读的人，但**必须说得清为什么可以放过**。
+
+    ⭐ **所以套件自己声明** `query_overlap`：说清它的查询与语料是什么关系、
+    为什么。⚠️ 声明过的不再报警告，⛔ 但**理由会照常印出来**——
+    放过一条检查的依据必须跟着跑走，而不是留在某个文件的注释里
+    让人每次重新判断一遍。
+
+    ⛔ 声明只挡它**说到的那一类**：⚠️ 声明了 `substring` 的套件要是冒出
+    `identity`，照样报——⭐ 那是设计之外的东西，正是这条检查要抓的。
     """
     texts = {d.text for d in plan.documents}
     # ⚠️ 子串检查是 O(查询 × 语料)，⛔ 大语料上要限量——
@@ -210,14 +218,41 @@ def check_queries(plan, rec: _Recorder, out: Report) -> None:
         elif any(q in t for t in sample):
             slot["substring"].append(q)
     total = {s: sum(1 for x, _, _ in rec.queries if x == s) for s in by_suite}
+    declared = _declared_overlap(plan)
     for suite, slot in sorted(by_suite.items()):
         for kind, check in (("identity", "query-is-identity"),
                             ("substring", "query-is-substring")):
             hits = slot[kind]
-            if hits:
-                out.add("warn", check,
-                        f"{suite}：{len(hits)}/{total[suite]} 条，"
-                        f"例 {hits[0][:40]!r}")
+            if not hits:
+                continue
+            where = f"{suite}：{len(hits)}/{total[suite]} 条，例 {hits[0][:40]!r}"
+            why = declared.get(suite, {}).get(kind)
+            if why:
+                # ⭐ 声明过 = 设计如此。⛔ 但理由要印出来，⚠️ 不静默吞掉
+                out.add("info", check, f"{where}——⭐ 套件已声明：{why}")
+            else:
+                out.add("warn", check, where)
+
+
+def _declared_overlap(plan) -> dict[str, dict[str, str]]:
+    """套件自报的「我的查询与语料是什么关系」。
+
+    ⭐ 形状是 `{"identity": "为什么", "substring": "为什么"}`。
+    ⚠️ 只认**带理由**的声明：⛔ 一个空串或 `True` 挡不住任何东西——
+    那样就成了「打个标记就能关掉检查」，⭐ 而理由才是这条声明的全部意义。
+    """
+    out: dict[str, dict[str, str]] = {}
+    for suite in _suites_of(plan):
+        raw = getattr(suite, "query_overlap", None)
+        if not isinstance(raw, dict):
+            continue
+        name = getattr(suite, "name", type(suite).__name__)
+        good = {k: v.strip() for k, v in raw.items()
+                if k in ("identity", "substring")
+                and isinstance(v, str) and v.strip()}
+        if good:
+            out[name] = good
+    return out
 
 
 def check_gold(plan, rec: _Recorder, out: Report) -> None:

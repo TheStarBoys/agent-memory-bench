@@ -214,3 +214,97 @@ def test_the_arm_name_is_not_the_dependency_name() -> None:
         clean = pf.Report()
         pf.check_externals(("mem0_raw", "mem0", "bm25"), clean)
         assert not clean.fatal, [str(f) for f in clean.fatal]
+
+
+# ── ⭐ 套件自报「我的查询与语料是什么关系」 ─────────────────────
+class _Declaring(_Suite):
+    """会声明 `query_overlap` 的套件。⚠️ 声明必须**带理由**。"""
+
+    def __init__(self, name, queries, overlap) -> None:
+        super().__init__(name, queries)
+        self.query_overlap = overlap
+
+
+def _levels(report, check: str) -> set[str]:
+    return {f.level for f in report.findings if f.check == check}
+
+
+def test_a_declared_overlap_stops_the_warning_but_not_the_reason() -> None:
+    """⭐ 声明过 = 设计如此，⛔ 但理由必须照常印出来。
+
+    ⚠️ 这是这条改动的全部意义：放过一条检查的依据要**跟着跑走**，
+    ⛔ 而不是留在某个文件的注释里让人每次重新判断一遍。
+    ⚠️ 实测背景：`n6_structure` 每跑都报 224/448、`n5_observed` 报 30/30，
+    ⭐ 两条都是设计——⛔ 而刷屏会训练人忽略这一整类警告。
+    """
+    why = "保留度用原文查，⭐ 为的是消掉检索能力这个混淆变量"
+    report = inspect(_plan([_Declaring(
+        "n5_like", [d.text for d in DOCS], {"identity": why})]))
+    assert _levels(report, "query-is-identity") == {"info"}, "⛔ 不该再是警告"
+    assert any(why in f.detail for f in report.findings), \
+        "⛔ 理由必须印出来——⚠️ 静默吞掉就等于没有这条检查"
+
+
+def test_a_declaration_only_covers_what_it_actually_says() -> None:
+    """⛔ 声明了 `substring` 的套件冒出 `identity`，⚠️ 照样报警告。
+
+    ⭐ 那是设计之外的东西——正是这条检查要抓的。
+    """
+    report = inspect(_plan([_Declaring(
+        "n6_like", [d.text for d in DOCS],      # ⚠️ 整句 = identity
+        {"substring": "三个线索是难度梯度，①③ 刻意用原文的词"})]))
+    assert _levels(report, "query-is-identity") == {"warn"}, \
+        "⛔ 声明只挡它说到的那一类"
+
+
+def test_a_declaration_without_a_reason_stops_nothing() -> None:
+    """⛔ 空理由挡不住任何东西——⚠️ 否则就成了「打个标记关掉检查」。
+
+    ⭐ 理由才是这条声明的全部意义。
+    """
+    for bad in ({"identity": ""}, {"identity": "   "}, {"identity": True},
+                {"substring": None}, "identity", None):
+        report = inspect(_plan([_Declaring(
+            "sloppy", [d.text for d in DOCS], bad)]))
+        assert _levels(report, "query-is-identity") == {"warn"}, \
+            f"⛔ {bad!r} 不该挡住警告"
+
+
+def test_the_intentional_suites_no_longer_shout() -> None:
+    """⭐ 端到端：真实的 `toy` 上，故意这么问的三个套件不再报警告。
+
+    ⚠️ 实测背景：2026-09-07 那一跑里 `n6_structure` 224/448、
+    `n5_observed` 30/30、`n2_provenance` 2/38——⛔ 三条都是设计。
+    """
+    import worlds.toy as toy_world
+
+    report = inspect(Plan(manifest=toy_world.MANIFEST,
+                          documents=toy_world.DOCUMENTS,
+                          suites=toy_world.suites()))
+    kinds = ("query-is-identity", "query-is-substring")
+    noisy = [f.detail for f in report.findings
+             if f.check in kinds and f.level == "warn"]
+    for declared in ("n6_structure", "n5_observed", "n2_provenance",
+                     "n4_governance"):
+        assert not any(declared in d for d in noisy), \
+            f"⛔ {declared} 还在刷屏：{noisy}"
+    # ⭐ 但理由还在，⛔ 没被吞掉
+    assert [f for f in report.findings if f.check in kinds and f.level == "info"], \
+        "⛔ 理由全没了说明检查失灵了，⚠️ 不是不刷屏，是瞎了"
+
+
+def test_an_accidental_overlap_still_shouts() -> None:
+    """⛔ **没声明的照样报**——⚠️ 这条检查不能因为加了声明就变瞎。
+
+    ⭐ `n1_spontaneous` 的 `'新皮层学得慢'` 撞上 `notes/neocortex.md`
+    的开头，⚠️ 那是 toy 语料太小的**巧合**，⛔ 不是设计——该报。
+    """
+    import worlds.toy as toy_world
+
+    report = inspect(Plan(manifest=toy_world.MANIFEST,
+                          documents=toy_world.DOCUMENTS,
+                          suites=toy_world.suites()))
+    warned = [f.detail for f in report.findings
+              if f.check == "query-is-substring" and f.level == "warn"]
+    assert any("n1_spontaneous" in d for d in warned), \
+        f"⛔ 意外撞上的不报就等于关掉了这条检查：{warned}"

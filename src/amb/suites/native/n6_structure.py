@@ -24,6 +24,16 @@ class StructureSuite:
     name: ClassVar[str] = "n6_structure"
     #: ⭐ 不需要声明任何能力——search 就够，全员参赛
     requires: ClassVar[frozenset[Capability]] = frozenset({Capability.SEARCH})
+    #: ⭐ 三个线索是**难度梯度**，⚠️ 其中两个刻意是原文的子串：
+    #:   ① `实体+动词` 指名道姓（子串，最易）
+    #:   ② `实体+别名` 换个说法（⛔ 一个字都不共——可达性真正测的是它）
+    #:   ③ `只有宾语`  线索不足（子串，但要跨实体挤）
+    #: ⛔ 三个全都不共字的话，梯度就没了——⚠️ 那只剩「难」这一档，
+    #: 而扇形退化要靠**易到难这一段**才看得出来。
+    query_overlap: ClassVar[dict[str, str]] = {
+        "substring": "三个线索是难度梯度，⭐ ①③ 刻意用原文的词（易/线索不足），"
+                     "⛔ 只有 ② 换说法——三个都不共字就没有梯度了",
+    }
 
     def __init__(self, topology: Topology, k: int = 5,
                  max_per_fan: int = 16) -> None:
