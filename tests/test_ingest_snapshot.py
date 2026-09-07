@@ -642,8 +642,9 @@ def test_naive_rag_hits_its_snapshot_on_the_second_run(tmp_path, monkeypatch):
     """⛔ 端到端：第二次跑必须**一次 embedding 都不发**。
 
     ⚠️ 这条臂此前拿不到快照，理由写在代码里是「对照组摄入本来就便宜」——
-    ⭐ 那句话对它是错的：实测 toy 623 篇烧掉 **1386 秒**。
-    ⛔ 真正的阻碍是它没有持久层，而版本号那一格没有外部依赖可填。
+    ⭐ 实测下来**那句话是对的**（摄入 112s，占整条臂 8.6%）。
+    ⛔ 所以这条路径给的不是「省时间」，是**口径一致**：
+    ⚠️ 让对照臂与被测系统走同一条快照路径。
     """
     from amb.adapters import create
     from amb.adapters.embedding import EmbeddingConfig, METER

@@ -175,10 +175,12 @@ def test_hybrid_uses_rank_fusion_not_score_addition(fake) -> None:
 # ── ⭐ 这两条臂也要能用摄入快照 ──────────────────────────────────
 @pytest.mark.parametrize("name", ["naive_rag", "hybrid"])
 def test_vector_arms_persist_their_index(fake, tmp_path, name: str) -> None:
-    """⛔ 它们每跑一次要烧几百次 embedding 调用——实测 toy 623 篇 **1386 秒**。
+    """⭐ 快照是**拷目录**，⛔ 所以没有持久层的臂根本进不了快照。
 
-    ⚠️ 而它们此前拿不到摄入快照。⭐ 原因不是「对照组摄入便宜」（那句注释
-    对它们是错的），而是它们**没有可拷贝的持久层**。
+    ⚠️ 收益要说实话：实测 toy 623 篇，摄入 **112s**，只占整条臂 8.6%。
+    ⛔ 做它不是为了省这 112 秒，⭐ 而是为了**口径一致**——
+    只有被测系统能命中快照、对照臂不能的话，
+    ⚠️ 「快照命中与否」本身就成了臂之间的一个差别。
     """
     from amb.adapters import create
 

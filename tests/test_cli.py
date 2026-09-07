@@ -120,7 +120,7 @@ def test_each_finished_arm_is_written_to_disk_immediately(tmp_path) -> None:
     """⛔ 一次几小时的跑不该是**全有或全无**。
 
     ⚠️ 实测踩到：跑到第 5 条臂被系统 OOM 杀掉，而 CLI 只在全部跑完才写
-    JSON——⭐ 前面 4 条臂（42 分钟，含 naive_rag 1386s、mem0_raw 1142s）
+    JSON——⭐ 前面 4 条臂（42 分钟，含 naive_rag 1386s（整条臂）、mem0_raw 1142s）
     **全部丢失**。
     """
     import inspect

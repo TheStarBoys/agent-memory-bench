@@ -319,7 +319,7 @@ def main(argv: list[str] | None = None) -> int:
                   file=sys.stderr, flush=True)
             # ⛔ **每跑完一条就落盘**：⚠️ 早先只在全部跑完才写 JSON——
             # 实测踩到：跑到第 5 条被系统 OOM 杀掉，⭐ 前面 4 条臂
-            # （42 分钟、含 naive_rag 1386s 与 mem0_raw 1142s）**全部丢失**。
+            # （42 分钟、含 naive_rag 1386s（整条臂） 与 mem0_raw 1142s）**全部丢失**。
             # ⚠️ 一次几小时的跑不该是全有或全无。
             _checkpoint(report, args)
 

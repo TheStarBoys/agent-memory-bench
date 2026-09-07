@@ -279,10 +279,12 @@ def _snapshot_key(name: str, adapter: Adapter, plan: Plan, backbone: str):
     version = ((lockfile().get(dependency, {}) or {}).get("actual", "")
                if dependency else "")
     if not version:
-        # ⭐ 没有外部依赖的臂（`naive_rag`）用**评测器自己的代码指纹**当版本。
-        # ⚠️ 早先这里直接 `return None`，理由写的是「对照组摄入本来就便宜」——
-        # ⛔ 那句话对 `naive_rag` 是错的：实测 623 篇要 **1386 秒** embedding。
-        # ⚠️ 真正的阻碍是它**没有持久层**，而那个已经补上了。
+        # ⭐ 没有外部依赖的臂（`naive_rag` / `hybrid`）用**评测器自己的代码
+        # 指纹**当版本。⚠️ 早先这里直接 `return None`，理由是「对照组摄入
+        # 本来就便宜」——⭐ 实测下来**那句话是对的**（摄入 112s，占 8.6%）。
+        # ⛔ 所以这条路径给的不是「省时间」，是**口径一致**：
+        # ⚠️ 让对照臂与被测系统走同一条快照路径，
+        # 否则「命中快照」这件事本身就成了臂之间的一个差别。
         from amb.runner.resume import code_digest
 
         version = f"code:{code_digest()}"
