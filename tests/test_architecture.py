@@ -141,3 +141,51 @@ def test_scoring_is_free_of_judges() -> None:
         "scoring/ 里出现疑似 LLM 依赖，违反约束①（自研套件不用评委）：\n  "
         + "\n  ".join(bad)
     )
+
+
+# ── ⛔ 测试必须走生产那扇门 ─────────────────────────────────────
+def test_every_control_arm_is_reachable_through_build() -> None:
+    """⛔ `build()` 是**唯一**认识具体臂的地方——⚠️ env 变量、`storage_dir`、
+    embedding 配置、臂名分派全在这里。
+
+    ⭐ 而它此前只被 `null` / `bm25` / `host_default` 走过，
+    ⚠️ 恰好是三条**不需要外部配置**的臂。⛔ 实测后果：
+    给 `hybrid` 多传一个它不认识的参数 = TypeError，
+    而全套 683 个测试照样绿——**因为没有一个测试走这条路造这条臂**。
+    """
+    import sys
+
+    sys.path.insert(0, str(ROOT / "tests"))
+    import offline
+    from amb.adapters import CONTROL_ARMS
+    from amb.runner import build
+
+    old = dict(__import__("os").environ)
+    try:
+        __import__("os").environ.update(offline.ENV)
+        for name in CONTROL_ARMS:
+            build(name)          # ⛔ 造不出来就是 TypeError / KeyError
+    finally:
+        __import__("os").environ.clear()
+        __import__("os").environ.update(old)
+
+
+def test_a_new_arm_cannot_skip_the_full_pipeline_layer() -> None:
+    """⛔ **防复发装置**：加一条新臂时，它必须同时进离线全流水线那一层。
+
+    ⚠️ 那 7 个 bug 的共同成因是「这条臂没被完整跑过」——⭐ 而防止它再发生
+    的办法不是记得，是**让漏掉这一步过不了测试**。
+
+    ⚠️ 真要豁免某条臂，就在 `test_offline_fullrun.ARMS` 旁边写清为什么，
+    ⛔ 而不是让它默默不在名单里。
+    """
+    import sys
+
+    sys.path.insert(0, str(ROOT / "tests"))
+    from amb.adapters import CONTROL_ARMS
+    from test_offline_fullrun import ARMS
+
+    missing = sorted(set(CONTROL_ARMS) - set(ARMS))
+    assert not missing, (
+        f"⛔ 这些对照臂没进离线全流水线：{missing}——"
+        f"⚠️ 加进 `test_offline_fullrun.ARMS`，或写清豁免理由")
