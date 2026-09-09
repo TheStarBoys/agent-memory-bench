@@ -208,16 +208,25 @@ def test_hybrid_keeps_its_bm25_half_across_a_restore(fake, tmp_path) -> None:
     """
     from amb.adapters import create
 
+    # ⛔ 语料要让 df **真的有差别**：⚠️ 所有词 df 相同时 idf 齐变、排名不变，
+    # ⭐ 那样「df 丢了」这个 bug 在行为上看不见——实测过，测试照样绿。
+    docs = [Document(doc_id=f"d{i}", text="海马体负责编码。" + "新皮层慢。" * (i % 3))
+            for i in range(9)]
+    docs.append(Document(doc_id="rare", text="海马体负责编码。橘猫晒太阳独一无二。"))
+
     store = tmp_path / "h"
     arm = create("hybrid", embedding=CFG, storage_dir=str(store))
-    for d in DOCS:
+    for d in docs:
         arm.ingest(d)
     arm.finalize()
 
     again = create("hybrid", embedding=CFG, storage_dir=str(store))
     again.count()                       # ⚠️ 触发惰性读盘
-    q = DOCS[1].text
-    assert again._bm25_rank(q) == arm._bm25_rank(q) != [], "⛔ BM25 那一半没回来"
+    # ⭐ 查询里要有**三个 df 各不相同**的词（df 分布 1/6/10）：
+    # ⛔ 只有两个词时 idf 齐变、排名不变——⚠️ 那样 df 丢了在行为上看不见。
+    for q in ("海马体 新皮层 橘猫", "橘猫 新皮层 海马体"):
+        assert again._bm25_rank(q) == arm._bm25_rank(q) != [], \
+            f"⛔ BM25 那一半没回来：{q!r} 上排名变了"
     assert again._avg_len == arm._avg_len > 0
 
 
