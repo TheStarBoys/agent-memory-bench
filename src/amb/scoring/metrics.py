@@ -36,6 +36,14 @@ class Score:
     #: ⭐ 区间被压窄 → 与地板不重叠 → 报告直接印显著差异。
     #: ⛔ 而区间重叠是这个项目**唯一**阻止「声称 A 比 B 好」的机制。
     denominators: dict[str, int] = field(default_factory=dict)
+    #: ⭐ **为什么这个指标没有区间**。⛔ 「没有区间」有两种，⚠️ 而报告里
+    #: 它们长得一模一样：
+    #:   ① 它是原始计数——本来就不配区间
+    #:   ② 估计量在这批观测上**没有信息**（退化臂每次重抽都是同一个值）
+    #: ⛔ 读者分不出「估不出来」与「忘了算」，⚠️ 而后者是个 bug。
+    #: ⭐ 实测：`null` 的 `保留追踪度` 印成 0.000 无区间，
+    #: 同一列 `bm25` 是 -0.452 有区间——⛔ 当时没有任何东西说明这个差别。
+    no_interval: dict[str, str] = field(default_factory=dict)
 
     def interval(self, metric: str) -> Interval | None:
         return self.intervals.get(metric)
@@ -830,6 +838,7 @@ def score(run: SuiteRun, *, with_intervals: bool = True,
     got = scorer(run)
     if with_intervals and got.status == "scored" and run.observations:
         got.intervals = _intervals_for(run, scorer, got, seed=seed)
+        _explain_missing_intervals(run, got)
     return got
 
 
@@ -838,14 +847,19 @@ _GROUPED_SUITES = frozenset({"n4_governance", "n4_governance_agent"})
 
 #: 计数类指标不配区间——⚠️ 它们是**原始计数**，⛔ 不是被估计的比例。
 #: 给一个计数配「置信区间」会让人以为它是个估计量，那是误导。
-_COUNT_HINTS = ("题数", "计数_", "→", "该留-", "该丢-", "删除_", "隔离_", "桶")
+#: ⚠️ 保留这个名字给老调用方，⛔ 但定义只有一处（statistics.kind_of）——
+#: ⭐ 两张表各自演化正是 `计数_全对` 那个矛盾的成因。
+from amb.scoring.statistics import COUNT_HINTS as _COUNT_HINTS
 
 
 def _intervals_for(run: SuiteRun, scorer, got: Score, *,
                    seed: int) -> dict[str, Interval]:
     """比例走 Wilson（小样本更准），其余走重抽样。"""
     n = len(run.observations)
-    wanted = [m for m in got.metrics if not any(h in m for h in _COUNT_HINTS)]
+    from amb.scoring.statistics import kind_of
+
+    # ⭐ 分类只问一个地方：⛔ 计数不配区间，`other` 走重抽样，比例走 Wilson
+    wanted = [m for m in got.metrics if kind_of(m) != "count"]
     if not wanted or n < 2:
         return {}
 
@@ -878,3 +892,27 @@ def _intervals_for(run: SuiteRun, scorer, got: Score, *,
 
         out |= bootstrap(run.observations, recompute, boot_needed, seed=seed)
     return out
+
+
+def _explain_missing_intervals(run: SuiteRun, got: Score) -> None:
+    """⛔ 每一个没有区间的指标都要说清为什么。
+
+    ⚠️ 这一层不改任何分，⭐ 它只是把**沉默**变成**有署名的沉默**——
+    而那正是这个仓库反复栽的地方：一个静默降级的数长得跟正常数一样。
+    """
+    from amb.scoring.statistics import kind_of
+
+    n = len(run.observations)
+    for m in got.metrics:
+        if m in got.intervals:
+            continue
+        if kind_of(m) == "count":
+            got.no_interval[m] = "原始计数——⚠️ 它不是比例，⛔ 区间无从谈起"
+        elif n < 2:
+            got.no_interval[m] = f"只有 {n} 条观测——⛔ 估不出离散度"
+        else:
+            # ⭐ 走到这里说明重抽样退化了：⚠️ 每次重抽都得同一个值。
+            # ⛔ 那不是「估得很准」，是这批观测对这个量**没有信息**。
+            got.no_interval[m] = (
+                f"重抽样在这批观测上退化（{n} 条，每次重抽同值）——"
+                f"⛔ 不是估得准，是没有信息")

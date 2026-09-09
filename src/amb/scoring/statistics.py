@@ -295,14 +295,33 @@ PROPORTION_NAMES = frozenset({
 _STRATUM_SUFFIX = re.compile(r"_fan\d+$")
 
 
-def looks_like_proportion(metric: str) -> bool:
-    """⚠️ 先排除，再匹配——⛔ 顺序反了「斜率」会被「率」捞回来。"""
+#: ⭐ **原始计数**，不是比例：⚠️ 它们可以大于 1，⛔ 也不配区间
+#: （`该留-留了=15` 是「有 15 条」，给它一个 [0,1] 的区间毫无意义）。
+#: ⛔ 这张表此前住在 `metrics.py` 里，⚠️ 而 `looks_like_proportion` 看不见它——
+#: ⭐ 于是 `计数_全对` 被一张表判成计数、被另一张判成比例，
+#: 两者今天不打架只是因为调用方**恰好先用了计数那张**。那是运气，不是设计。
+COUNT_HINTS = ("题数", "计数_", "→", "该留-", "该丢-", "删除_", "隔离_", "桶")
+
+
+def kind_of(metric: str) -> str:
+    """这个指标是什么种类：`count` / `proportion` / `other`。
+
+    ⭐ **唯一的分类入口**：⛔ 两处各判各的就会互相矛盾。
+    ⚠️ 计数**优先**——`计数_全对` 里有「全对」二字，⛔ 但它是条数不是比例。
+    """
+    if any(h in metric for h in COUNT_HINTS):
+        return "count"
     # ⭐ 分档与它的汇总是同一个量：⛔ 两者走不同的路就会一个有区间一个没有
     if metric in PROPORTION_NAMES or _STRATUM_SUFFIX.sub("", metric) in PROPORTION_NAMES:
-        return True
+        return "proportion"
     if any(h in metric for h in NOT_PROPORTION):
-        return False
-    return any(h in metric for h in PROPORTION_HINTS)
+        return "other"
+    return "proportion" if any(h in metric for h in PROPORTION_HINTS) else "other"
+
+
+def looks_like_proportion(metric: str) -> bool:
+    """⚠️ 先排除，再匹配——⛔ 顺序反了「斜率」会被「率」捞回来。"""
+    return kind_of(metric) == "proportion"
 
 
 def min_n_for_strata(population: dict[str, int],

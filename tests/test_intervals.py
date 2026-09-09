@@ -241,3 +241,29 @@ def test_things_that_are_not_proportions_stay_out() -> None:
               "因子_频率", "因子_间隔", "因子_显著性", "IoU_p50",
               "保留追踪度", "ECE", "Brier"):
         assert not looks_like_proportion(m), f"⛔ {m} 不是比例"
+
+
+def test_a_count_is_never_mistaken_for_a_proportion() -> None:
+    """⛔ **计数优先于比例**：⚠️ `计数_全对` 里有「全对」二字，
+    ⭐ 但它是条数不是比例——给它配 Wilson 等于把 12 条当成 12 次伯努利试验。
+
+    ⚠️ 早先这两件事由**两张互不相识的表**管：`looks_like_proportion` 说是比例，
+    `_COUNT_HINTS` 说是计数。⛔ 它们不打架只是因为调用方恰好先用了计数那张。
+    """
+    from amb.scoring.statistics import COUNT_HINTS, kind_of
+
+    for prefix in COUNT_HINTS:
+        for tail in ("全对", "准确率", "命中", "top1", ""):
+            name = f"{prefix}{tail}"
+            assert kind_of(name) == "count", \
+                f"⛔ {name!r} 该是计数——⚠️ 它带着计数前缀 {prefix!r}"
+
+
+def test_there_is_exactly_one_classifier() -> None:
+    """⛔ 分类只能有一个入口。⚠️ 两处各判各的就会互相矛盾，
+    ⭐ 而矛盾**不会报错**——它只是让某个指标悄悄走错一条路。
+    """
+    from amb.scoring import metrics as m
+    from amb.scoring.statistics import COUNT_HINTS
+
+    assert m._COUNT_HINTS is COUNT_HINTS, "⛔ 又分成两张表了"
