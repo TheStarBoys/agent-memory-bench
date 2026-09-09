@@ -21,6 +21,12 @@ _KW: dict[str, dict[str, object]] = {
             model="test", base_url="http://localhost", api_key_env="AMB_TEST_KEY"
         )
     },
+    # ⭐ 与 `naive_rag` 同一个配置：⚠️ 它的一半也是向量检索。
+    "hybrid": {
+        "embedding": EmbeddingConfig(
+            model="test", base_url="http://localhost", api_key_env="AMB_TEST_KEY"
+        )
+    },
 }
 
 
@@ -43,6 +49,8 @@ def test_satisfies_adapter_protocol(name: str) -> None:
 _EXTRA: dict[str, set] = {
     "bm25": {Capability.PROVENANCE, Capability.REALITY, Capability.GOVERNANCE},
     "naive_rag": {Capability.PROVENANCE},
+    # ⭐ 混合检索的区间也来自切块边界——与 `naive_rag` 一致
+    "hybrid": {Capability.PROVENANCE},
     "full_context": {Capability.PROVENANCE},
     "host_default": {Capability.REALITY},
 }
@@ -234,3 +242,20 @@ def test_a_crashed_arm_is_visible_in_the_report() -> None:
     text = render(report)
     assert "没跑完" in text and "boom" in text and "IncompleteRead" in text
     assert "不是不支持，也不是 0 分" in text
+
+
+def test_the_fixture_tables_cover_every_control_arm() -> None:
+    """⛔ 夹具表也是名册——⚠️ 漏一条，这个文件就静静少测一条臂。
+
+    ⭐ 实测：`hybrid` 加进 `CONTROL_ARMS` 的那一刻，这个文件红了 4 条——
+    ⛔ 因为 `_KW` 不知道怎么造它、`_EXTRA` 不知道它该声明什么。
+    ⚠️ 那不是新 bug，是**它此前从没被这里测过**的证据。
+    """
+    for name in CONTROL_ARMS:
+        arm = make(name)                    # ⛔ 造不出来 = _KW 漏了
+        declared = arm.capabilities() - {Capability.INGEST, Capability.SEARCH}
+        # ⚠️ 答题能力取决于挂没挂 backbone，⛔ 不属于这张表管
+        declared -= {Capability.ANSWER, Capability.ACCOUNTING}
+        assert declared == _EXTRA.get(name, set()), (
+            f"⛔ {name} 实际声明 {sorted(declared)}，"
+            f"⚠️ 而 `_EXTRA` 写的是 {sorted(_EXTRA.get(name, set()))}")

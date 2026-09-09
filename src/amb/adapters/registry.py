@@ -17,13 +17,22 @@ if TYPE_CHECKING:
 #: 名字 → 构造器。⚠️ 构造器接收关键字参数（配置），不接收位置参数。
 _REGISTRY: dict[str, Callable[..., "Adapter"]] = {}
 
-#: 五条对照组。⛔ 每次发布结果都要与被测系统同批次跑，见 docs/baselines.md
+#: 六条对照组。⛔ 每次发布结果都要与被测系统同批次跑，见 docs/baselines.md
+#:
+#: ⚠️ **注册表里的每一条臂都必须归类**（对照或被测）——⛔ 漏掉的后果是实的：
+#: `hybrid` 曾经注册了、`build()` 认识它、真跑在用它，却两边名册都没有，
+#: 于是 ① 一致性测试从不测它 ② 报告把它标成「被测系统」
+#: ③ 地板线只从对照臂里选，它进不了候选。
+#: ⭐ `tests/test_architecture.py` 现在守着这条。
 CONTROL_ARMS: tuple[str, ...] = (
     "null",
     "host_default",
     "naive_rag",
     "bm25",
     "full_context",
+    # ⭐ 混合检索（BM25 + 向量，RRF 融合）：⚠️ 它是**对照**不是被测——
+    # 没有外部系统，全部代码在本仓库里。
+    "hybrid",
 )
 
 

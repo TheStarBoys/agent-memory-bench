@@ -253,3 +253,41 @@ def test_an_arm_without_a_store_says_so(fake, name: str) -> None:
     from amb.core import Unsupported
 
     assert isinstance(_arm(name).storage_locations(), Unsupported)
+
+
+# ── ⛔ 持久层往返不变量 ─────────────────────────────────────────
+@pytest.mark.parametrize("name", ["naive_rag", "hybrid"])
+def test_the_store_round_trips_without_losing_a_field(fake, tmp_path,
+                                                      name: str) -> None:
+    """⛔ 存下去再读回来再存，两份必须**逐字节相同**。
+
+    ⚠️ 这一条**不列任何字段名**——⭐ 所以它管得住将来加的字段，
+    也管得住将来第三条持久化的臂。
+
+    ⚠️ 实测的 bug 就是这个形状：`hybrid` 的 `_save` 写 6 个字段而
+    `_load` 只读 4 个，⛔ 丢掉的 `df` / `avg_len` 让 BM25 那一半静默失灵——
+    ⭐ 而分数照常算得出来，只是它测的已经不是「混合」了。
+
+    ⛔ **它的边界**：⚠️ 存盘前会**重算**的字段它管不住——
+    `avg_len` 在 `finalize()` 里从 `_toks` 现推，所以漏读它之后
+    字节仍然相同。⭐ 那一个由行为测试
+    `test_hybrid_keeps_its_bm25_half_across_a_restore` 兜着（实测验证过）。
+    """
+    from amb.adapters import create
+
+    store = tmp_path / name
+    arm = create(name, embedding=CFG, storage_dir=str(store))
+    for d in DOCS:
+        arm.ingest(d)
+    arm.finalize()
+    first = (store / "index.json").read_bytes()
+
+    # ⭐ 拷目录 = 恢复快照：⚠️ 新实例靠惰性读盘拿回状态
+    again = create(name, embedding=CFG, storage_dir=str(store))
+    again.count()                       # 触发 _load
+    again.finalize()                    # 再存一次
+    second = (store / "index.json").read_bytes()
+
+    assert first == second, (
+        f"⛔ {name} 存→读→存 之后盘上的内容变了——"
+        f"⚠️ 说明 `_load` 漏读或 `_save` 漏写了字段（{len(first)} → {len(second)} 字节）")

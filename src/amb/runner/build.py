@@ -187,7 +187,7 @@ def host_unavailable() -> type[Exception]:
 
 
 def control_arms() -> tuple[str, ...]:
-    """五条对照组的名字。⚠️ 经 runner 转出，cli 不直接依赖 adapters。"""
+    """六条对照组的名字。⚠️ 经 runner 转出，cli 不直接依赖 adapters。"""
     return CONTROL_ARMS
 
 

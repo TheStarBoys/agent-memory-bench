@@ -108,7 +108,7 @@ def main(argv: list[str] | None = None) -> int:
 
     ap = argparse.ArgumentParser(prog="amb")
     ap.add_argument("--arms", default=",".join(control_arms()),
-                    help="逗号分隔；默认跑全部五条对照组")
+                    help="逗号分隔；默认跑全部六条对照组")
     ap.add_argument("--budget", type=int, default=24000, help="full_context 的上下文预算")
     ap.add_argument("--json", type=Path, help="同时写一份 JSON")
     ap.add_argument("--bench", choices=("toy", "locomo", "dialogue"),

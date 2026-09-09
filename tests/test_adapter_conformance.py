@@ -104,6 +104,26 @@ def _docs_of(hits) -> set[str]:
     return {d for h in hits for d in h.doc_ids}
 
 
+
+def _skip_only_if_environment(name: str, exc: Exception) -> None:
+    """⛔ **只放过「环境没准备好」**，⚠️ 构造 bug 必须红。
+
+    ⭐ 兜底 `except Exception → skip` 把两件事混成一件：
+
+        ① 没装外部依赖 / 没配 key —— ⚠️ 环境问题，跳过是对的
+        ② 这条臂**造不出来** —— ⛔ 那是 bug，跳过就等于没测
+
+    ⚠️ 实测后果：`build("hybrid")` 抛 TypeError（多传了一个它不认识的
+    `storage_dir=`），⭐ 而这个文件把它读成「环境问题」静静跳过——
+    ⛔ 于是全套测试绿着，真跑第一秒就崩。
+    """
+    text = f"{type(exc).__name__}: {exc}"
+    environmental = ("未安装", "not installed", "KeyError", "缺少", "require")
+    if any(k in text for k in environmental):
+        pytest.skip(f"{name} 环境没准备好（{text}）")
+    raise AssertionError(
+        f"⛔ build({name!r}) 挂了，⚠️ 而这不是「依赖没装」：{text}") from exc
+
 @pytest.mark.parametrize("name", ARMS)
 def test_adapter_honours_the_semantic_contract(name: str) -> None:
     """⛔ 一条臂一次跑完，**收齐所有违约再报**。
@@ -120,8 +140,7 @@ def test_adapter_honours_the_semantic_contract(name: str) -> None:
         try:
             arm = build(name)
         except Exception as exc:  # noqa: BLE001
-            # ⛔ 没装 / 没配 key = 环境问题，⚠️ 不是这条臂违反了契约
-            pytest.skip(f"{name} 跑不起来（{type(exc).__name__}: {exc}）")
+            _skip_only_if_environment(name, exc)
         try:
             bad = _check(arm, name)
         finally:
@@ -243,7 +262,7 @@ def test_records_whether_two_instances_can_coexist(name: str, capsys) -> None:
         try:
             one = build(name)
         except Exception as exc:  # noqa: BLE001
-            pytest.skip(f"{name} 跑不起来（{type(exc).__name__}）")
+            _skip_only_if_environment(name, exc)
         one.reset()
         _ingest_all(one)
         two = None

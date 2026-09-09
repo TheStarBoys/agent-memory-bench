@@ -157,13 +157,17 @@ def test_every_control_arm_is_reachable_through_build() -> None:
 
     sys.path.insert(0, str(ROOT / "tests"))
     import offline
-    from amb.adapters import CONTROL_ARMS
+    # ⛔ 以**注册表**为准，⚠️ 不是 `CONTROL_ARMS`——
+    # ⭐ 这条守卫最早遍历的就是 CONTROL_ARMS，而 `hybrid` 不在里面，
+    # 于是它对**引发这一切的那条臂本身是瞎的**。
+    from amb.adapters import SYSTEMS
+    from amb.adapters.registry import _REGISTRY
     from amb.runner import build
 
     old = dict(__import__("os").environ)
     try:
         __import__("os").environ.update(offline.ENV)
-        for name in CONTROL_ARMS:
+        for name in sorted(set(_REGISTRY) - set(SYSTEMS)):
             build(name)          # ⛔ 造不出来就是 TypeError / KeyError
     finally:
         __import__("os").environ.clear()
@@ -182,10 +186,77 @@ def test_a_new_arm_cannot_skip_the_full_pipeline_layer() -> None:
     import sys
 
     sys.path.insert(0, str(ROOT / "tests"))
-    from amb.adapters import CONTROL_ARMS
+    from amb.adapters import SYSTEMS
+    from amb.adapters.registry import _REGISTRY
     from test_offline_fullrun import ARMS
 
-    missing = sorted(set(CONTROL_ARMS) - set(ARMS))
+    # ⛔ 同理以注册表为准：⚠️ 被测系统要装外部依赖，离线层跑不了它们。
+    missing = sorted(set(_REGISTRY) - set(SYSTEMS) - set(ARMS))
     assert not missing, (
         f"⛔ 这些对照臂没进离线全流水线：{missing}——"
         f"⚠️ 加进 `test_offline_fullrun.ARMS`，或写清豁免理由")
+
+
+# ── ⛔ 臂的名册只能有一份 ───────────────────────────────────────
+def test_every_registered_arm_is_classified() -> None:
+    """⛔ 注册了的臂必须被归类：**要么对照，要么被测**。
+
+    ⚠️ 实测漏网：`hybrid` 注册了、`build()` 认识它、真跑在用它，
+    ⛔ 但它**既不在 `CONTROL_ARMS` 也不在 `SYSTEMS`**。三个后果都是实的：
+
+      ① `test_adapter_conformance` 的 ARMS = 对照 + 被测 → **从不测它**
+      ② 真跑里 `is_control=False` → 被标成「被测系统」
+      ③ 地板线只从对照臂里选 → 它进不了地板候选
+
+    ⭐ 加一条臂要动五个地方（注册表 / CONTROL_ARMS / SYSTEMS /
+    `build()` 的分派 / `ARM_DEPENDENCY`），⛔ 而此前**没有任何东西检查它们一致**。
+    """
+    from amb.adapters import CONTROL_ARMS, SYSTEMS
+    from amb.adapters.registry import _REGISTRY
+
+    unclassified = sorted(set(_REGISTRY) - set(CONTROL_ARMS) - set(SYSTEMS))
+    assert not unclassified, (
+        f"⛔ 这些臂注册了却没归类：{unclassified}——"
+        f"⚠️ 进 `CONTROL_ARMS`（对照）或 `SYSTEMS`（被测），"
+        f"⭐ 否则一致性测试跳过它、报告标错它、地板线选不到它")
+
+
+def test_the_two_rosters_never_overlap() -> None:
+    """⛔ 一条臂不能既是对照又是被测——⚠️ 那样它会与自己比。"""
+    from amb.adapters import CONTROL_ARMS, SYSTEMS
+
+    both = sorted(set(CONTROL_ARMS) & set(SYSTEMS))
+    assert not both, f"⛔ 这些臂两边都在：{both}"
+
+
+def test_build_dispatches_on_every_registered_arm() -> None:
+    """⛔ `build()` 造得出注册表里的**每一条**臂。
+
+    ⚠️ 它的 if/elif 链是第四份名册——⭐ 而链子漏了谁，
+    只有真跑到那条臂时才会知道。
+    """
+    import sys
+
+    sys.path.insert(0, str(ROOT / "tests"))
+    import offline
+    from amb.adapters.registry import _REGISTRY
+    from amb.runner.build import build
+    from amb.setup import snapshot
+
+    installed = set(snapshot())
+    old = dict(__import__("os").environ)
+    try:
+        __import__("os").environ.update(offline.ENV)
+        for name in sorted(_REGISTRY):
+            try:
+                build(name)
+            except Exception as exc:  # noqa: BLE001
+                # ⛔ 只放过「没装外部依赖」：⚠️ 兜底 except 会把
+                # **构造 bug** 一起吞掉——那正是 `hybrid` 的 TypeError
+                # 在 `test_adapter_conformance` 里溜过去的方式。
+                assert "未安装" in str(exc) or "not installed" in str(exc), (
+                    f"⛔ build({name!r}) 挂了，⚠️ 而这不是「依赖没装」："
+                    f"{type(exc).__name__}: {exc}")
+    finally:
+        __import__("os").environ.clear()
+        __import__("os").environ.update(old)

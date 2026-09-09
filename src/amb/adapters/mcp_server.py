@@ -21,7 +21,7 @@ from amb.core import Adapter, Document
 
 PROTOCOL_VERSION = "2025-06-18"
 
-#: 暴露给 agent 的工具。⚠️ 五条对照组与被测系统**共用这一套**——
+#: 暴露给 agent 的工具。⚠️ 六条对照组与被测系统**共用这一套**——
 #: 工具集不同，比的就不只是记忆层了。
 TOOLS: list[dict[str, Any]] = [
     {
