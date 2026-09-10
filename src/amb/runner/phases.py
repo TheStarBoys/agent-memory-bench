@@ -103,8 +103,32 @@ def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
                 adapter.finalize()
         # ⭐ 摄入后的指纹：存快照时一起写进去，下次恢复后拿它对账
         canary = _canary(adapter, plan)
-        result.ingest_snapshot = (
-            "命中" if restored else ("已存" if snap else "未启用"))
+
+        # ── ⭐ **摄入完就存快照**，⛔ 不等探针跑完 ─────────────
+        # ⚠️ 早先是「摄入 → 探针 → close → 拷目录」，⛔ 于是 N4 一删条目
+        # 就前功尽弃：实测 `mem0` 摄入 6132 秒占全跑 68%，**每跑一次重付**。
+        # ⭐ 而 N4 是判别力最强的一档，不能为了省这笔钱不跑它。
+        pre_usage = None
+        if snap is not None and not restored:
+            # ⛔ 计量必须在 close 之前取：⚠️ 子进程一退，计量器跟着没了
+            pre_usage = adapter.usage()
+            _save_after_ingest(name, adapter, snap, plan, canary, result,
+                               ingest_ms=ledger.wall_ms_harness.get("ingest", 0),
+                               usage=pre_usage)
+            # ⚠️ 拷完重开：⛔ 探针要跑在一个活着的适配器上
+            adapter.setup(WorldHandle(str(root), server.clock_url,
+                                      server.facts_url))
+            # ⭐ **重开前后对一次指纹**：⚠️ 不一致说明这条臂的状态不全在
+            # store 里（`a_mem` 就踩过：doc 映射在 worker 内存里）。
+            # ⛔ 那样它的快照下次恢复也是坏的——⚠️ 当场说出来，
+            # 而不是等下一跑靠 `_restore_is_sound` 兜。
+            if (again := _canary(adapter, plan)) != canary:
+                _warn(f"{name}：⛔ 重开之后行为变了（{canary} → {again}）——"
+                      f"⚠️ 说明它有 store 之外的状态，⭐ 这一跑的探针"
+                      f"跑在一个与摄入完时不同的库上")
+                result.ingest_snapshot = "已存（⚠️ 但重开后行为变了）"
+        else:
+            result.ingest_snapshot = "命中" if restored else "未启用"
         guard.check(Phase.INGEST)   # ⛔ 摄入期间也不许碰世界
 
         # ── mutate：只有评测器动手，适配器不被通知 ──────────────
@@ -149,33 +173,9 @@ def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
     # ⛔ 计量必须在 close **之前**取：⚠️ 走子进程的适配器一旦 close，
     # worker 就退出了，计量器跟着没了——踩过，表现是钱那一列永远空着，
     # 而且不报错（usage() 只是返回 Unsupported）。
-    usage = adapter.usage()
-    # ⛔ 快照存的是**探针跑完之后**的 store，而指纹取自摄入刚完时。
-    # ⚠️ N4 治理档会删条目——那样存下来的快照跟它自己的指纹对不上，
-    # 下次必然验不过、白拷一遍。⭐ 存之前再取一次：变了就说明探针动过，
-    # ⛔ 那这份 store 不代表「摄入完的状态」，不该当快照。
-    settled = _canary(adapter, plan) == canary
+    usage = _merge_usage(pre_usage, adapter.usage())
 
     adapter.close()
-    # ⚠️ 存快照必须在 close **之后**：子进程还开着 qdrant/chroma 时拷目录
-    # 会拷到半截。⛔ 半截快照比没有更糟——它会静默给出别的系统的分。
-    if snap is not None and not restored and settled:
-        _try_save(snap, adapter, canary=canary, cost={
-            "ingest_ms": ledger.wall_ms_harness.get("ingest", 0),
-            "items": len(plan.documents),
-            # ⛔ **带上缓存状况**：⚠️ 一次靠 LLM 缓存跑出来的摄入耗时与 token，
-            # 早先会被后续每一次快照命中原样报成「存快照那次实测」——
-            # ⭐ 而那不是真实测量，是缓存回放。
-            **_cache_state(),
-            # ⛔ 只取 **ingest** 那一份：⚠️ 回答档里 usage() 还会带回
-            # 答题的 token（那是宿主 backbone 花的），
-            # 把它存进「摄入成本」，下次命中快照就会虚报一次摄入的钱。
-            **_ingest_tokens(usage),
-        })
-    if snap is not None and not restored and not settled:
-        _warn(f"{name}：探针动过 store（多半是 N4 的删除），"
-              f"⛔ 不存快照——它不代表「摄入完的状态」")
-        result.ingest_snapshot = "未存（探针动过 store）"
     result.participation = {
         "declared": len(caps),
         "total_caps": len(Capability),
@@ -232,6 +232,58 @@ def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
     profile |= {k: v for k, v in sub.items() if v}
     result.cost_profile = profile
     return result, guard.expected
+
+
+
+def _save_after_ingest(name: str, adapter: Adapter, snap, plan: Plan,
+                       canary: dict, result: ArmResult, *,
+                       ingest_ms: int, usage) -> None:
+    """⭐ 摄入一完就把 store 拷成快照。
+
+    ⛔ **为什么不能等探针跑完**：⚠️ N4 治理档会真的删条目，
+    那时的 store 已经不代表「摄入完的状态」——⭐ 早先的做法是
+    「探针跑完再拷，指纹对不上就不存」，于是**跑了 N4 的臂永远存不下快照**。
+    ⚠️ 实测代价：`mem0` 摄入 6132 秒占全跑 68%，每跑一次重付。
+
+    ⛔ **拷之前必须 close**：⚠️ 子进程还开着 qdrant/chroma 时拷目录会拷到半截，
+    ⭐ 而半截快照比没有更糟——它会静默给出别的系统的分。
+    ⚠️ 所以调用方拷完要重新 `setup()`，并对一次指纹。
+    """
+    adapter.close()
+    _try_save(snap, adapter, canary=canary, cost={
+        "ingest_ms": ingest_ms,
+        "items": len(plan.documents),
+        # ⛔ **带上缓存状况**：⚠️ 一次靠 LLM 缓存跑出来的摄入耗时与 token，
+        # 早先会被后续每一次快照命中原样报成「存快照那次实测」——
+        # ⭐ 而那不是真实测量，是缓存回放。
+        **_cache_state(),
+        # ⛔ 只取 **ingest** 那一份：⚠️ 这里探针还没跑，所以本来就只有它；
+        # ⭐ 但仍然显式筛一次——万一将来有臂在 setup 里就调 LLM。
+        **_ingest_tokens(usage),
+    })
+    result.ingest_snapshot = "已存"
+
+
+def _merge_usage(pre, post):
+    """把 close 前后的用量拼起来。⛔ 不能简单相加，⚠️ 会重复计。
+
+    ⭐ 判据是 `Usage.phase`：⚠️ 走子进程的臂 close 之后 worker 退出、
+    计量器归零，所以 `post` 里**只有探针**那部分；⛔ 而进程内的臂
+    计量器活着，`post` 里摄入那部分还在——再加 `pre` 就成了双份。
+
+    ⚠️ 所以：`post` 里已经有 ingest 行就只认 `post`，没有才拼上 `pre`。
+    """
+    from amb.core import Failed, Unsupported
+
+    def rows(u):
+        return [] if isinstance(u, (Unsupported, Failed)) or not u else list(u)
+
+    a, b = rows(pre), rows(post)
+    if not a:
+        return post
+    if any(getattr(u, "phase", "") == "ingest" for u in b):
+        return post          # ⭐ 计量器活过了 close，⛔ 别再加一遍
+    return a + b
 
 
 def _use_style(adapter: Adapter, style: AnswerStyle) -> None:

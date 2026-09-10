@@ -538,20 +538,54 @@ def test_a_canary_round_trips(tmp_path: Path) -> None:
     assert saved_canary(key, root=tmp_path / "snaps")["with_doc_ids"] == 3
 
 
-def test_a_store_the_probes_mutated_is_never_saved() -> None:
-    """⛔ 快照存的是**探针跑完之后**的 store，而指纹取自摄入刚完时。
+def test_a_mutating_probe_can_no_longer_spoil_the_snapshot(tmp_path,
+                                                           monkeypatch) -> None:
+    """⭐ 快照在**摄入一完**就存，⛔ 探针再怎么删都碰不到它。
 
-    ⚠️ N4 治理档会删条目——那样存下来的快照跟它自己的指纹对不上，
-    下次必然验不过、白拷一遍。⭐ 所以存之前再取一次指纹：
-    变了就说明探针动过，这份 store 不代表「摄入完的状态」，⛔ 不该当快照。
+    ⚠️ 早先是「探针跑完再拷，指纹对不上就不存」——⛔ 于是跑了 N4 的臂
+    **永远存不下快照**：实测 `mem0` 摄入 6132 秒占全跑 68%，每跑一次重付。
+    ⭐ 而 N4 是判别力最强的一档，不能为了省这笔钱不跑它。
+
+    ⚠️ 这条测的是**顺序**：⭐ 一个会把库删空的探针跑完之后，
+    快照仍然存着摄入完那一刻的内容。
     """
-    from pathlib import Path as _P
+    import offline
+    from amb.core import Capability, Observation, SuiteRun
+    from amb.runner import Plan, backbone, build, run_one
 
-    src = (_P(__file__).resolve().parents[1]
-           / "src/amb/runner/phases.py").read_text(encoding="utf-8")
-    # ⚠️ 这条守的是**顺序**，不是某个函数的返回值——所以看源码
-    assert "settled = _canary(adapter, plan) == canary" in src
-    assert "not restored and settled" in src, "存快照必须先确认探针没动过 store"
+    import worlds.toy as toy
+
+    offline.use_env(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    offline.install(monkeypatch)
+
+    class Vandal:
+        """⛔ 一个把库删空的探针——⚠️ N4 的删除档就是这个形状。"""
+
+        name = "retrieval"  # ⚠️ 借个判分器，⛔ 这条测的是顺序不是分
+        requires = frozenset({Capability.SEARCH})
+
+        def probe(self, adapter, world):
+            adapter.reset()          # ⛔ 把摄入的东西全清掉
+            run = SuiteRun(self.name, "scored")
+            run.observations.append(Observation("q", {
+                "gold": ["d"], "retrieved": ["d"], "top1": "d"}))
+            return run
+
+    docs = toy.all_documents()[:12]
+    plan = Plan(manifest=toy.MANIFEST, documents=docs, suites=[Vandal()])
+    r, _ = run_one("naive_rag", build("naive_rag", llm=backbone()), plan,
+                   tmp_path / "w", is_control=True, backbone="bb")
+    assert r.ingest_snapshot.startswith("已存"), (
+        f"⛔ 探针删库把快照带走了：{r.ingest_snapshot}")
+
+    # ⭐ 换一个空 store 再跑一次：⚠️ 只能靠快照恢复
+    r2, _ = run_one("naive_rag",
+                    build("naive_rag", llm=backbone()),
+                    Plan(manifest=toy.MANIFEST, documents=docs, suites=[]),
+                    tmp_path / "w2", is_control=True, backbone="bb")
+    assert r2.ingest_snapshot.startswith("命中"), (
+        f"⛔ 存下来的快照没命中：{r2.ingest_snapshot}")
 
 
 def test_the_canary_reaches_the_report() -> None:

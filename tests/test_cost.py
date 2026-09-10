@@ -682,3 +682,50 @@ def test_the_per_suite_table_shows_the_denominator() -> None:
                     backbone={}, externals={}, sampling={})
     text = _render_lane("library", [a], report)
     assert "n=1" in text, "⛔ 分母没同屏——读者看不出那是 1/1"
+
+
+# ── ⛔ close 前后的用量要拼对，不能双份 ─────────────────────────
+def _u(phase, tin=100, calls=1):
+    from amb.core import Usage
+    return Usage(phase=phase, tokens_in=tin, tokens_out=10, llm_calls=calls)
+
+
+def test_a_subprocess_arm_keeps_its_ingest_tokens_across_the_close() -> None:
+    """⛔ 摄入完存快照要先 `close()`，⚠️ 而子进程一退计量器就归零。
+
+    ⭐ 所以 close 之前取一次，跑完再取一次，**拼起来**——
+    ⛔ 不拼的话摄入那笔 token 从报告里消失，⚠️ 而钱是一等维度。
+    """
+    from amb.runner.phases import _merge_usage
+
+    pre = [_u("ingest", 5000)]
+    post = [_u("probe", 300)]          # ⚠️ 子进程重启，只剩探针那部分
+    got = _merge_usage(pre, post)
+    assert sum(u.tokens_in for u in got) == 5300
+    assert {u.phase for u in got} == {"ingest", "probe"}
+
+
+def test_an_in_process_arm_does_not_get_counted_twice() -> None:
+    """⛔ 进程内的臂计量器活过了 close——⚠️ 再拼 `pre` 就是**双份**。
+
+    ⭐ 判据是 `Usage.phase`：`post` 里已经有 ingest 行就只认 `post`。
+    ⚠️ 双份不会报错，它只是让那条臂的成本凭空翻倍。
+    """
+    from amb.runner.phases import _merge_usage
+
+    pre = [_u("ingest", 5000)]
+    post = [_u("ingest", 5000), _u("probe", 300)]   # ⭐ 计量器没丢
+    got = _merge_usage(pre, post)
+    assert sum(u.tokens_in for u in got) == 5300, "⛔ 摄入那笔被算了两遍"
+
+
+def test_nothing_to_merge_is_not_an_error() -> None:
+    """⚠️ 没存快照的臂 `pre` 是 None——⛔ 不能因此丢掉 `post`。"""
+    from amb.core import Unsupported
+    from amb.runner.phases import _merge_usage
+
+    post = [_u("probe", 300)]
+    assert _merge_usage(None, post) is post
+    assert list(_merge_usage([], post)) == post
+    # ⭐ 不支持计量的臂原样透传，⛔ 不假装它有数
+    assert isinstance(_merge_usage(None, Unsupported("没有")), Unsupported)
