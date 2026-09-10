@@ -17,7 +17,7 @@ import pytest
 
 from amb.scoring.statistics import (
     Interval, bootstrap, compare, detectable_difference, mcnemar,
-    paired_detectable_difference, required_n, stratified, wilson,
+    required_n, stratified, wilson,
 )
 
 
@@ -167,16 +167,6 @@ def test_no_disagreement_is_not_the_same_as_being_equal() -> None:
 def test_pairing_needs_the_same_items() -> None:
     """⛔ 题号对不上返回 None——⚠️ 不按顺序硬对齐。"""
     assert mcnemar([("a", True)], [("b", True)]) is None
-    assert paired_detectable_difference([("a", True)], [("b", True)]) is None
-
-
-def test_the_paired_bound_tightens_with_more_pairs() -> None:
-    """⭐ 题越多能辨的差越小：⛔ 反过来说明公式错了。"""
-    small = [(f"q{i}", i % 2 == 0) for i in range(20)]
-    big = [(f"q{i}", i % 2 == 0) for i in range(200)]
-    a = paired_detectable_difference(small, [(k, not v) for k, v in small])
-    b = paired_detectable_difference(big, [(k, not v) for k, v in big])
-    assert b < a, f"⛔ {b} 不小于 {a}"
 
 
 def test_an_interval_round_trips_through_json() -> None:

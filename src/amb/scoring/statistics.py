@@ -356,21 +356,3 @@ def mcnemar(a: list[tuple[str, bool]], b: list[tuple[str, bool]]) -> Paired | No
     # ⚠️ 双尾精确检验：⛔ 在 H0 下每个不一致对朝哪边倒是均等的
     tail = sum(math.comb(n, k) for k in range(0, min(bb, cc) + 1)) / (2 ** n)
     return Paired(bb, cc, min(1.0, 2 * tail), len(shared))
-
-
-def paired_detectable_difference(a: list[tuple[str, bool]],
-                                 b: list[tuple[str, bool]]) -> float | None:
-    """在**这批题**上，配对检验能分辨的最小差异。
-
-    ⭐ 与 `detectable_difference` 的区别：⚠️ 那个假设两组独立，
-    ⛔ 于是要为「两边都对」的题也付方差——而那些题在配对下是零方差。
-    ⭐ 这里的不一致率是**实测**的，不是假设的 ρ。
-    """
-    got = mcnemar(a, b)
-    if got is None or got.n_pairs == 0:
-        return None
-    # ⭐ 精确二项检验下，**全部分歧倒向一边**时要几个才显著：
-    #   2·0.5^k < 0.05  →  k ≥ 6   （k=5 时 p=0.0625，⛔ 还不够）
-    # ⚠️ 这是**最好的情况**：⛔ 分歧两边都有时要更多。
-    # ⭐ 准确率之差 = (b−c)/n，所以最小可辨差 = 6/n。
-    return min(1.0, _MIN_DISCORDANT / got.n_pairs)
