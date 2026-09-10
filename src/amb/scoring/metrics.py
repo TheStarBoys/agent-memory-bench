@@ -70,18 +70,38 @@ class Score:
 UNTRUSTED_THRESHOLD = 0.20
 
 
-#: ⭐ 合法的种类。⛔ 写错名字当场炸，⚠️ 不静默变成第四类。
-KINDS = ("rate", "count", "stat")
+#: ⭐ 合法的种类。⛔ 写错名字当场炸，⚠️ 不静默变成第五类。
+KINDS = ("rate", "count", "flag", "stat")
 
 
 def _count(s: Score, name: str, value: float) -> None:
-    """记一个**原始条数**或 0/1 标记。⛔ 它不是比例，⚠️ 区间无从谈起。
+    """记一个**原始条数**。⛔ 它不是比例，⚠️ 区间无从谈起。
 
-    ⭐ 例：`该留-留了=15`（有 15 条）、`隔离_过滤级=1`（这一档命中了）。
+    ⭐ 例：`该留-留了=15`（有 15 条）、`题数=40`。
     ⛔ 给它配 Wilson 等于把 15 条当成 15 次伯努利试验。
     """
     s.metrics[name] = float(value)
     s.kinds[name] = "count"
+
+
+def _flag(s: Score, name: str, value: bool) -> None:
+    """记一个**判定**：⭐ 是或否，⛔ 不是数。
+
+    ⚠️ 例：`隔离_过滤级`（这一档命中了吗）、`治理_合格`（这次算不算合格）。
+    ⛔ 它与计数的区间待遇相同（都没有），⚠️ 但**不变量更紧**：
+    计数只要求是整数，⭐ 而判定必须恰好是 0 或 1——
+    `留痕_有删除事件=3` 是个 bug，⛔ 而「是整数」这条检查抓不住它。
+
+    ⭐ 报告里印成「是 / 否」：⚠️ `隔离_过滤级=1` 读者要停下来想一秒
+    那个 1 是「一条」还是「真」。
+    """
+    got = float(value)
+    if got not in (0.0, 1.0):
+        raise MetricDeclarationError(
+            f"{s.suite}/{name}：判定只能是 0 或 1，⛔ 拿到 {got!r}——"
+            f"⚠️ 是条数就用 `_count`")
+    s.metrics[name] = got
+    s.kinds[name] = "flag"
 
 
 def _counts(s: Score, cell: dict) -> None:
@@ -115,12 +135,18 @@ def _rate(s: Score, name: str, num: float, den: int) -> None:
     s.kinds[name] = "rate"
 
 
-class UndeclaredMetric(RuntimeError):
-    """⛔ 算了一个指标却没说它是什么种类。
+class MetricDeclarationError(RuntimeError):
+    """⛔ 指标的**声明**有问题。三种情形：
 
-    ⚠️ **当场炸，不回退去猜名字**——⭐ 靠名字猜正是这套东西的原病：
-    三张中文子串表，其中一张纯粹是前两张猜错之后的补丁表。
-    ⛔ 一个静默的错误分类不会报错，它只是让某个指标悄悄走错一条路。
+      ① 算了一个指标却没说它是什么种类
+      ② 种类名写错了（不在 `KINDS` 里）
+      ③ 声明与实际不符——⚠️ 声明成判定，值却不是 0 或 1
+
+    ⭐ 三种都是**写代码的人**的错，⛔ 不是数据的错：⚠️ 七处 `_flag`
+    传进去的全是 Python 布尔，所以 ③ 只可能在有人新写一处时触发。
+    ⭐ 所以当场炸是安全的——⛔ 它不会因为某条臂的数据长得怪就掀掉一次真跑。
+
+    ⚠️ **当场炸，不回退去猜名字**——⭐ 靠名字猜正是这套东西的原病。
     """
 
 
@@ -129,11 +155,11 @@ def _finish(score: Score, run: SuiteRun) -> Score:
     # ⭐ 离线全流水线层 3 秒跑遍 6 条臂 × 11 套件，这个错当场就会被抓到；
     # ⛔ 而放它过去的代价是一份看上去正常、区间却错配的报告。
     if undeclared := sorted(set(score.metrics) - set(score.kinds)):
-        raise UndeclaredMetric(
+        raise MetricDeclarationError(
             f"{score.suite}：{undeclared} 没有声明种类——"
             f"⚠️ 用 `_rate` / `_count` / `_stat` 记它，⛔ 别直接写 `s.metrics[...]`")
     if bad := {k: v for k, v in score.kinds.items() if v not in KINDS}:
-        raise UndeclaredMetric(f"{score.suite}：种类名写错了 {bad}，⚠️ 只能是 {KINDS}")
+        raise MetricDeclarationError(f"{score.suite}：种类名写错了 {bad}，⚠️ 只能是 {KINDS}")
     # ⛔ 一路带到报告：⚠️ 断在这里的话，一个「不得发布」的数会照常进对比表
     score.not_publishable = run.not_publishable
     total = len(run.observations) + run.failed
@@ -382,12 +408,12 @@ def score_governance(run: SuiteRun) -> Score:
     if isolation:
         level = isolation[0]["level"]
         # ⚠️ 三级：无隔离 < 过滤级 < 授权级。⛔ 未申报最高只到「过滤级(未验证)」
-        # ⚠️ 这四个是**一次观测上的 0/1 标记**，⛔ 不是样本上的比例——
-        # ⭐ 所以声明 count：给它配区间等于假装做了 n 次试验。
-        _count(s, "隔离_无", level == "none")
-        _count(s, "隔离_过滤级", level in ("filter", "filter_unverified"))
-        _count(s, "隔离_授权级", level == "authz")
-        _count(s, "隔离_未验证", level == "filter_unverified")
+        # ⚠️ 这四个是**一次观测上的判定**，⛔ 不是样本上的比例——
+        # ⭐ 声明 flag：给它配区间等于假装做了 n 次试验。
+        _flag(s, "隔离_无", level == "none")
+        _flag(s, "隔离_过滤级", level in ("filter", "filter_unverified"))
+        _flag(s, "隔离_授权级", level == "authz")
+        _flag(s, "隔离_未验证", level == "filter_unverified")
 
     deletion = by_group.get("deletion") or []
     if deletion:
@@ -408,9 +434,9 @@ def score_governance(run: SuiteRun) -> Score:
     trail = by_group.get("trail") or []
     if trail and trail[0].get("declared"):
         t = trail[0]
-        _count(s, "留痕_有删除事件", t["logged_delete"])
+        _flag(s, "留痕_有删除事件", bool(t["logged_delete"]))
         # ⛔ 把内容藏进审计日志不算删除——⚠️ 这一格 > 0 时删除组不通过
-        _count(s, "留痕_日志含正文", t["content_in_log"] > 0)
+        _flag(s, "留痕_日志含正文", t["content_in_log"] > 0)
         if t["delete_events"]:
             # ⚠️ 「谁删的、何时」缺了就只是「记了一笔」，不是审计轨迹
             _rate(s, "留痕_有主体", t["with_principal"], t["delete_events"])
@@ -419,9 +445,9 @@ def score_governance(run: SuiteRun) -> Score:
         if thorough is not None:
             # ⭐ 四格交叉：⛔ 只有「删干净 且 留了痕 且 日志里没正文」才合格
             # ⚠️ 它是一个**判定**，不是比例——⛔ 声明 count
-            _count(s, "治理_合格",
-                   thorough >= 1.0 and t["logged_delete"]
-                   and not t["content_in_log"])
+            _flag(s, "治理_合格",
+                  thorough >= 1.0 and bool(t["logged_delete"])
+                  and not t["content_in_log"])
 
     return _finish(s, run)
 
@@ -922,7 +948,8 @@ def _intervals_for(run: SuiteRun, scorer, got: Score, *,
     n = len(run.observations)
     # ⭐ 种类由**算它的那一行**声明：⛔ 计数不配区间，
     # `stat` 走重抽样，`rate` 走 Wilson。⚠️ 这里不再猜名字。
-    wanted = [m for m in got.metrics if got.kinds.get(m) != "count"]
+    wanted = [m for m in got.metrics
+              if got.kinds.get(m) not in ("count", "flag")]
     if not wanted or n < 2:
         return {}
 
@@ -967,8 +994,11 @@ def _explain_missing_intervals(run: SuiteRun, got: Score) -> None:
     for m in got.metrics:
         if m in got.intervals:
             continue
-        if got.kinds.get(m) == "count":
+        kind = got.kinds.get(m)
+        if kind == "count":
             got.no_interval[m] = "原始计数——⚠️ 它不是比例，⛔ 区间无从谈起"
+        elif kind == "flag":
+            got.no_interval[m] = "一次判定（是/否）——⛔ 没有可估计的总体"
         elif n < 2:
             got.no_interval[m] = f"只有 {n} 条观测——⛔ 估不出离散度"
         else:

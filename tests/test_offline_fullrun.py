@@ -57,6 +57,11 @@ _seq = iter(range(10_000))
 
 def _run(name: str, tmp_path, **kw):
     world = tmp_path / f"w-{name}-{next(_seq)}"
+    # ⛔ **必须给 `rebuild`**：⚠️ N4 第 3 步（删完重开，看还在不在）要能再造
+    # 一个适配器，⭐ 没给就整档不跑——而 N4 是判定最集中的一档。
+    # ⚠️ 踩过：这一层最早不传它，于是「判定必须是 0/1」那两条不变量
+    # **一条数据都没覆盖到**，绿着却什么都没测。
+    kw.setdefault("rebuild", lambda n=name: build(n, llm=backbone()))
     return run_one(name, build(name, llm=backbone()), _plan(),
                    world, is_control=True, **kw)[0]
 
@@ -285,6 +290,31 @@ def test_a_metric_classified_a_count_is_actually_one(offline_world,
     assert not bad, f"⛔ 声明成计数却是小数：{bad[:8]}"
 
 
+def test_a_metric_classified_a_verdict_is_actually_one(offline_world,
+                                                       tmp_path) -> None:
+    """⛔ 声明成判定的，值必须**恰好**是 0 或 1。
+
+    ⭐ 这是判定比计数紧的那一格不变量：⚠️ `留痕_有删除事件=3` 是个 bug，
+    ⛔ 而「是整数」那条检查抓不住它。
+    """
+    bad = [f"{a}/{s}/{k}={v}" for a, s, k, v, kind in _all_metrics(tmp_path)
+           if kind == "flag" and v not in (0.0, 1.0)]
+    assert not bad, f"⛔ 声明成判定却不是 0/1：{bad[:8]}"
+
+
+def test_a_verdict_never_carries_an_interval(offline_world, tmp_path) -> None:
+    """⛔ 判定没有可估计的总体——⚠️ 给它区间等于假装做了 n 次试验。"""
+    wrong = []
+    for name in ARMS:
+        r = _run(name, tmp_path)
+        for suite, v in r.scores.items():
+            if v.status != "scored":
+                continue
+            wrong += [f"{name}/{suite}/{k}" for k, kind in v.kinds.items()
+                      if kind == "flag" and k in v.intervals]
+    assert not wrong, f"⛔ 判定拿到了区间：{wrong[:8]}"
+
+
 def test_every_produced_metric_declares_a_valid_kind(offline_world,
                                                      tmp_path) -> None:
     """⛔ 真跑出来的**每一个**指标都带着合法声明。
@@ -315,3 +345,22 @@ def test_a_declared_rate_always_carries_a_denominator(offline_world,
             naked += [f"{name}/{suite}/{k}" for k, kind in v.kinds.items()
                       if kind == "rate" and k not in v.denominators]
     assert not naked, f"⛔ 这些比例没有分母：{naked[:8]}"
+
+
+def test_this_layer_actually_exercises_every_kind(offline_world,
+                                                  tmp_path) -> None:
+    """⛔ **防空转**：上面那些「声明成 X 的必须满足 Y」，
+    ⚠️ 只有真产出过 X 才算测了东西。
+
+    ⭐ 实测踩到两次：一次是这一层不传 `rebuild` → N4 整档不跑 →
+    「判定必须是 0/1」一条数据都没覆盖到；⚠️ 另一次是比对判分改动的底片
+    漏了 n4/n7/locomo，⛔ 于是「0 变化」那个结论当时只对一半成立。
+    ⭐ 一条绿着却什么都没测的断言，比没有更糟——它让人以为查过了。
+    """
+    from amb.scoring.metrics import KINDS
+
+    seen = {k for _a, _s, _k, _v, kind in _all_metrics(tmp_path) for k in [kind]}
+    missing = sorted(set(KINDS) - seen)
+    assert not missing, (
+        f"⛔ 这一层没产出这些种类：{missing}——"
+        f"⚠️ 相关的不变量因此是空转的，⭐ 补一条会产出它的臂或套件")

@@ -285,25 +285,136 @@ def test_an_undeclared_metric_cannot_leave_the_scorer() -> None:
     ⭐ 这一条是整个根治的支点：没有它，下一个人加指标时照样会漏。
     """
     from amb.core import Observation, SuiteRun
-    from amb.scoring.metrics import Score, UndeclaredMetric, _finish
+    from amb.scoring.metrics import Score, MetricDeclarationError, _finish
 
     run = SuiteRun("n6_structure", "scored")
     run.observations.append(Observation("i0", {}))
     sc = Score(run.suite, "scored")
     sc.metrics["偷偷塞进来的"] = 0.5          # ⛔ 绕过声明
-    with pytest.raises(UndeclaredMetric, match="偷偷塞进来的"):
+    with pytest.raises(MetricDeclarationError, match="偷偷塞进来的"):
         _finish(sc, run)
 
 
 def test_a_bogus_kind_is_rejected_too() -> None:
     """⛔ 声明了但写错种类名，⚠️ 同样出不去——⭐ 不静默变成第四类。"""
     from amb.core import Observation, SuiteRun
-    from amb.scoring.metrics import Score, UndeclaredMetric, _finish
+    from amb.scoring.metrics import Score, MetricDeclarationError, _finish
 
     run = SuiteRun("qa", "scored")
     run.observations.append(Observation("i0", {}))
     sc = Score(run.suite, "scored")
     sc.metrics["x"] = 0.5
     sc.kinds["x"] = "proportion"           # ⚠️ 旧词，⛔ 现在叫 rate
-    with pytest.raises(UndeclaredMetric, match="种类名写错"):
+    with pytest.raises(MetricDeclarationError, match="种类名写错"):
         _finish(sc, run)
+
+
+# ── ⭐ 判定与计数分开 ───────────────────────────────────────────
+def _governance_score(level: str = "filter", logged: int = 1,
+                      content: int = 0):
+    return _score_of("n4_governance", [
+        {"group": "attribution", "with_principal": 4, "total": 5},
+        {"group": "isolation", "level": level},
+        *({"group": "deletion", "reached": st} for st in
+          ("none", "deleted", "survives_restart", "gone_from_storage")),
+        {"group": "trail", "declared": True, "logged_delete": logged,
+         "content_in_log": content, "delete_events": 4,
+         "with_principal": 2, "with_time": 3},
+    ])
+
+
+def test_a_verdict_is_declared_a_flag_not_a_count() -> None:
+    """⛔ `隔离_过滤级` 是**判定**，⚠️ 不是「一条」。
+
+    ⭐ 两者区间待遇相同（都没有），⛔ 但不变量不同：
+    计数只要求整数，⚠️ 而判定必须**恰好**是 0 或 1——
+    `留痕_有删除事件=3` 是个 bug，⛔ 而「是整数」这条检查抓不住它。
+    """
+    g = _governance_score()
+    for m in ("隔离_无", "隔离_过滤级", "隔离_授权级", "隔离_未验证",
+              "留痕_有删除事件", "留痕_日志含正文", "治理_合格"):
+        assert g.kinds[m] == "flag", f"⛔ {m} 声明成了 {g.kinds[m]}"
+        assert g.metrics[m] in (0.0, 1.0), f"⛔ {m}={g.metrics[m]} 不是判定"
+        assert m not in g.intervals, f"⛔ {m} 是判定却拿到了区间"
+        assert g.no_interval[m], f"⛔ {m} 没有区间却没说为什么"
+
+
+def test_a_real_count_is_still_a_count() -> None:
+    """⚠️ 反向：⛔ 别把真条数一起改成判定——⭐ `该留-留了=15` 是十五条。"""
+    g = _score_of("n5_observed", [
+        {"should_keep": i % 2 == 0, "retained": i % 3 == 0, "need": 0.5,
+         "frequency": 1 + i % 3, "spacing": "once", "salient": i % 2 == 0}
+        for i in range(30)])
+    counts = [k for k in g.kinds if g.kinds[k] == "count"]
+    assert counts, "⛔ 一个计数都没有，⚠️ 这条测试没在测东西"
+    assert any(g.metrics[k] > 1 for k in counts), \
+        "⛔ 所有计数都 ≤1，⚠️ 那这批数据分不出计数与判定——测试无效"
+
+
+def test_a_flag_that_is_not_a_flag_is_refused() -> None:
+    """⛔ 声明成判定却给个 3——⚠️ 当场炸，⭐ 不静默记下去。
+
+    ⚠️ 这是**写代码的人**的错，⛔ 不是数据的错：七处 `_flag` 传的都是
+    Python 布尔，⭐ 所以它只可能在有人新写一处时触发。
+    """
+    from amb.scoring.metrics import MetricDeclarationError, Score, _flag
+
+    sc = Score("n4_governance", "scored")
+    with pytest.raises(MetricDeclarationError, match="只能是 0 或 1"):
+        _flag(sc, "留痕_有删除事件", 3)
+
+
+def test_a_verdict_is_kept_out_of_the_interval_machinery() -> None:
+    """⛔ 判定不进区间计算——⚠️ 直接测这道闸本身。
+
+    ⭐ 为什么不端到端测：⚠️ 今天唯一产出判定的是 `n4_governance`，
+    而它是 grouped suite、重抽样本来就被禁——⛔ 于是「判定拿到区间」
+    那个变异从端到端测试底下溜过去了：**测试过了，但过得没道理**。
+    ⭐ 所以这一条问的是机制：⚠️ 哪天有别的套件声明判定，这道闸还在不在。
+    """
+    from amb.core import Observation, SuiteRun
+    from amb.scoring.metrics import Score, _flag, _intervals_for, _rate
+
+    # ⚠️ 刻意用一个**不在** _GROUPED_SUITES 里的套件名——⛔ 否则重抽样
+    # 被禁，这条测试又会因为别的原因通过。
+    run = SuiteRun("qa", "scored")
+    for i in range(20):
+        run.observations.append(Observation(f"i{i}", {"correct": i % 2 == 0}))
+    sc = Score("qa", "scored")
+    _flag(sc, "某个判定", True)
+    _rate(sc, "某个比例", 10, 20)
+
+    def scorer(r):
+        g = Score("qa", "scored")
+        ok = sum(1 for o in r.observations if o.payload["correct"])
+        # ⛔ 判定要**随重抽变化**：⚠️ 恒定的判定每次重抽都是同一个值，
+        # 于是被「零宽区间不给」那条规则挡住——⭐ 那样这条测试就又
+        # 因为别的原因通过了，测不到这道闸。
+        _flag(g, "某个判定", ok > len(r.observations) / 2)
+        _rate(g, "某个比例", ok, len(r.observations))
+        return g
+
+    out = _intervals_for(run, scorer, sc, seed=0)
+    assert "某个比例" in out, "⛔ 比例该有区间——⚠️ 否则这条测试没在测闸"
+    assert "某个判定" not in out, "⛔ 判定拿到了区间"
+
+
+def test_a_verdict_reads_as_yes_or_no_in_the_report() -> None:
+    """⭐ 拆出判定这一类，**收益就在这里**。
+
+    ⚠️ `隔离_过滤级=1` 读者要停一秒想那个 1 是「一条」还是「真」——
+    ⛔ 而这一档全是判定，一排 0 和 1 尤其难读。
+    """
+    from amb.report.render import _plain
+
+    g = _governance_score(level="filter", logged=1)
+    assert _plain(g, "隔离_过滤级", g.metrics["隔离_过滤级"]) == "隔离_过滤级=是"
+    assert _plain(g, "隔离_授权级", g.metrics["隔离_授权级"]) == "隔离_授权级=否"
+    # ⭐ 计数仍然印成整数，⛔ 不受影响
+    c = _score_of("n8_induction", [
+        {"generalises": True, "handles_exception": True,
+         "rule_survives": True, "rate": 0.1 * i, "unparsed": False}
+        for i in range(6)])
+    assert _plain(c, "计数_全对", c.metrics["计数_全对"]) == "计数_全对=6"
+    # ⚠️ 比例不归它管——⛔ 那条路径要印区间
+    assert _plain(c, "全对", c.metrics["全对"]) is None

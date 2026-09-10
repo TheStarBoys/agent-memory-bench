@@ -144,14 +144,24 @@ def _delta_text(value: float, ci, floor, floor_ci, metric: str = "") -> str:
     return f"**{d:+.3f} ⚠️帮倒忙**" if d <= 0 else f"{d:+.3f}"
 
 
-def _is_count(sc, metric: str) -> bool:
-    """这是**原始计数**还是比例。⭐ 问那个分自己，⛔ 不猜名字。
+def _plain(sc, metric: str, value: float) -> str | None:
+    """不带区间的指标怎么印。⭐ 问那个分自己，⛔ 不猜名字。
 
     ⚠️ 这里曾是名字推断的**第三份**拷贝（另两份在 `scoring/`）——
     ⛔ 三处各自演化，而它们不一致时不会报错，只会让某个数印错格式。
     ⭐ 现在种类由算它的那一行声明，报告照着念。
+
+    ⛔ 判定印成「是 / 否」：⚠️ `隔离_过滤级=1` 读者要停一秒想那个 1 是
+    「一条」还是「真」——⭐ 而这一档全是判定，一排 0 和 1 尤其难读。
     """
-    return sc.kinds.get(metric) == "count"
+    kind = sc.kinds.get(metric)
+    if kind == "flag":
+        return f"{metric}={'是' if value else '否'}"
+    if kind == "count":
+        # ⛔ **原始计数不许套比例的格式**：⚠️ 早先 `broken→broken=2.000`
+        # 印出来，读者无从分辨那是**两道题**还是 200%。
+        return f"{metric}={int(value)}"
+    return None
 
 
 def _ci_of(arms: list, arm_name: str, suite: str, metric: str):
@@ -478,11 +488,8 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
                     if ci:
                         parts.append(f"{k}={v:.3f}[{ci.low:.2f},{ci.high:.2f}]"
                                      f"n={ci.n}")
-                    elif _is_count(sc, k):
-                        # ⛔ **原始计数不许套比例的格式**：⚠️ 早先
-                        # `broken→broken=2.000` 印出来，读者无从分辨那是
-                        # **两道题**还是 200%。⭐ 计数就印成整数。
-                        parts.append(f"{k}={int(v)}")
+                    elif (plain := _plain(sc, k, v)) is not None:
+                        parts.append(plain)
                     else:
                         parts.append(f"{k}={v:.3f}")
                 out.append(f"- `{arm.arm}` " + " · ".join(parts))
