@@ -165,3 +165,33 @@ def test_a_crashed_arm_is_not_confused_with_a_zero_score() -> None:
     rep.lanes["library"] = [_arm("bm25", control=True, top1=0.5), dead]
     text = render(rep)
     assert "TimeoutError" in text or "crashed" in text.lower()
+
+
+# ── ⭐ 参数对象：⛔ 指标不在就是不在 ────────────────────────────
+def test_a_missing_metric_never_becomes_a_zero() -> None:
+    """⛔ 地板臂**没有这个指标**时必须返回 None——⚠️ 拿 0.000 冒充的话，
+    ⭐ 被测臂会跟一个凭空的 0 比，Δ 凭空变好看。
+
+    ⚠️ 这条对着一个真实的旧 bug：早先 `sc.metrics.get(metric, 0.0)`
+    让一个「这一档没有这个指标」的臂被印成 `0.000` 且 status=scored。
+    """
+    from amb.report.render import OnMetric
+    from amb.scoring.metrics import Score
+
+    sc = Score("retrieval", "scored")
+    sc.metrics["top1"] = 0.5
+    sc.kinds["top1"] = "rate"
+    assert OnMetric.of(sc, "top1") is not None
+    assert OnMetric.of(sc, "不存在的指标") is None, "⛔ 缺失指标被当成 0 了"
+    assert OnMetric.of(None, "top1") is None
+
+
+def test_a_delta_against_a_missing_floor_says_nothing() -> None:
+    """⛔ 地板没这个指标时**不给 Δ**——⚠️ 而不是给一个跟 0 比出来的数。"""
+    from amb.report.render import OnMetric, _delta_text
+    from amb.scoring.statistics import wilson
+
+    txt = _delta_text(OnMetric(0.9, wilson(9, 10)),
+                      type("F", (), {"value": 0.0, "arm": "bm25"})(),
+                      None, "top1")
+    assert txt == "", f"⛔ 跟一个不存在的地板比出了 Δ：{txt!r}"

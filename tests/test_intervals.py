@@ -113,15 +113,15 @@ def test_overlapping_intervals_are_reported_as_indistinguishable() -> None:
 
 def test_the_report_refuses_to_rank_on_overlap() -> None:
     """⚠️ 那不是「一样好」，是这次跑答不了这个问题。"""
-    from amb.report.render import _delta_text
+    from amb.report.render import OnMetric, _delta_text
     from amb.report.floor import Floor
 
-    a, b = wilson(13, 20), wilson(11, 20)
-    text = _delta_text(0.65, a, Floor("bm25", 0.55), b)
+    text = _delta_text(OnMetric(0.65, wilson(13, 20)), Floor("bm25", 0.55),
+                       OnMetric(0.55, wilson(11, 20)))
     assert "分不开" in text and "只能辨" in text
 
-    big_a, big_b = wilson(1300, 2000), wilson(1100, 2000)
-    text = _delta_text(0.65, big_a, Floor("bm25", 0.55), big_b)
+    text = _delta_text(OnMetric(0.65, wilson(1300, 2000)), Floor("bm25", 0.55),
+                       OnMetric(0.55, wilson(1100, 2000)))
     assert "分不开" not in text and "+0.100" in text
 
 
@@ -491,8 +491,11 @@ def test_a_metric_that_cannot_be_paired_says_so_in_the_report() -> None:
     from amb.report.render import _delta_text
     from amb.scoring.statistics import wilson
 
-    txt = _delta_text(0.30, wilson(30, 100), type("F", (), {"value": 0.40})(),
-                      wilson(40, 100), "精确检索")
+    from amb.report.render import OnMetric
+
+    txt = _delta_text(OnMetric(0.30, wilson(30, 100)),
+                      type("F", (), {"value": 0.40})(),
+                      OnMetric(0.40, wilson(40, 100)), "精确检索")
     assert "保守的区间重叠" in txt, f"⛔ 没标口径：{txt}"
 
 
@@ -507,9 +510,13 @@ def test_the_report_actually_uses_the_paired_verdict() -> None:
     from amb.scoring.statistics import wilson
 
     floor = type("F", (), {"value": 0.711, "arm": "bm25"})()
-    txt = _delta_text(0.868, wilson(33, 38), floor, wilson(27, 38), "准确率",
-                      items=_mk([True] * 33 + [False] * 5),
-                      floor_items=_mk([True] * 27 + [False] * 11))
+    from amb.report.render import OnMetric
+
+    txt = _delta_text(
+        OnMetric(0.868, wilson(33, 38), _mk([True] * 33 + [False] * 5)),
+        floor,
+        OnMetric(0.711, wilson(27, 38), _mk([True] * 27 + [False] * 11)),
+        "准确率")
     assert "配对 p=" in txt, f"⛔ 没走配对：{txt}"
     assert "分不开" not in txt, f"⛔ 配对显著却仍判分不开：{txt}"
 

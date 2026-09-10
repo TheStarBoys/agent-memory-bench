@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
 from amb.report.floor import best_floor, delta, is_degenerate
 from amb.report.schema import LANE_LABEL, LANES, Report
@@ -122,8 +123,33 @@ def _seconds(ms: float | None) -> str:
     return f"{ms / 1000:.3f}s" if ms < 1000 else f"{ms / 1000:.2f}s"
 
 
-def _delta_text(value: float, ci, floor, floor_ci, metric: str = "",
-                items=None, floor_items=None) -> str:
+@dataclass(frozen=True, slots=True)
+class OnMetric:
+    """一条臂在**某个指标**上的全部侧面。⭐ 它们总是一起走。
+
+    ⛔ 早先是拆成 `(value, ci, items)` 三个平行参数传的——⚠️ 而加配对统计时
+    我为**同一个概念**又塞了两个（`items` / `floor_items`），
+    ⭐ 函数签名到了 7 个参数，调用处要把 `Score` 拆三次再拼回去。
+
+    ⚠️ 数据泥团的判据（删一个，其余还成不成立）在这里是成立的：
+    ⛔ 少了区间就判不了重叠，少了逐题就做不了配对——⭐ 它们描述的是同一件事。
+    """
+
+    value: float
+    ci: object = None
+    items: list | None = None
+
+    @classmethod
+    def of(cls, score, metric: str) -> "OnMetric | None":
+        """⛔ 指标不在就是不在，⚠️ 不拿 0.000 冒充。"""
+        if score is None or metric not in score.metrics:
+            return None
+        return cls(score.metrics[metric], score.interval(metric),
+                   score.items.get(metric))
+
+
+def _delta_text(arm: "OnMetric", floor_name, floor: "OnMetric | None",
+                metric: str = "") -> str:
     """两条臂之间到底能不能下判断。
 
     ## ⭐ 优先用**配对检验**
@@ -143,12 +169,14 @@ def _delta_text(value: float, ci, floor, floor_ci, metric: str = "",
     """
     from amb.scoring.statistics import detectable_difference, mcnemar
 
-    d = delta(value, floor, metric)
+    if floor is None:
+        return ""
+    d = delta(arm.value, floor_name, metric)
     if d is None:
         return ""
     # ── ⭐ 配对：⛔ 只在两边都留了逐题结果时 ────────────────
-    if items and floor_items:
-        got = mcnemar(items, floor_items)
+    if arm.items and floor.items:
+        got = mcnemar(arm.items, floor.items)
         if got is not None:
             if got.significant:
                 return (f"**{d:+.3f} ⚠️帮倒忙**" if d <= 0 else f"{d:+.3f}") + \
@@ -157,14 +185,14 @@ def _delta_text(value: float, ci, floor, floor_ci, metric: str = "",
                    else f"分歧 {got.discordant} 题（{got.b}:{got.c}）")
             return (f"⛔ 分不开（差 {d:+.3f}，配对 p={got.p_value:.3f}，"
                     f"{why}）")
-    if ci is None or floor_ci is None:
+    if arm.ci is None or floor.ci is None:
         # ⛔ **没有区间就不许声称差异**。⚠️ 早先这里直接落到声称分支——
         # 方向正好反了：区间缺席（n<2、重抽样算不出来、名字撞上计数前缀）
         # 说明这一跑**答不了这个问题**，⭐ 而不是「不必检查重叠」。
         return f"（差 {d:+.3f}，⛔ 无区间，不作判断）"
-    if ci.overlaps(floor_ci):
-        n = min(ci.n, floor_ci.n)
-        mde = detectable_difference(min(value, floor.value), n)
+    if arm.ci.overlaps(floor.ci):
+        n = min(arm.ci.n, floor.ci.n)
+        mde = detectable_difference(min(arm.value, floor.value), n)
         # ⚠️ 标明这是**保守口径**：⛔ 配对未必分不开
         return (f"⛔ 分不开（差 {d:+.3f}，n={n} 只能辨 ≥{mde:.3f}，"
                 f"⚠️ 无逐题结果，用的是保守的区间重叠）")
@@ -567,11 +595,9 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
                     dtxt = "⚠️ 退化†"
             else:
                 # ⭐ 逐题结果两边都有才做配对——⛔ 没有就退回保守口径
-                dtxt = _delta_text(
-                    v, ci, floor, floor_ci, metric,
-                    items=sc.items.get(metric),
-                    floor_items=(floor_sc.items.get(metric)
-                                 if floor_sc else None))
+                dtxt = _delta_text(OnMetric(v, ci, sc.items.get(metric)),
+                                   floor, OnMetric.of(floor_sc, metric),
+                                   metric)
             out.append(f"| {arm.arm} ({tag}) | {shown} | {dtxt} | scored | |")
         # ⛔ 孤儿脚注最糟：标了 † 却不说它什么意思
         if any(is_degenerate(a.arm, suite) and (sc := a.scores.get(suite))

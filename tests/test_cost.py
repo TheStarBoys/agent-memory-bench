@@ -627,9 +627,10 @@ def test_no_interval_means_refuse_to_claim() -> None:
     **答不了这个问题**——早先这里直接落到「声称」分支，方向正好反了。
     """
     from amb.report.floor import Floor
-    from amb.report.render import _delta_text
+    from amb.report.render import OnMetric, _delta_text
 
-    text = _delta_text(0.9, None, Floor("bm25", 0.2), None, "top1")
+    text = _delta_text(OnMetric(0.9, None), Floor("bm25", 0.2),
+                       OnMetric(0.2, None), "top1")
     assert "不作判断" in text and "无区间" in text
     assert "帮倒忙" not in text
 
