@@ -94,6 +94,15 @@ class EmbeddingConfig:
             raise EmbeddingError(str(exc)) from None
 
 
+class IncompleteEmbedding(RuntimeError):
+    """端点少给了向量。⭐ 可重试——⚠️ 它跟 `IncompleteRead` 是同一类抽风。
+
+    ⛔ 早先端点返回 `data: []` 时**原样返回空列表**：⚠️ 不报错，
+    只是让向量表少配——⭐ 而后果落在**别处**（`naive_rag._flush` 的
+    `zip(strict=True)` 炸），⛔ 报的是适配器的错，真凶是端点。
+    """
+
+
 class EmbeddingClient:
     def __init__(self, cfg: EmbeddingConfig) -> None:
         self.cfg = cfg
@@ -128,7 +137,9 @@ class EmbeddingClient:
             try:
                 got = self._post(texts)
             except (urllib.error.URLError, http.client.IncompleteRead,
-                    ConnectionError, TimeoutError) as exc:
+                    ConnectionError, TimeoutError,
+                    # ⭐ 少给向量与读到一半断流是同一类抽风——⚠️ 一并重试
+                    IncompleteEmbedding) as exc:
                 last = exc
                 # ⛔ 只有限流、超时、传输抖动才重试——⚠️ 把 400 重试掉
                 # 比慢更糟：它会把「请求本身就是错的」拖成一次超时
@@ -172,7 +183,16 @@ class EmbeddingClient:
         )
         with urllib.request.urlopen(req, timeout=self.cfg.timeout_s) as resp:
             body = json.loads(resp.read())
-        return [row["embedding"] for row in body["data"]]
+        got = [row["embedding"] for row in body["data"]]
+        # ⛔ **要几个就得回几个**：⚠️ 端点返回 `data: []` 或少给几条时
+        # 早先原样返回——⭐ 而那不报错，只是让向量表少配。
+        # ⚠️ 后果落在**别处**：`naive_rag._flush` 的 `zip(strict=True)` 炸，
+        # ⛔ 报的是适配器的错，而真凶是端点少给了向量。
+        # ⭐ 在源头认出来，⚠️ 且它是**可重试**的（端点抽风，不是我们请求错）。
+        if len(got) != len(texts):
+            raise IncompleteEmbedding(
+                f"要 {len(texts)} 个向量，端点只回了 {len(got)} 个")
+        return got
 
 
 def cosine(a: list[float], b: list[float]) -> float:
@@ -190,4 +210,7 @@ def _retryable(exc: Exception) -> bool:
     """
     if isinstance(exc, urllib.error.HTTPError):
         return exc.code == 429 or exc.code >= 500
+    # ⭐ 少给向量与读到一半断流是同一类抽风——⚠️ 重试一次多半就好了
+    if isinstance(exc, IncompleteEmbedding):
+        return True
     return True
