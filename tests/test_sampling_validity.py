@@ -175,9 +175,9 @@ def test_a_thin_stratum_makes_the_interval_say_so() -> None:
     thin = stratified({"big": (5, 8), "tiny": (1, 1)}, sizes)
     fine = stratified({"big": (5, 8), "tiny": (2, 4)}, sizes)
 
-    assert not thin.trustworthy and "不可当真" in thin.caveat
+    assert thin.caveat and "不可当真" in thin.caveat
     assert "tiny" in thin.caveat
-    assert fine.trustworthy and fine.caveat is None
+    assert fine.caveat is None
 
 
 def test_minimum_n_for_stratified_is_computed_not_guessed() -> None:

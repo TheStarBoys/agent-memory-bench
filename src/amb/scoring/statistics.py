@@ -43,10 +43,6 @@ class Interval:
     caveat: str | None = None
 
     @property
-    def trustworthy(self) -> bool:
-        return self.caveat is None
-
-    @property
     def half_width(self) -> float:
         """±多少。⭐ 这个数决定了「能不能分辨两个系统」。"""
         return (self.high - self.low) / 2
