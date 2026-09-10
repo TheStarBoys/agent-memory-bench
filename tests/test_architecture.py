@@ -260,3 +260,51 @@ def test_build_dispatches_on_every_registered_arm() -> None:
     finally:
         __import__("os").environ.clear()
         __import__("os").environ.update(old)
+
+
+def test_there_is_only_one_place_that_knows_how_to_build_an_arm() -> None:
+    """⛔ **第六份名册**：⚠️ `mcp_main.py`（agent 档的 MCP 子进程入口）
+    曾经自己写了一份造臂分派，⭐ 而它已经过期：
+
+      ⛔ `hybrid` / `recency_window` 落进 `else: create(名)` → **TypeError**
+      ⛔ `naive_rag` 不带 `dimensions` → agent 档与 library 档
+        **不在同一个向量空间**，⚠️ 而报告只写一行「同一个 embedding 模型」
+      ⛔ `naive_rag` 不带 `storage_dir` → 这一档拿不到摄入快照
+
+    ⚠️ 三条全都**不报错**——⭐ 只是让两档的数悄悄不可比。
+
+    ⚠️ 上一轮我修名册碎片化时只盯了 `runner/build.py`，⛔ 漏了这个入口。
+    ⭐ 这一条守的是：**只有一个地方认识具体臂的构造参数**。
+    """
+    import re
+
+    src = (ROOT / "src/amb/runner/mcp_main.py").read_text(encoding="utf-8")
+    assert "from amb.runner.build import build" in src, "⛔ 没复用唯一的名册"
+    # ⛔ 不许再出现按臂名分派的 if/elif
+    dispatch = re.findall(r'args\.arm\s*==\s*"[a-z_]+"', src)
+    assert not dispatch, f"⛔ 又自己写了一份分派：{dispatch}"
+
+
+def test_every_arm_survives_the_mcp_entry_point() -> None:
+    """⭐ 端到端：⛔ agent 档的每一条臂都要造得出来。
+
+    ⚠️ 造不出来的话那条臂在 agent 档一起手就 TypeError——
+    ⭐ 而 `mcp_main` 是子进程，⛔ 报错要穿过 stdio 才看得见。
+    """
+    import os
+    import sys
+
+    sys.path.insert(0, str(ROOT / "tests"))
+    import offline
+    from amb.adapters import SYSTEMS
+    from amb.adapters.registry import _REGISTRY
+    from amb.runner.build import build
+
+    old = dict(os.environ)
+    try:
+        os.environ.update(offline.ENV)
+        for name in sorted(set(_REGISTRY) - set(SYSTEMS)):
+            build(name, context_budget=24_000, llm=None)
+    finally:
+        os.environ.clear()
+        os.environ.update(old)

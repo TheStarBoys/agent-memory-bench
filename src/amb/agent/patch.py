@@ -49,7 +49,7 @@ def write_patch(arm: str | None, out: Path, *, world_root: Path,
     rows: list[dict] = []
     if arm is not None:
         rows.append(_mcp_row(
-            f"amb-memory-{arm}", SERVER_NAME, "amb.adapters.mcp_main",
+            f"amb-memory-{arm}", SERVER_NAME, "amb.runner.mcp_main",
             ["--arm", arm, "--server-name", SERVER_NAME], world_root, env,
         ))
     if verdict_sink is not None:
