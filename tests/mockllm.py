@@ -263,13 +263,44 @@ class MockLLM:
                 text = b.text
             else:
                 text = _pick_answer(body)
+            usage = {"prompt_tokens": max(1, len(str(body)) // 4),
+                     "completion_tokens": max(1, len(text) // 4)}
+            # ⭐ **DSH 走流式**：⚠️ 它发 `stream: True`，
+            # ⛔ 拿非流式的 `choices[].message` 回它，它判 `EMPTY_RESPONSE`
+            # 并重试 5 次然后 `finish_reason='error'`——⚠️ 实测踩到。
+            if body.get("stream"):
+                return self._send_sse(h, text, usage)
             payload = {
                 "choices": [{"message": {"content": text}}],
                 # ⭐ 带用量：⚠️ 计量层也要被测到，⛔ 空的会让成本档静默为 0
-                "usage": {"prompt_tokens": max(1, len(str(body)) // 4),
-                          "completion_tokens": max(1, len(text) // 4)},
+                "usage": usage,
             }
         self._send(h, 200, json.dumps(payload, ensure_ascii=False).encode())
+
+    @staticmethod
+    def _send_sse(h: BaseHTTPRequestHandler, text: str, usage: dict) -> None:
+        """OpenAI 兼容的流式响应。⚠️ 逐块发，⛔ 最后一块带 finish_reason。"""
+        h.send_response(200)
+        h.send_header("Content-Type", "text/event-stream")
+        h.send_header("Cache-Control", "no-cache")
+        h.end_headers()
+
+        def emit(obj) -> None:
+            h.wfile.write(f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
+                          .encode())
+            h.wfile.flush()
+
+        # ⭐ 切成几块：⚠️ 一次性发完的话「分块拼接」那条路径测不到
+        step = max(1, len(text) // 3 or 1)
+        for i in range(0, len(text), step):
+            emit({"choices": [{"index": 0,
+                               "delta": {"content": text[i:i + step]},
+                               "finish_reason": None}]})
+        emit({"choices": [{"index": 0, "delta": {},
+                           "finish_reason": "stop"}], "usage": usage})
+        h.wfile.write(b"data: [DONE]\n\n")
+        h.wfile.flush()
+        h.close_connection = True
 
     @staticmethod
     def _send(h: BaseHTTPRequestHandler, status: int, data: bytes) -> None:
