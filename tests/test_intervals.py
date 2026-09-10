@@ -405,16 +405,16 @@ def test_a_verdict_reads_as_yes_or_no_in_the_report() -> None:
     ⚠️ `隔离_过滤级=1` 读者要停一秒想那个 1 是「一条」还是「真」——
     ⛔ 而这一档全是判定，一排 0 和 1 尤其难读。
     """
-    from amb.report.render import _plain
+    from amb.report.render import _cell
 
     g = _governance_score(level="filter", logged=1)
-    assert _plain(g, "隔离_过滤级", g.metrics["隔离_过滤级"]) == "隔离_过滤级=是"
-    assert _plain(g, "隔离_授权级", g.metrics["隔离_授权级"]) == "隔离_授权级=否"
+    assert _cell(g, "隔离_过滤级") == "是"
+    assert _cell(g, "隔离_授权级") == "否"
     # ⭐ 计数仍然印成整数，⛔ 不受影响
     c = _score_of("n8_induction", [
         {"generalises": True, "handles_exception": True,
          "rule_survives": True, "rate": 0.1 * i, "unparsed": False}
         for i in range(6)])
-    assert _plain(c, "计数_全对", c.metrics["计数_全对"]) == "计数_全对=6"
-    # ⚠️ 比例不归它管——⛔ 那条路径要印区间
-    assert _plain(c, "全对", c.metrics["全对"]) is None
+    assert _cell(c, "计数_全对") == "6"
+    # ⚠️ 比例走的是另一条路——⭐ 它有区间
+    assert "[" in _cell(c, "全对")

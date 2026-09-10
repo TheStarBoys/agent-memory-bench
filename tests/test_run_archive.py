@@ -71,3 +71,55 @@ def test_index_says_archives_are_not_publications() -> None:
     """⛔ 存档不是发布——题量小、系统少、backbone 单一。"""
     index = (RUNS / "README.md").read_text(encoding="utf-8")
     assert "不是评测结果" in index or "存档不是发布" in index
+
+
+# ── ⭐ 报告是给人读的 ───────────────────────────────────────────
+def _sample_report():
+    """一份带齐三种结构的报告：⚠️ 分档曲线 / 分层 / 普通指标。"""
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from amb.core import Observation, SuiteRun
+    from amb.report import ArmResult, Report
+    from amb.scoring import score
+
+    rep = Report(run_id="x", at="now",
+                 world={"name": "toy", "seed": 42, "documents": 8,
+                        "digest": "sha256:a", "corpus": "c"},
+                 backbone={"model": "fake", "thinking": False})
+    for arm in ("null", "bm25", "mem0_raw"):
+        a = ArmResult(arm=arm, is_control=arm != "mem0_raw", declared=["search"])
+        run = SuiteRun("n6_structure", "scored")
+        for i in range(112):
+            run.observations.append(Observation(f"i{i}", {
+                "fan": 2 ** (i % 7), "reached": i % 4, "cues": 3,
+                "precise": i % 3 == 0}))
+        a.scores["n6_structure"] = score(run)
+        a.cost_profile = {"canary": {}, "items_ingested": 8, "items_probed": 112}
+        a.participation = {"declared": 1, "total_caps": 11, "items": 112}
+        rep.lanes.setdefault("library", []).append(a)
+    return rep
+
+
+def test_no_line_in_the_report_is_a_wall_of_text() -> None:
+    """⛔ 明细行早先把 18 个指标堆成**一行**——⚠️ 实测最长 595 个字符。
+
+    ⭐ 而 `n6` 那 18 个值本质是一条曲线上的 7 个点：⛔ 横着排读不出趋势。
+    ⚠️ 这条检查此前**不存在**，所以行长从来没人管。
+    """
+    from amb.report import render
+
+    long = [ln for ln in render(_sample_report()).splitlines() if len(ln) > 220]
+    assert not long, ("⛔ 这些行太长，读者要横向滚动：\n  "
+                      + "\n  ".join(f"{len(ln)} 字符: {ln[:70]}…" for ln in long[:3]))
+
+
+def test_a_fan_curve_is_rendered_as_a_table() -> None:
+    """⭐ 扇形退化是**趋势**：⛔ 竖着排才看得出来。"""
+    from amb.report import render
+
+    text = render(_sample_report())
+    assert "随扇形度的变化" in text, "⛔ 分档没有单独成表"
+    # ⚠️ 表头是扇形度，⭐ 每档一行
+    assert "| 扇形度 |" in text
+    for lv in (1, 2, 4, 8, 16, 32, 64):
+        assert f"| {lv} |" in text, f"⛔ 缺 fan{lv} 那一行"

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from amb.report.floor import best_floor, delta, is_degenerate
 from amb.report.schema import LANE_LABEL, LANES, Report
 
@@ -144,26 +146,6 @@ def _delta_text(value: float, ci, floor, floor_ci, metric: str = "") -> str:
     return f"**{d:+.3f} ⚠️帮倒忙**" if d <= 0 else f"{d:+.3f}"
 
 
-def _plain(sc, metric: str, value: float) -> str | None:
-    """不带区间的指标怎么印。⭐ 问那个分自己，⛔ 不猜名字。
-
-    ⚠️ 这里曾是名字推断的**第三份**拷贝（另两份在 `scoring/`）——
-    ⛔ 三处各自演化，而它们不一致时不会报错，只会让某个数印错格式。
-    ⭐ 现在种类由算它的那一行声明，报告照着念。
-
-    ⛔ 判定印成「是 / 否」：⚠️ `隔离_过滤级=1` 读者要停一秒想那个 1 是
-    「一条」还是「真」——⭐ 而这一档全是判定，一排 0 和 1 尤其难读。
-    """
-    kind = sc.kinds.get(metric)
-    if kind == "flag":
-        return f"{metric}={'是' if value else '否'}"
-    if kind == "count":
-        # ⛔ **原始计数不许套比例的格式**：⚠️ 早先 `broken→broken=2.000`
-        # 印出来，读者无从分辨那是**两道题**还是 200%。
-        return f"{metric}={int(value)}"
-    return None
-
-
 def _ci_of(arms: list, arm_name: str, suite: str, metric: str):
     """取某条臂在某个指标上的区间。⛔ 取不到就是 None，⚠️ 不猜。"""
     for a in arms:
@@ -172,6 +154,99 @@ def _ci_of(arms: list, arm_name: str, suite: str, metric: str):
         sc = a.scores.get(suite)
         return sc.interval(metric) if sc else None
     return None
+
+
+
+#: ⭐ 分档后缀 `_fan16`：⚠️ 它们不是 18 个独立指标，是**一条曲线上的 7 个点**。
+_FAN = re.compile(r"^(?P<base>.+)_fan(?P<level>\d+)$")
+#: ⭐ 分层后缀 `_2-时间推理`：⚠️ 同理，是同一个指标在各层上的值。
+_STRATUM = re.compile(r"^(?P<base>.+?)_(?P<stratum>\d+-.+)$")
+
+
+def _cell(sc, metric: str) -> str:
+    """一个指标印成一格。⭐ 有区间就带上，⛔ 判定印是/否，计数印整数。"""
+    v = sc.metrics[metric]
+    ci = sc.interval(metric)
+    if ci:
+        return f"{v:.3f} [{ci.low:.2f}, {ci.high:.2f}] n={ci.n}"
+    kind = sc.kinds.get(metric)
+    if kind == "flag":
+        return "是" if v else "否"
+    if kind == "count":
+        return str(int(v))
+    return f"{v:.3f}"
+
+
+def _split_families(sc) -> tuple[dict, dict, list]:
+    """把指标拆成三堆：分档曲线 / 分层 / 其余。
+
+    ⛔ 早先它们挤在**一行**里用 `·` 隔开——⚠️ 实测最长 595 个字符，
+    而 `n6` 那 18 个分档值本质是一条曲线上的 7 个点。
+    ⭐ 曲线该竖着看，⛔ 横着排成一行读不出趋势。
+    """
+    fans: dict[str, dict[int, str]] = {}
+    strata: dict[str, dict[str, str]] = {}
+    rest: list[str] = []
+    for k in sc.metrics:
+        if m := _FAN.match(k):
+            fans.setdefault(m["base"], {})[int(m["level"])] = k
+        elif (m := _STRATUM.match(k)) and m["stratum"][0].isdigit():
+            strata.setdefault(m["stratum"], {})[m["base"]] = k
+        else:
+            rest.append(k)
+    return fans, strata, rest
+
+
+def _render_detail(arms: list, suite: str) -> list[str]:
+    """一个套件的明细。⭐ 结构化成表，⛔ 不再堆成一行。"""
+    scored = [a for a in arms
+              if (sc := a.scores.get(suite)) and sc.status == "scored"
+              and len(sc.metrics) > 1]
+    if not scored:
+        return [""]
+    out: list[str] = []
+    sample = scored[0].scores[suite]
+    fans, strata, rest = _split_families(sample)
+
+    # ── ① 主体：指标 × 臂 ──────────────────────────────────
+    if rest:
+        out += ["<details><summary>明细（各指标 × 各臂）</summary>", ""]
+        out.append("| 指标 | " + " | ".join(f"`{a.arm}`" for a in scored) + " |")
+        out.append("|---|" + "---|" * len(scored))
+        for k in rest:
+            cells = [_cell(a.scores[suite], k)
+                     if k in a.scores[suite].metrics else "—" for a in scored]
+            out.append(f"| {k} | " + " | ".join(cells) + " |")
+        out += ["", "</details>", ""]
+
+    # ── ② 分档曲线：⭐ 行是扇形度，⛔ 那才看得出退化 ──────────
+    for base, levels in fans.items():
+        out += [f"<details><summary>{base}：随扇形度的变化</summary>", ""]
+        out.append("| 扇形度 | " + " | ".join(f"`{a.arm}`" for a in scored) + " |")
+        out.append("|---:|" + "---|" * len(scored))
+        for lv in sorted(levels):
+            k = levels[lv]
+            cells = [_cell(a.scores[suite], k)
+                     if k in a.scores[suite].metrics else "—" for a in scored]
+            out.append(f"| {lv} | " + " | ".join(cells) + " |")
+        out += ["", "</details>", ""]
+
+    # ── ③ 分层：⭐ 行是层，⚠️ 各层题数差很多，⛔ 混在一起读不出来 ──
+    if strata:
+        out += ["<details><summary>分层明细</summary>", ""]
+        bases = sorted({b for cols in strata.values() for b in cols})
+        out.append("| 层 | 指标 | " + " | ".join(f"`{a.arm}`" for a in scored) + " |")
+        out.append("|---|---|" + "---|" * len(scored))
+        for st in sorted(strata):
+            for b in bases:
+                k = strata[st].get(b)
+                if not k:
+                    continue
+                cells = [_cell(a.scores[suite], k)
+                         if k in a.scores[suite].metrics else "—" for a in scored]
+                out.append(f"| {st} | {b} | " + " | ".join(cells) + " |")
+        out += ["", "</details>", ""]
+    return out or [""]
 
 
 def _render_cost(arms: list, suites: list[str],
@@ -478,22 +553,7 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
         out.append("")
 
         # 六格/五指标这类配对指标全量附上——⛔ 只报主指标就能刷分
-        for arm in arms:
-            sc = arm.scores.get(suite)
-            if sc and sc.status == "scored" and len(sc.metrics) > 1:
-                # ⭐ 明细也带区间——⛔ 这里才是主要的读数区
-                parts = []
-                for k, v in sc.metrics.items():
-                    ci = sc.interval(k)
-                    if ci:
-                        parts.append(f"{k}={v:.3f}[{ci.low:.2f},{ci.high:.2f}]"
-                                     f"n={ci.n}")
-                    elif (plain := _plain(sc, k, v)) is not None:
-                        parts.append(plain)
-                    else:
-                        parts.append(f"{k}={v:.3f}")
-                out.append(f"- `{arm.arm}` " + " · ".join(parts))
-        out.append("")
+        out += _render_detail(arms, suite)
 
     # ⛔ 检索档（`--no-answer`）没有回答 backbone，⚠️ 但被测系统**摄入时照样调 LLM**
     # ——mem0 这一跑就烧了 367 万 token。拿摄入那个模型定价，
