@@ -25,6 +25,19 @@ from pathlib import Path
 DEFAULT_PATH = Path(".external/llm-cache.sqlite")
 
 
+def _cache_path() -> Path:
+    """缓存落在哪。⭐ `AMB_LLM_CACHE_DIR` 可换——⛔ 早先写死。
+
+    ⚠️ 写死的代价有两层：
+      ⭐ 测试之间**互相串**：⛔ 一条测试写进去的响应会被下一条命中，
+        而那让「改了字段还命不命中」这类断言全部失效（实测踩到）。
+      ⚠️ 两次不同配置的跑共用一个库——⛔ 而缓存键要是漏了哪一项，
+        串味就发生在这里。
+    """
+    raw = os.environ.get("AMB_LLM_CACHE_DIR", "").strip()
+    return Path(raw) / "llm-cache.sqlite" if raw else DEFAULT_PATH
+
+
 #: 跳过缓存的原因。⛔ 每一种都要计数——
 #: ⚠️ 「命中率 0」有很多种原因，不分开记就查不出是哪一种（踩过：
 #: mem0 默认 temperature=0.1，缓存静默失效，**连异常都没抛**）。
@@ -98,11 +111,11 @@ _HINTS: dict[str, str] = {
 class LLMCache:
     """SQLite 内容寻址缓存。⚠️ 进程内加锁，跨进程靠 SQLite 自己。"""
 
-    def __init__(self, path: Path = DEFAULT_PATH, *, enabled: bool = True) -> None:
+    def __init__(self, path: Path | None = None, *, enabled: bool = True) -> None:
         self.enabled = enabled
         self.stats = CacheStats()
         self._lock = threading.Lock()
-        self._path = path
+        self._path = path if path is not None else _cache_path()
         self._conn: sqlite3.Connection | None = None
 
     def _db(self) -> sqlite3.Connection:
