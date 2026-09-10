@@ -92,6 +92,18 @@ def stratified(counts: dict[str, tuple[float, int]],
     if total_pop == 0:
         return Interval(0.0, 0.0, 1.0, 0)
 
+    # ⛔ **只按抽到的层归一化**：⚠️ 早先权重按全量占比算，
+    # 而一道都没抽到的层被 `continue` 跳过——⭐ 分母里算着它、分子里没有它，
+    # 等于默认那一层**得 0 分**。
+    # ⚠️ 实测代价：两层各占一半、只抽到甲层且甲层 0.8 分时，
+    # ⛔ 估计值被压成 **0.4**——静默腰斩，而且不报错。
+    # ⚠️ 这在真跑里天天发生：LoCoMo 的开放域推断只占 5%，
+    # ⭐ 简单随机抽 50 题很可能一道都没抽到。
+    sampled_pop = sum(size for st, size in population.items()
+                      if counts.get(st, (0.0, 0))[1] > 0)
+    if sampled_pop == 0:
+        return Interval(0.0, 0.0, 1.0, 0)
+
     point = 0.0
     variance = 0.0
     n_total = 0
@@ -99,7 +111,7 @@ def stratified(counts: dict[str, tuple[float, int]],
         hit, n = counts.get(stratum, (0.0, 0))
         if n <= 0:
             continue
-        w = size / total_pop
+        w = size / sampled_pop
         p = hit / n
         point += w * p
         # 有限总体校正：⚠️ 抽了一层里的大部分时，方差要缩
@@ -112,9 +124,20 @@ def stratified(counts: dict[str, tuple[float, int]],
     # ⚠️ 实测：n=20 时开放域那层只配到 1 题，覆盖率掉到 85.5%（名义 95%）。
     thin = sorted(st for st, (_, n) in counts.items()
                   if 0 < n < MIN_PER_STRATUM)
-    caveat = (f"⛔ 这些层样本 <{MIN_PER_STRATUM} 题：{'、'.join(thin)}——"
-              f"层内方差估不出来，区间偏窄，⚠️ 不可当真"
-              if thin else None)
+    # ⛔ **一道都没抽到的层必须说出来**：⚠️ 归一化之后这个数是
+    # 「抽到的那几层上的估计」，⭐ 而读者会把它当成全体的估计。
+    missed = sorted(st for st in population
+                    if counts.get(st, (0.0, 0))[1] <= 0)
+    notes = []
+    if thin:
+        notes.append(f"⛔ 这些层样本 <{MIN_PER_STRATUM} 题：{'、'.join(thin)}——"
+                     f"层内方差估不出来，区间偏窄，⚠️ 不可当真")
+    if missed:
+        share = sum(population[st] for st in missed) / total_pop
+        notes.append(f"⛔ 这些层**一道都没抽到**：{'、'.join(missed)}"
+                     f"（占全量 {share:.0%}）——⚠️ 这个数只是"
+                     f"「抽到的那几层上的估计」，不是全体的")
+    caveat = "；".join(notes) if notes else None
     return Interval(point, max(0.0, point - z * se), min(1.0, point + z * se),
                     n_total,
                     # 等价的简单随机样本量：⭐ 分层「相当于」抽了多少
@@ -154,6 +177,12 @@ def detectable_difference(baseline: float, n: int, z: float = Z95,
     # 「还剩多少空间」而不是「最小可辨差异」——⭐ 那个数会被读成
     # 「这个题量已经能分辨很小的差」，方向正好反了。
     ceiling = 1.0 - baseline
+    # ⛔ **基线打满时没有可辨空间**：⚠️ `ceiling=0` 会让二分区间退化成
+    # `[0, 0]` 并返回 **0.0**——⭐ 那读起来是「连 0 的差都分得出来」，
+    # ⛔ 而真相是**这一档已经没有判别空间**（`no-headroom` 那条闸门讲的
+    # 就是这件事）。⚠️ 实测：`bm25` 在 n1 上就是 1.000。
+    if ceiling <= 1e-9:
+        return 1.0
     lo, hi = 0.0, ceiling
     for _ in range(60):                      # 二分
         mid = (lo + hi) / 2
