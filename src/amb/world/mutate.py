@@ -51,6 +51,13 @@ class WorldState:
             case ChangeKind.APPEAR | ChangeKind.IRRELEVANT:
                 p = self.root / change.target
                 p.parent.mkdir(parents=True, exist_ok=True)
+                # ⛔ **先解只读**：⚠️ 世界文件是 0o444 落盘的，
+                # 而这两类**可以指向一个已存在的文件**——
+                # ⭐ 「无关变更」最自然的写法就是「改一份跟命题无关的文档」。
+                # ⚠️ `REVALUE` 那一支一直有这一步，⛔ 这里漏了：
+                # `toy` 的 IRRELEVANT 指的是一个**新**文件，所以从没踩到。
+                if p.exists():
+                    os.chmod(p, 0o644)
                 p.write_text(change.value or "", encoding="utf-8")
                 os.chmod(p, 0o444)
             case ChangeKind.ADVANCE:

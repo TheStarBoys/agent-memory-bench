@@ -43,7 +43,7 @@ def build_plan(bench: str, *, sample: str = "all", seed: int = 42,
     # ⛔ **旋钮转了就得算数**：⚠️ `--sample` / `--max-convs` / `--max-turns`
     # / `--convs` 只有 locomo 认，⭐ 而 toy 与 dialogue 早先**静默忽略**——
     # 一次「小样本冒烟」会照付全量摄入的钱，而且不进 sampling 存档。
-    if bench in ("toy", "dialogue"):
+    if bench in ("toy", "native", "dialogue"):
         ignored = [n for n, v in (("--sample", sample if sample != "all" else ""),
                                   ("--max-convs", max_conversations),
                                   ("--max-turns", max_turns),
@@ -59,6 +59,15 @@ def build_plan(bench: str, *, sample: str = "all", seed: int = 42,
 
         return (Plan(manifest=toy.MANIFEST, documents=toy.all_documents(),
                      changes=toy.CHANGES, suites_for=toy.suites), {}, "toy")
+    if bench == "native":
+        # ⭐ 自研题库的**够格**版本：⚠️ `toy` 自称「不是一个够格的题库」，
+        # ⛔ 而它此前是 N1–N8 唯一能跑的世界。
+        from worlds import native
+
+        return (Plan(manifest=native.MANIFEST,
+                     documents=native.all_documents(),
+                     changes=native.CHANGES,
+                     suites_for=native.suites), {}, "native")
     if bench == "dialogue":
         # ⛔ 抽取层实验：四个条件的数**不可互比**，条件必须显式给。
         # ⚠️ 不默认某一档——那会让一次跑悄悄测了别的语料。

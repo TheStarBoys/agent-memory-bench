@@ -172,3 +172,28 @@ def test_a_curve_without_a_source_is_refused_by_the_loader() -> None:
         bad.write_text(json.dumps({"a": 1.0, "b": 0.5}), encoding="utf-8")
         with pytest.raises(UnfittedCurve, match="不算拟合过"):
             load(bad)
+
+
+def test_an_irrelevant_change_can_target_an_existing_file(tmp_path) -> None:
+    """⛔ 世界文件是 0o444 落盘的，⚠️ 而「无关变更」最自然的写法
+    就是**改一份跟命题无关的已有文档**。
+
+    ⭐ `REVALUE` 那一支一直先 chmod，⛔ `APPEAR|IRRELEVANT` 漏了——
+    ⚠️ `toy` 的 IRRELEVANT 指向一个**新**文件，所以这个 bug 从没露头。
+    ⭐ 换个够格的题库当场就撞上了（PermissionError）。
+    """
+    import os
+
+    from amb.world import Change, ChangeKind, FileSpec, WorldManifest, materialize
+    from amb.world.mutate import WorldState
+
+    m = WorldManifest(name="t", seed=1, clock_start="2026-01-01T00:00:00Z",
+                      files=(FileSpec("a/b.md", "原文"),), facts={})
+    materialize(m, tmp_path)
+    assert not os.access(tmp_path / "a/b.md", os.W_OK), "⛔ 前提：它该是只读的"
+
+    st = WorldState(root=tmp_path, now=m.clock_start, facts={})
+    st.apply(Change(ChangeKind.IRRELEVANT, "a/b.md", "原文。补充说明。"))
+    assert (tmp_path / "a/b.md").read_text(encoding="utf-8") == "原文。补充说明。"
+    # ⭐ 改完仍要**收回**写权限：⛔ 否则被测系统能改世界而不被发现
+    assert not os.access(tmp_path / "a/b.md", os.W_OK)

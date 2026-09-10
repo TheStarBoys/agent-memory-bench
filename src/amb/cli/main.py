@@ -78,7 +78,7 @@ def _preflight_cmd(argv: list[str]) -> int:
     from amb.runner.preflight import estimate, inspect
 
     ap = argparse.ArgumentParser(prog="amb preflight")
-    ap.add_argument("--bench", choices=("toy", "locomo", "dialogue"), default="toy")
+    ap.add_argument("--bench", choices=("toy", "native", "locomo", "dialogue"), default="toy")
     ap.add_argument("--condition", default="")
     ap.add_argument("--arms", default="")
     ap.add_argument("--max-turns", type=int, default=None)
@@ -111,7 +111,7 @@ def main(argv: list[str] | None = None) -> int:
                     help="逗号分隔；默认跑全部六条对照组")
     ap.add_argument("--budget", type=int, default=24000, help="full_context 的上下文预算")
     ap.add_argument("--json", type=Path, help="同时写一份 JSON")
-    ap.add_argument("--bench", choices=("toy", "locomo", "dialogue"),
+    ap.add_argument("--bench", choices=("toy", "native", "locomo", "dialogue"),
                     default="toy", help="跑哪个题库")
     ap.add_argument("--condition", default="",
                     choices=("", "dense", "diluted", "repeated", "revised"),
