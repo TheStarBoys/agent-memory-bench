@@ -308,3 +308,49 @@ def test_every_arm_survives_the_mcp_entry_point() -> None:
     finally:
         os.environ.clear()
         os.environ.update(old)
+
+
+def test_every_control_arm_is_either_in_the_agent_lane_or_excluded_on_purpose():
+    """⛔ **第七份名册**：`agent/arms.py` 与 `CONTROL_ARMS` 各自演化。
+
+    ⚠️ 它**本来就该独立**——同名臂在两档含义不同，每条要有自己的装法。
+    ⛔ 但独立不等于可以**漂**：`hybrid` 加进 library 档之后这里一直没补，
+    ⭐ 而它就是个检索对照臂，跟 `naive_rag` 同类。
+
+    ⚠️ 而 `recency_window` 不在这一档是**对的**：⭐ agent 档的
+    `host_default` 就是裸 DSH，本身已经是「只有窗口、没有记忆层」。
+    ⛔ 问题在于这个判断**从来没写下来**——⚠️ 那样「刻意不加」
+    跟「忘了加」长得一模一样。
+
+    ⭐ 所以这一条要求：**每条对照臂要么在名册里，要么在排除表里带理由**。
+    """
+    from amb.adapters import CONTROL_ARMS
+    from amb.agent import AGENT_ARMS
+    from amb.agent.arms import NOT_IN_AGENT_LANE
+
+    undecided = sorted(set(CONTROL_ARMS) - set(AGENT_ARMS)
+                       - set(NOT_IN_AGENT_LANE))
+    assert not undecided, (
+        f"⛔ 这些对照臂在 agent 档没有着落：{undecided}——"
+        f"⚠️ 加进 `AGENT_ARMS`，或在 `NOT_IN_AGENT_LANE` 里写清为什么不加")
+
+
+def test_an_exclusion_without_a_reason_does_not_count() -> None:
+    """⛔ 空理由挡不住任何东西——⚠️ 否则就成了「填个名字关掉守卫」。
+
+    ⭐ 理由才是这张表的全部意义：⚠️ 下一个人要读得懂为什么不加。
+    """
+    from amb.agent.arms import NOT_IN_AGENT_LANE
+
+    for arm, why in NOT_IN_AGENT_LANE.items():
+        assert isinstance(why, str) and len(why.strip()) >= 20, (
+            f"⛔ {arm} 的排除理由太短或为空：{why!r}")
+
+
+def test_every_agent_arm_has_a_plan() -> None:
+    """⛔ 名册里有、`PLANS` 里没有的话，⚠️ 那条臂一跑就 KeyError。"""
+    from amb.agent import AGENT_ARMS
+    from amb.agent.arms import PLANS
+
+    missing = sorted(set(AGENT_ARMS) - set(PLANS))
+    assert not missing, f"⛔ 这些臂没有装法：{missing}"

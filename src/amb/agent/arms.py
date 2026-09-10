@@ -11,14 +11,33 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-#: agent 档的五条。⚠️ 与 adapters.CONTROL_ARMS 同名，但含义见上。
+#: agent 档的对照组。⚠️ 与 `adapters.CONTROL_ARMS` 同名，但含义见上。
+#:
+#: ⛔ **它不是 `CONTROL_ARMS` 的拷贝**：每条臂在这一档要有自己的装法
+#: （挂哪个插件、为什么），⭐ 所以是一份独立名册。
+#: ⚠️ 但独立不等于可以**漂**：`hybrid` 加进 library 档之后，
+#: ⛔ 这里一直没补——而它就是个检索对照臂，跟 `naive_rag` 同类。
+#: ⭐ 现在由 `NOT_IN_AGENT_LANE` + 守卫强制：**每条对照臂要么在这里，
+#: 要么在那张表里写清为什么不在**。
 AGENT_ARMS: tuple[str, ...] = (
     "host_default",
     "null",
     "bm25",
     "naive_rag",
+    "hybrid",
     "full_context",
 )
+
+#: ⛔ **刻意不进 agent 档的对照臂，以及理由**。
+#: ⚠️ 空着理由不算数——⭐ 那样它跟「忘了加」长得一模一样。
+NOT_IN_AGENT_LANE: dict[str, str] = {
+    "recency_window": (
+        "⭐ 这一档的 `host_default` 就是**裸 DSH**——⚠️ 它本身已经是"
+        "「只有上下文窗口、没有记忆层」，⛔ 再挂一条滑窗臂是重复的。"
+        "⚠️ 而且真正的窗口压缩由 DSH 自己做（`AMB_CONTEXT_WINDOW`），"
+        "⭐ 比我们在插件里模拟的滑窗更贴近现实。"
+    ),
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,6 +65,8 @@ PLANS: dict[str, ArmPlan] = {
     ),
     "bm25": ArmPlan("bm25", "bm25", "纯词频，⛔ 零外部依赖，永远跑得起来"),
     "naive_rag": ArmPlan("naive_rag", "naive_rag", "chunk + embedding + top-k"),
+    "hybrid": ArmPlan("hybrid", "hybrid",
+                      "BM25 + 向量，RRF 融合——⚠️ 检验「两种检索各有主场」"),
     "full_context": ArmPlan("full_context", "full_context", "全部交出去，天花板参照"),
 }
 
