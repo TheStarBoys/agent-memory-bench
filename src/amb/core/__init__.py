@@ -11,6 +11,7 @@ from amb.core.phase import BOUNDARIES, Phase
 from amb.core.rules import DefeasibleRule, Rule
 from amb.core.style import AnswerStyle
 from amb.core.types import (
+    CLAIM_STATES,
     Answer,
     AuditEvent,
     Claim,
@@ -28,6 +29,7 @@ from amb.core.types import (
 )
 
 __all__ = [
+    "CLAIM_STATES",
     "Adapter", "AdapterBase", "Answer", "AnswerStyle", "AuditEvent", "BASELINE", "BOUNDARIES",
     "Capability", "Claim", "Observation", "SuiteRun", "find_dotenv", "load_dotenv", "require", "DefeasibleRule", "DeleteResult", "Document", "Entry",
     "Failed", "HarnessFault", "Phase", "Premise", "RecallVerdict", "Regularity", "Rule", "Span",

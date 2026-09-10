@@ -78,6 +78,16 @@ class Claim:
     doc_ids: list[str] = field(default_factory=list)
 
 
+#: ⭐ N1 表态的取值域。⛔ **唯一定义**——⚠️ 运行时校验必须问它，
+#: 而不是自己再写一份 `("holds", "broken", "unknown")`。
+#:
+#: ⛔ 早先 `agent/verdict_server.py` 就是自己写了一份：⚠️ 两份一旦不一致，
+#: agent 的表态会被**静默丢弃**（服务器只回一句「state 必须是…」），
+#: ⭐ 而 N1 的分就错了，没有任何地方报错。
+#: ⚠️ 同一类漂移这个仓库已经咬过三次（臂的名册 ×2、指标分类 ×1）。
+CLAIM_STATES: tuple[str, ...] = ("holds", "broken", "unknown")
+
+
 @dataclass(slots=True)
 class Verdict:
     """N1：一条命题对当前世界还成不成立。"""

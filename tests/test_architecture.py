@@ -354,3 +354,42 @@ def test_every_agent_arm_has_a_plan() -> None:
 
     missing = sorted(set(AGENT_ARMS) - set(PLANS))
     assert not missing, f"⛔ 这些臂没有装法：{missing}"
+
+
+def test_the_claim_states_have_exactly_one_definition() -> None:
+    """⛔ **第四次同类漂移**：⚠️ 一个取值域被写了两遍。
+
+    ⭐ `core.Verdict.state` 的 `Literal` 与 `verdict_server` 的运行时校验
+    早先各写一份——⛔ 两份一旦不一致，agent 的表态会被**静默丢弃**
+    （服务器只回一句「state 必须是…」），⚠️ 而 N1 的分就错了，
+    没有任何地方报错。
+
+    ⚠️ 这个仓库已经因为同一类漂移咬过三次：臂的名册 ×2、指标分类 ×1。
+    """
+    import re
+    import typing
+
+    from amb.core import CLAIM_STATES
+    from amb.core.types import Verdict
+
+    # ⭐ 类型注解里的取值必须与常量一致
+    hints = typing.get_type_hints(Verdict, include_extras=False)
+    literal = set(typing.get_args(hints["state"]))
+    assert literal == set(CLAIM_STATES), (
+        f"⛔ Literal {literal} 与 CLAIM_STATES {set(CLAIM_STATES)} 不一致")
+
+    # ⛔ 运行时校验不许再自己写一份
+    src = (ROOT / "src/amb/agent/verdict_server.py").read_text(encoding="utf-8")
+    hard = re.findall(r'\(\s*"holds"\s*,\s*"broken"\s*,\s*"unknown"\s*\)', src)
+    assert not hard, "⛔ verdict_server 又自己写了一份取值域"
+    assert "CLAIM_STATES" in src, "⛔ 它没问唯一定义"
+
+
+def test_a_new_claim_state_reaches_the_server_without_editing_it() -> None:
+    """⭐ 判据：⚠️ 往唯一定义里加一个值，**服务器立刻认**——
+    ⛔ 要是还得去改服务器，那就不是唯一定义。
+    """
+    from amb.agent import verdict_server as vs
+
+    assert set(vs.TOOLS[0]["inputSchema"]["properties"]["state"]["enum"]) == \
+        set(__import__("amb.core", fromlist=["core"]).CLAIM_STATES)

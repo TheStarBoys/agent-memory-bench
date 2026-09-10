@@ -24,6 +24,8 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+
+from amb.core import CLAIM_STATES
 from typing import Any
 
 SERVER_NAME = "amb_verdict"
@@ -41,7 +43,7 @@ TOOLS: list[dict[str, Any]] = [
                 "claim_id": {"type": "string", "description": "命题编号"},
                 "state": {
                     "type": "string",
-                    "enum": ["holds", "broken", "unknown"],
+                    "enum": list(CLAIM_STATES),
                     "description": (
                         "holds=仍然成立；broken=已经不成立；"
                         "unknown=核实不了（⚠️ 别猜）"
@@ -91,9 +93,10 @@ class VerdictServer:
             return _text(f"未知工具 {params.get('name')}")
         args = params.get("arguments") or {}
         state = args.get("state")
-        if state not in ("holds", "broken", "unknown"):
+        if state not in CLAIM_STATES:
             # ⚠️ 好好说话，让模型能自己纠正
-            return _text(f"state 必须是 holds / broken / unknown 之一，收到 {state!r}")
+            return _text(f"state 必须是 {' / '.join(CLAIM_STATES)} 之一，"
+                         f"收到 {state!r}")
         with self._sink.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps({
                 "claim_id": args.get("claim_id", ""),
