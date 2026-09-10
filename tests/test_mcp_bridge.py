@@ -421,3 +421,124 @@ def test_a_verdict_without_grounds_is_failed_in_the_agent_lane_too(tmp_path) -> 
         [Claim("c1", "命题", ["d"])], {"c1": "broken"}, sink).probe(NoGrounds(), None)
     assert run.failed == 1, "⛔ 零依据的表态要记 Failed"
     assert not run.observations, "⚠️ 它不进分子也不进分母的『有分』那一侧"
+
+
+# ── ⭐ 桥的错误路径：⛔ 此前 74% 覆盖，没覆盖的全是这些 ──────────
+class _Fragile:
+    """一个会炸的适配器。⚠️ 被测系统真的会炸——⛔ 桥不能跟着死。"""
+
+    def __init__(self, boom_on: str = "search") -> None:
+        self.boom_on = boom_on
+        self.ingested: list = []
+
+    def search(self, query, k, *, principal=None):
+        if self.boom_on == "search":
+            raise RuntimeError("qdrant 连不上")
+        return []
+
+    def ingest(self, doc):
+        if self.boom_on == "ingest":
+            raise RuntimeError("盘满了")
+        self.ingested.append(doc)
+
+    def finalize(self):
+        pass
+
+
+def _rpc(srv, method, **params):
+    return srv.handle({"jsonrpc": "2.0", "id": 1, "method": method,
+                       "params": params})
+
+
+def test_an_exploding_adapter_becomes_an_rpc_error_not_a_hang() -> None:
+    """⛔ **不许让 agent 那头挂死**：⚠️ 被测系统炸了是它的事，
+    ⭐ 而桥要把它翻译成一个 RPC 错误回过去。
+
+    ⚠️ 挂死的话那条臂会一直等到超时——⛔ 而报告只会显示它「跑得慢」。
+    """
+    from amb.adapters.mcp_server import MCPServer
+
+    srv = MCPServer(_Fragile("search"))
+    got = _rpc(srv, "tools/call", name="recall", arguments={"query": "x"})
+    assert got["error"]["code"] == -32603
+    assert "qdrant" in got["error"]["message"], got["error"]
+
+
+def test_an_exploding_ingest_is_also_reported() -> None:
+    """⚠️ 摄入炸了同理——⛔ 静默吞掉的话那条臂**记忆是空的而没人知道**。"""
+    from amb.adapters.mcp_server import MCPServer
+
+    srv = MCPServer(_Fragile("ingest"))
+    got = _rpc(srv, "tools/call", name="remember", arguments={"text": "甲"})
+    assert got["error"]["code"] == -32603
+
+
+def test_a_missing_required_argument_is_an_error_not_a_crash() -> None:
+    """⛔ 模型少给参数很常见——⚠️ `args["query"]` 会 KeyError，
+    ⭐ 而它必须变成一条 RPC 错误，不是让桥死掉。
+    """
+    from amb.adapters.mcp_server import MCPServer
+
+    srv = MCPServer(_Fragile("none"))
+    got = _rpc(srv, "tools/call", name="recall", arguments={})
+    assert "error" in got and got["error"]["code"] == -32603
+
+
+def test_an_empty_recall_says_so_rather_than_returning_nothing() -> None:
+    """⚠️ 空结果要**说出来**：⛔ 回一个空串的话，模型分不出
+    「没找到」与「工具坏了」。"""
+    from amb.adapters.mcp_server import MCPServer
+
+    srv = MCPServer(_Fragile("none"))
+    got = _rpc(srv, "tools/call", name="recall", arguments={"query": "x"})
+    assert "没有找到" in got["result"]["content"][0]["text"]
+
+
+def test_an_unknown_method_gets_the_standard_code() -> None:
+    """⛔ -32601 是 JSON-RPC 的「方法不存在」——⚠️ 自造码宿主认不得。"""
+    from amb.adapters.mcp_server import MCPServer
+
+    srv = MCPServer(_Fragile("none"))
+    got = _rpc(srv, "resources/list")
+    assert got["error"]["code"] == -32601
+
+
+def test_a_notification_gets_no_reply_on_the_bridge() -> None:
+    """⚠️ 无 `id` 是通知——⛔ 回它会打乱协议。"""
+    from amb.adapters.mcp_server import MCPServer
+
+    srv = MCPServer(_Fragile("none"))
+    assert srv.handle({"jsonrpc": "2.0", "method": "initialized"}) is None
+
+
+def test_the_transport_loop_survives_junk() -> None:
+    """⛔ 一行垃圾不许让桥退出——⚠️ 退出的话这条臂后面**完全没有记忆**，
+    ⭐ 而报告只会显示它答不出来。
+    """
+    import io
+    import json as _json
+
+    from amb.adapters.mcp_server import MCPServer
+
+    srv = MCPServer(_Fragile("none"))
+    good = _json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+    stdin = io.StringIO("\n".join(["", "不是 json", good]) + "\n")
+    stdout = io.StringIO()
+    srv.serve(stdin=stdin, stdout=stdout)
+    out = [x for x in stdout.getvalue().splitlines() if x]
+    assert len(out) == 1, f"⛔ 垃圾把后面的请求挡住了：{out}"
+    assert _json.loads(out[0])["id"] == 2
+
+
+def test_remember_gives_each_turn_a_distinct_id() -> None:
+    """⛔ 同一个 doc_id 会让后一条**覆盖**前一条——⚠️ 那时 agent 说了十句，
+    库里只有一句，⭐ 而它自己不知道。
+    """
+    from amb.adapters.mcp_server import MCPServer
+
+    arm = _Fragile("none")
+    srv = MCPServer(arm)
+    for t in ("甲", "乙", "丙"):
+        _rpc(srv, "tools/call", name="remember", arguments={"text": t})
+    ids = [d.doc_id for d in arm.ingested]
+    assert len(set(ids)) == 3, f"⛔ doc_id 撞了：{ids}"
