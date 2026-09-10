@@ -119,4 +119,9 @@ def from_env() -> LLMConfig:
         # ⛔ 默认关思考。要开就显式 AMB_LLM_THINKING=1，⚠️ 并且报告里会写着。
         thinking=os.environ.get("AMB_LLM_THINKING", "").lower()
         in ("1", "true", "yes", "on"),
+        # ⭐ 读超时可配：⚠️ 默认 600s 是给真端点留的余量，
+        # ⛔ 但那让「超时之后会怎样」在测试里**触发不了**——
+        # 实测代价：一条断言超时行为的测试等了 3 秒就通过了，
+        # ⚠️ 它从没超时过，于是那个真 bug（超时被判配置问题）从它底下溜走。
+        timeout_s=float(os.environ.get("AMB_LLM_TIMEOUT_S") or 600.0),
     )
