@@ -13,6 +13,10 @@ from amb.core import SuiteRun
 from amb.scoring.statistics import Interval, bootstrap, wilson
 
 
+def list_of_items() -> dict:
+    return {}
+
+
 @dataclass(slots=True)
 class Score:
     suite: str
@@ -60,6 +64,11 @@ class Score:
     #: ⛔ `_finish()` 是 13 个 scorer 的唯一出口，它**拒绝未声明的指标**——
     #: ⚠️ 所以「算了一个指标却没说它是什么」在结构上出不了这个模块。
     kinds: dict[str, str] = field(default_factory=dict)
+    #: ⭐ **逐题结果**：`{指标: [(题号, 对不对), …]}`。
+    #: ⚠️ 所有臂答同一批题——⛔ 那是配对设计，而独立样本的公式
+    #: 把配对的功效整个扔了。⭐ 留下它，配对检验才做得成。
+    #: ⚠️ 只有走 `_rate_items` 记的指标有，⛔ 其余为空（报告会退回独立口径）。
+    items: dict[str, list] = field(default_factory=list_of_items)
 
     def interval(self, metric: str) -> Interval | None:
         return self.intervals.get(metric)
@@ -118,6 +127,29 @@ def _stat(s: Score, name: str, value: float) -> None:
     """
     s.metrics[name] = float(value)
     s.kinds[name] = "stat"
+
+
+def _rate_items(s: Score, name: str, items: list[tuple[str, bool]]) -> None:
+    """记一个比例，**连同它的逐题结果**。⭐ 比例从向量算出来，⛔ 不另记一份。
+
+    ## ⭐ 为什么要留逐题
+
+    ⚠️ 所有臂答的是**同一批题**——那是**配对设计**。
+    ⛔ 而 `required_n` 用的是两组独立样本的公式，把配对的功效整个扔了：
+    实测 `mem0` 与 `naive_rag` 在 qa 上差 0.131，n=38 被判「分不开」
+    （独立公式说要 ≥0.183）——⭐ 而两条臂高度相关，配对下这个差是能说的。
+
+    ⚠️ 同样的结论，配对大约只要独立样本 1/3 ~ 1/10 的题：
+    ⭐ 这是**不花一分钱**就能拿到的判别力，⛔ 只是此前逐题结果算完就丢了。
+
+    ## ⛔ 为什么从向量算而不是另记一份
+
+    ⚠️ 「聚合值」与「逐题向量」要是各记各的，它们迟早会不一致——
+    ⭐ 而这个仓库刚因为「同一件事两份拷贝」栽过好几次。
+    ⛔ 所以这里只有一个来源：`num` 与 `den` 都是从 `items` 数出来的。
+    """
+    s.items[name] = list(items)
+    _rate(s, name, sum(1 for _i, ok in items if ok), len(items))
 
 
 def _rate(s: Score, name: str, num: float, den: int) -> None:
@@ -191,14 +223,13 @@ def score_retrieval(run: SuiteRun) -> Score:
     s = Score(run.suite, run.status, run.reason)
     if run.status != "scored":
         return s
-    hit1 = hitk = 0
+    top1, recall = [], []
     for obs in run.observations:
         gold = set(obs.payload["gold"])
-        hit1 += bool(obs.payload["top1"] in gold)
-        hitk += bool(gold & set(obs.payload["retrieved"]))
-    n = len(run.observations)
-    _rate(s, "top1", hit1, n)
-    _rate(s, "recall@k", hitk, n)
+        top1.append((obs.item_id, bool(obs.payload["top1"] in gold)))
+        recall.append((obs.item_id, bool(gold & set(obs.payload["retrieved"]))))
+    _rate_items(s, "top1", top1)
+    _rate_items(s, "recall@k", recall)
     return _finish(s, run)
 
 
@@ -214,9 +245,14 @@ def score_provenance(run: SuiteRun) -> Score:
 
     given = exact = overrun = wrong = 0
     ious: list[float] = []
+    #: ⭐ 逐题：⚠️ `linked` 收全部题（回链率的分母），
+    #: ⛔ `exact_items` 只收给出了区间的（后四个率的分母不同）
+    linked: list[tuple[str, bool]] = []
+    exact_items: list[tuple[str, bool]] = []
     for obs in run.observations:
         g0, g1 = obs.payload["gold"]
         spans = obs.payload["spans"]
+        linked.append((obs.item_id, bool(spans)))
         if not spans:
             continue                      # ⛔ 给不出——不计入「给出的区间」那几个率
         given += 1
@@ -226,6 +262,7 @@ def score_provenance(run: SuiteRun) -> Score:
         )
         iou, a, b = best
         ious.append(iou)
+        exact_items.append((obs.item_id, (a, b) == (g0, g1)))
         if (a, b) == (g0, g1):
             exact += 1
         elif iou == 0.0:
@@ -234,11 +271,12 @@ def score_provenance(run: SuiteRun) -> Score:
             overrun += 1
 
     ious.sort()
-    _rate(s, "回链率", given, len(run.observations))
+    _rate_items(s, "回链率", linked)
     if given:
         # ⛔ 后四个的分母是「给出的区间」。一条都没给出时它们**未定义**，
         #    不是 0——0 会被读成「给了但全错」，而那是编造，不是沉默。
-        _rate(s, "精确匹配率", exact, given)
+        # ⭐ 分母是**给出了区间的题**，⚠️ 所以逐题也只收那些
+        _rate_items(s, "精确匹配率", exact_items)
         _rate(s, "越界率", overrun, given)
         _rate(s, "错链率", wrong, given)
         _stat(s, "IoU_p50", ious[len(ious) // 2])
@@ -346,6 +384,8 @@ def score_qa(run: SuiteRun) -> Score:
         return s
 
     correct = abstained_right = abstained_wrong = fabricated = 0
+    # ⭐ 逐题结果：⚠️ 只收**可答题**，⛔ 分母要与「准确率」一致
+    per_item: list[tuple[str, bool]] = []
     for obs in run.observations:
         text = _normalize(obs.payload["text"])
         said_abstain = _said_abstain(obs.payload["text"])
@@ -359,14 +399,20 @@ def score_qa(run: SuiteRun) -> Score:
         elif said_abstain:
             abstained_wrong += 1                # 该答却弃权——不算错，单列
         else:
-            correct += _hit(text, obs.payload["gold"])
+            ok = bool(_hit(text, obs.payload["gold"]))
+            correct += ok
+            per_item.append((obs.item_id, ok))
+        if not obs.payload["unanswerable"] and said_abstain:
+            # ⚠️ 该答却弃权在「准确率」里算不对，⛔ 逐题也要如实记
+            per_item.append((obs.item_id, False))
 
     answerable = sum(1 for o in run.observations if not o.payload["unanswerable"])
     unanswerable = sum(1 for o in run.observations if o.payload["unanswerable"])
     # ⛔ 两组各有各的分母，⚠️ 且一组为空时那两个指标**不出现**——
     # 实测 `dialogue` 世界一道弃权题都没有，早先照样印
     # 「编造率 0.000 [0.000, 0.031]」，⭐ 那不是「很低」，是「没测」。
-    _rate(s, "准确率", correct, answerable)
+    if answerable:
+        _rate_items(s, "准确率", per_item)
     _rate(s, "该答却弃权", abstained_wrong, answerable)
     # ⭐ 这两个必须与准确率同屏：只报准确率的话，
     #    一个见题就编的系统会比一个诚实弃权的系统好看。
@@ -595,6 +641,9 @@ def score_structure(run: SuiteRun) -> Score:
     _rate(s, "可达性", sum(v for _, v in reach_pts) / len(reach_pts) * n_probed,
           n_probed)
     if precise_pts:
+        # ⛔ **这个不能做配对**：⚠️ 它是**逐档等权的均值**，
+        # 不是逐题结果的和——⭐ 拿逐题去配对，检验的就不是报告里那个量了。
+        # ⚠️ 所以这一档退回保守的区间重叠口径，⛔ 报告会标出来。
         _rate(s, "精确检索",
               sum(v for _, v in precise_pts) / len(precise_pts) * n_probed,
               n_probed)
@@ -707,6 +756,8 @@ def score_induction(run: SuiteRun) -> Score:
     behaviour = {"全对": 0, "过度修正": 0, "过度泛化": 0, "未归纳": 0}
     rates: list[float] = []
     applied: list[float] = []
+    #: ⭐ 每道题落进哪个格子——⚠️ 逐题配对要用它
+    per_item: dict[str, str] = {}
     for obs in run.observations:
         p = obs.payload
         if not p["generalises"]:
@@ -717,13 +768,20 @@ def score_induction(run: SuiteRun) -> Score:
             behaviour["过度修正"] += 1      # 一个反例就把规律扔了
         else:
             behaviour["全对"] += 1
+        per_item[obs.item_id] = next(
+            k for k, v in (("未归纳", not p["generalises"]),
+                           ("过度泛化", not p["handles_exception"]),
+                           ("过度修正", not p["rule_survives"]),
+                           ("全对", True)) if v)
         rates.append(p["rate"])
         applied.append(float(p["generalises"]))
 
     n = len(run.observations)
     for k, v in behaviour.items():
         _count(s, f"计数_{k}", v)
-        _rate(s, k, v, n)
+        # ⭐ 逐题：⚠️ 每道题恰好落进一个格子，⛔ 所以分母就是题数
+        _rate_items(s, k, [(o.item_id, per_item[o.item_id] == k)
+                           for o in run.observations])
     # ⚠️ 判分口径是单调性不是绝对值：
     # 「95% 的规律比 60% 的更常被应用」可判，「60% 该被应用多少次」不可判
     _stat(s, "规律强度单调性", _spearman(rates, applied))

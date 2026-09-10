@@ -418,3 +418,109 @@ def test_a_verdict_reads_as_yes_or_no_in_the_report() -> None:
     assert _cell(c, "计数_全对") == "6"
     # ⚠️ 比例走的是另一条路——⭐ 它有区间
     assert "[" in _cell(c, "全对")
+
+
+# ── ⭐ 配对检验：同一批题，⛔ 别当成两组独立样本 ──────────────────
+def _mk(bits):
+    return [(f"q{i}", b) for i, b in enumerate(bits)]
+
+
+def test_overlapping_intervals_do_not_mean_indistinguishable() -> None:
+    """⛔ **这是个正确性问题，不只是效率问题。**
+
+    ⚠️ 「两个 95% 区间重不重叠」是个远比 α=0.05 更保守的判据。
+    ⭐ 实测：同一批 38 题上 0.868 vs 0.711，McNemar **p=0.031 显著**，
+    ⛔ 而两个 Wilson 区间**重叠** → 早先的闸门判「分不开」，
+    **真结论被压掉了**。
+    """
+    from amb.scoring.statistics import mcnemar, wilson
+
+    a, b = _mk([True] * 33 + [False] * 5), _mk([True] * 27 + [False] * 11)
+    got = mcnemar(a, b)
+    assert got.significant, f"⛔ 配对该判显著：p={got.p_value}"
+    assert wilson(33, 38).overlaps(wilson(27, 38)), \
+        "⚠️ 前提变了：这两个区间本该重叠，⛔ 否则这条测试没在测那个矛盾"
+
+
+def test_the_exact_test_needs_six_one_sided_discordant_pairs() -> None:
+    """⭐ 双尾精确检验：2·0.5^5=0.0625（⛔ 不够），2·0.5^6=0.031（⭐ 够）。
+
+    ⚠️ 用精确检验而不是卡方近似：⛔ 不一致对常常只有个位数，
+    而卡方在那个量级上不成立。
+    """
+    from amb.scoring.statistics import mcnemar
+
+    for k, want in ((4, False), (5, False), (6, True), (7, True)):
+        got = mcnemar(_mk([True] * k + [True] * 10),
+                      _mk([False] * k + [True] * 10))
+        assert got.significant is want, f"⛔ 分歧 {k} 个：p={got.p_value:.4f}"
+
+
+def test_concordant_items_carry_no_information() -> None:
+    """⭐ 两边都对/都错的题**不带信息**——⛔ 那正是配对省题的来源。
+
+    ⚠️ 独立样本的公式要为那些题也付方差。
+    """
+    from amb.scoring.statistics import mcnemar
+
+    few = mcnemar(_mk([True] * 6 + [True] * 4), _mk([False] * 6 + [True] * 4))
+    many = mcnemar(_mk([True] * 6 + [True] * 300),
+                   _mk([False] * 6 + [True] * 300))
+    assert few.p_value == many.p_value, \
+        "⛔ 加了 296 道两边都对的题，p 值不该变"
+
+
+def test_mismatched_item_ids_refuse_to_pair() -> None:
+    """⛔ 题号对不上就返回 None——⚠️ 不猜、不按顺序硬对齐。
+
+    ⭐ 硬对齐会把「甲的第 3 题」跟「乙的第 3 题」当成同一道，
+    ⛔ 而那在抽样不同的两跑之间是错的。
+    """
+    from amb.scoring.statistics import mcnemar
+
+    assert mcnemar([("a", True)], [("b", False)]) is None
+
+
+def test_a_metric_that_cannot_be_paired_says_so_in_the_report() -> None:
+    """⛔ `n6/精确检索` 是**逐档等权的均值**，⚠️ 不是逐题结果的和——
+    ⭐ 拿逐题去配对，检验的就不是报告里那个量了。
+
+    ⚠️ 所以它退回区间重叠，⛔ 而报告必须**标出来**是保守口径，
+    不能让读者以为跟配对判定是一回事。
+    """
+    from amb.report.render import _delta_text
+    from amb.scoring.statistics import wilson
+
+    txt = _delta_text(0.30, wilson(30, 100), type("F", (), {"value": 0.40})(),
+                      wilson(40, 100), "精确检索")
+    assert "保守的区间重叠" in txt, f"⛔ 没标口径：{txt}"
+
+
+def test_the_report_actually_uses_the_paired_verdict() -> None:
+    """⛔ **接线也要测**：⚠️ 光有一个正确的 `mcnemar` 不算数——
+    ⭐ 报告得真的去问它。
+
+    ⚠️ 实测：这条测试补上之前，「把配对判定断开」那个变异
+    从整套测试底下溜了过去——⛔ 因为我只测了函数，没测它被用上。
+    """
+    from amb.report.render import _delta_text
+    from amb.scoring.statistics import wilson
+
+    floor = type("F", (), {"value": 0.711, "arm": "bm25"})()
+    txt = _delta_text(0.868, wilson(33, 38), floor, wilson(27, 38), "准确率",
+                      items=_mk([True] * 33 + [False] * 5),
+                      floor_items=_mk([True] * 27 + [False] * 11))
+    assert "配对 p=" in txt, f"⛔ 没走配对：{txt}"
+    assert "分不开" not in txt, f"⛔ 配对显著却仍判分不开：{txt}"
+
+
+def test_the_significance_threshold_is_not_loosened() -> None:
+    """⛔ 5 个一边倒的不一致对**不够**（p=0.0625）——⚠️ 松一格就会多声称。
+
+    ⭐ 这个阈值是这个仓库唯一挡住「拿噪声当结论」的东西之一。
+    """
+    from amb.scoring.statistics import mcnemar
+
+    got = mcnemar(_mk([True] * 5 + [True] * 20), _mk([False] * 5 + [True] * 20))
+    assert abs(got.p_value - 0.0625) < 1e-9, f"⛔ p 值算错了：{got.p_value}"
+    assert not got.significant, "⛔ 5 个不该算显著"

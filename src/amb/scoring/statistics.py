@@ -275,3 +275,73 @@ def min_n_for_strata(population: dict[str, int],
     smallest = min(population.values())
     # 最小的那层要占到 per_stratum 条，总量得这么大
     return math.ceil(per_stratum * total / smallest)
+
+
+# ── ⭐ 配对检验：同一批题，⛔ 别当成两组独立样本 ──────────────────
+
+#: ⭐ 双尾精确检验要显著，至少要这么多个**一边倒**的不一致对。
+#: ⚠️ 2·0.5^5 = 0.0625（不够），2·0.5^6 = 0.031（够）。
+_MIN_DISCORDANT = 6
+
+
+@dataclass(frozen=True, slots=True)
+class Paired:
+    """两条臂在**同一批题**上的比较。
+
+    ⛔ `b` / `c` 是**不一致对**：⚠️ b = 甲对乙错，c = 甲错乙对。
+    ⭐ 两边都对或都错的题**不带信息**——McNemar 直接把它们扔掉，
+    而那正是配对省题的来源：⚠️ 独立样本的公式要为那些题也付方差。
+    """
+
+    b: int
+    c: int
+    p_value: float
+    n_pairs: int
+
+    @property
+    def discordant(self) -> int:
+        return self.b + self.c
+
+    @property
+    def significant(self) -> bool:
+        return self.p_value < 0.05
+
+
+def mcnemar(a: list[tuple[str, bool]], b: list[tuple[str, bool]]) -> Paired | None:
+    """两条臂逐题对照。⛔ 题号对不上就返回 None，⚠️ 不猜、不对齐。
+
+    ⭐ 用**精确**二项检验而不是卡方近似：⚠️ 不一致对常常只有个位数，
+    ⛔ 而卡方在那个量级上不成立。
+    """
+    left = dict(a)
+    right = dict(b)
+    shared = sorted(set(left) & set(right))
+    if not shared:
+        return None
+    bb = sum(1 for k in shared if left[k] and not right[k])
+    cc = sum(1 for k in shared if right[k] and not left[k])
+    n = bb + cc
+    if n == 0:
+        # ⭐ 一道题都没分歧：⛔ 那不是「一样好」，是**这批题分不出它们**
+        return Paired(0, 0, 1.0, len(shared))
+    # ⚠️ 双尾精确检验：⛔ 在 H0 下每个不一致对朝哪边倒是均等的
+    tail = sum(math.comb(n, k) for k in range(0, min(bb, cc) + 1)) / (2 ** n)
+    return Paired(bb, cc, min(1.0, 2 * tail), len(shared))
+
+
+def paired_detectable_difference(a: list[tuple[str, bool]],
+                                 b: list[tuple[str, bool]]) -> float | None:
+    """在**这批题**上，配对检验能分辨的最小差异。
+
+    ⭐ 与 `detectable_difference` 的区别：⚠️ 那个假设两组独立，
+    ⛔ 于是要为「两边都对」的题也付方差——而那些题在配对下是零方差。
+    ⭐ 这里的不一致率是**实测**的，不是假设的 ρ。
+    """
+    got = mcnemar(a, b)
+    if got is None or got.n_pairs == 0:
+        return None
+    # ⭐ 精确二项检验下，**全部分歧倒向一边**时要几个才显著：
+    #   2·0.5^k < 0.05  →  k ≥ 6   （k=5 时 p=0.0625，⛔ 还不够）
+    # ⚠️ 这是**最好的情况**：⛔ 分歧两边都有时要更多。
+    # ⭐ 准确率之差 = (b−c)/n，所以最小可辨差 = 6/n。
+    return min(1.0, _MIN_DISCORDANT / got.n_pairs)

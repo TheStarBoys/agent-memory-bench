@@ -122,17 +122,41 @@ def _seconds(ms: float | None) -> str:
     return f"{ms / 1000:.3f}s" if ms < 1000 else f"{ms / 1000:.2f}s"
 
 
-def _delta_text(value: float, ci, floor, floor_ci, metric: str = "") -> str:
-    """⛔ 区间重叠时不许声称谁更好。
+def _delta_text(value: float, ci, floor, floor_ci, metric: str = "",
+                items=None, floor_items=None) -> str:
+    """两条臂之间到底能不能下判断。
 
-    ⚠️ 那不是「一样好」，也不是「更好但不显著」——
-    是**这次跑答不了这个问题**（docs/sampling.md）。
+    ## ⭐ 优先用**配对检验**
+
+    ⚠️ 所有臂答的是同一批题——⛔ 那是配对设计。
+    ⭐ 而「两个 95% 区间重不重叠」是个**远更保守**的判据：
+    实测同一批 38 题上 0.868 vs 0.711，McNemar **p=0.031 显著**，
+    ⛔ 而两个区间重叠 → 早先直接判「分不开」，**真结论被压掉了**。
+
+    ⚠️ 配对还更省题：同一个结论大约只要独立口径的 1/2 ~ 1/13
+    （⛔ 那是分歧全部一边倒的**最好情况**，实际会差些）。
+
+    ## ⛔ 拿不到逐题结果时退回区间重叠
+
+    ⚠️ 那是保守口径——⭐ 会说「分不开」的地方，配对**未必**分不开。
+    ⛔ 所以要在报告里标出来是哪一种，不能让读者以为都是一回事。
     """
-    from amb.scoring.statistics import detectable_difference
+    from amb.scoring.statistics import detectable_difference, mcnemar
 
     d = delta(value, floor, metric)
     if d is None:
         return ""
+    # ── ⭐ 配对：⛔ 只在两边都留了逐题结果时 ────────────────
+    if items and floor_items:
+        got = mcnemar(items, floor_items)
+        if got is not None:
+            if got.significant:
+                return (f"**{d:+.3f} ⚠️帮倒忙**" if d <= 0 else f"{d:+.3f}") + \
+                       f"（配对 p={got.p_value:.3f}）"
+            why = ("一道题都没分歧" if got.discordant == 0
+                   else f"分歧 {got.discordant} 题（{got.b}:{got.c}）")
+            return (f"⛔ 分不开（差 {d:+.3f}，配对 p={got.p_value:.3f}，"
+                    f"{why}）")
     if ci is None or floor_ci is None:
         # ⛔ **没有区间就不许声称差异**。⚠️ 早先这里直接落到声称分支——
         # 方向正好反了：区间缺席（n<2、重抽样算不出来、名字撞上计数前缀）
@@ -141,7 +165,9 @@ def _delta_text(value: float, ci, floor, floor_ci, metric: str = "") -> str:
     if ci.overlaps(floor_ci):
         n = min(ci.n, floor_ci.n)
         mde = detectable_difference(min(value, floor.value), n)
-        return (f"⛔ 分不开（差 {d:+.3f}，n={n} 只能辨 ≥{mde:.3f}）")
+        # ⚠️ 标明这是**保守口径**：⛔ 配对未必分不开
+        return (f"⛔ 分不开（差 {d:+.3f}，n={n} 只能辨 ≥{mde:.3f}，"
+                f"⚠️ 无逐题结果，用的是保守的区间重叠）")
     # ⚠️ Δ ≤ 0 显式标出来：那意味着帮了倒忙
     return f"**{d:+.3f} ⚠️帮倒忙**" if d <= 0 else f"{d:+.3f}"
 
@@ -475,9 +501,11 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
         # ⛔ 不得发布的档**不给地板线、不给 Δ、不排名**
         floor = best_floor(arms, suite, metric) if not unpublishable else None
         floor_ci = None
+        floor_sc = None
         if floor is not None:
-            fsc = next((a.scores.get(suite) for a in arms if a.arm == floor.arm), None)
-            floor_ci = fsc.interval(metric) if fsc else None
+            floor_sc = next((a.scores.get(suite)
+                             for a in arms if a.arm == floor.arm), None)
+            floor_ci = floor_sc.interval(metric) if floor_sc else None
         # ⚠️ answer 档含生成器，署名必须写成「<系统> + <backbone>」
         signed = (f"  ——署名 `<系统> + {report.backbone.get('model', '?')}`"
                   if suite == "qa" else "")
@@ -538,7 +566,12 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
                 if is_degenerate(arm.arm, suite):
                     dtxt = "⚠️ 退化†"
             else:
-                dtxt = _delta_text(v, ci, floor, floor_ci, metric)
+                # ⭐ 逐题结果两边都有才做配对——⛔ 没有就退回保守口径
+                dtxt = _delta_text(
+                    v, ci, floor, floor_ci, metric,
+                    items=sc.items.get(metric),
+                    floor_items=(floor_sc.items.get(metric)
+                                 if floor_sc else None))
             out.append(f"| {arm.arm} ({tag}) | {shown} | {dtxt} | scored | |")
         # ⛔ 孤儿脚注最糟：标了 † 却不说它什么意思
         if any(is_degenerate(a.arm, suite) and (sc := a.scores.get(suite))
