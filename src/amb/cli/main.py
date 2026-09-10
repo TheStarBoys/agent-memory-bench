@@ -73,9 +73,31 @@ def _show_preflight(report, *, where: str) -> None:
     print("─" * 46 + "\n", file=sys.stderr)
 
 
+def _budget(report, plan, arms: tuple[str, ...]) -> None:
+    """⛔ **摄入与探针都要报**。⚠️ 早先只报摄入——
+    实测 2026-09-10：native（522 题）按只算摄入报出「~20 分钟」，
+    ⭐ 而 `naive_rag` 一条臂就跑了 **67 分钟**（摄入 8、探针 62）。
+    ⛔ 一个会低估四倍的预算工具，比没有预算工具更糟。
+
+    ⚠️ 谁是大头会变：toy 上摄入占 68%，⭐ native 上探针是大头。
+    """
+    from amb.runner.preflight import estimate, estimate_probe
+
+    if not arms:
+        return
+    ing = estimate(len(plan.documents), arms)
+    probes = int(report.budget.get("probes", 0) or 0)
+    pro = estimate_probe(probes, arms)
+    report.budget["摄入分钟"] = {k: round(v, 1) for k, v in ing.items()}
+    report.budget["探针分钟"] = {k: round(v, 1) for k, v in pro.items()}
+    total = sum(v for k, v in ing.items() if not k.startswith("⚠️"))
+    total += sum(pro.values())
+    report.budget["合计小时"] = round(total / 60, 2)
+
+
 def _preflight_cmd(argv: list[str]) -> int:
     """⛔ 零网络调用的跑前自检。⭐ 单独跑一次比跑完再看便宜几个数量级。"""
-    from amb.runner.preflight import estimate, inspect
+    from amb.runner.preflight import estimate, estimate_probe, inspect
 
     ap = argparse.ArgumentParser(prog="amb preflight")
     ap.add_argument("--bench", choices=("toy", "native", "locomo", "dialogue"), default="toy")
@@ -91,9 +113,7 @@ def _preflight_cmd(argv: list[str]) -> int:
     report = inspect(plan)
     arms = tuple(a for a in args.arms.split(",") if a)
     if arms:
-        mins = estimate(len(plan.documents), arms)
-        report.budget["摄入分钟"] = {k: round(v, 1) for k, v in mins.items()}
-        report.budget["合计小时"] = round(sum(mins.values()) / 60, 2)
+        _budget(report, plan, arms)
     _show_preflight(report, where=name)
     return 1 if report.fatal else 0
 
@@ -217,13 +237,10 @@ def main(argv: list[str] | None = None) -> int:
     # 实测两次教训：一次报告印出假话，一次语料造错整跑作废，
     # **两次的成因都不需要真跑就能发现**。
     if not args.skip_preflight:
-        from amb.runner.preflight import estimate, inspect
+        from amb.runner.preflight import inspect
 
         pre = inspect(plan, arms=tuple(names))
-        mins = estimate(len(plan.documents), tuple(names))
-        if mins:
-            pre.budget["摄入分钟"] = {k: round(v, 1) for k, v in mins.items()}
-            pre.budget["合计小时"] = round(sum(mins.values()) / 60, 2)
+        _budget(pre, plan, tuple(names))
         _show_preflight(pre, where=world_name)
         if pre.fatal:
             print("⛔ 自检有致命问题，**不开跑**——修掉，或 --skip-preflight 强跑",
@@ -290,10 +307,20 @@ def main(argv: list[str] | None = None) -> int:
                 # ⭐ 其余臂照跑、报告照出，「整跑作废」这句话从没被执行过。
                 print(f"⛔ 世界被动过——**本次跑作废**：{exc}", file=sys.stderr)
                 return 3
-            except (KeyError, EnvironmentError) as exc:
+            except (KeyError, FileNotFoundError, PermissionError,
+                    ModuleNotFoundError, ImportError) as exc:
                 # ⛔ **评测器侧的配置错**：臂名打错、必需环境变量没设、
                 # 依赖没装——⚠️ 那不是「这个系统跑挂了」，
                 # ⭐ 而报告里 crashed 那一列会被读成「这个系统不稳」。
+                #
+                # ⛔ **这里绝不能写 `EnvironmentError`**：⚠️ 它就是 `OSError`
+                # 的别名，⭐ 于是 `TimeoutError` / `ConnectionError` /
+                # `ConnectionResetError` 全被吞成「配置问题」。
+                # ⚠️ 实测代价（2026-09-10 native 真跑）：`bm25` 撞上一次
+                # 读超时被判「配置问题」直接跳过——⛔ 而它是 n1/n4 三档
+                # **唯一的地板臂**，它一跳，那三档整跑没有对照。
+                # ⭐ 网络抖动是**跑的问题**，不是配置的问题：⚠️ 它该重试，
+                # 重试完还不行就如实记 crashed，⛔ 不许伪装成「你没配对」。
                 why = f"{type(exc).__name__}: {exc}"[:200]
                 print(f"⛔ [{i}/{len(names)}] {name}: 配置问题（{why}）",
                       file=sys.stderr, flush=True)

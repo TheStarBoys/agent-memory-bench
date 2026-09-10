@@ -106,14 +106,29 @@ def test_a_configuration_error_is_not_a_crashed_arm() -> None:
     """⛔ 臂名打错 / 环境变量没设 / 依赖没装是**评测器侧**的错。
 
     ⚠️ 早先一律记 `crashed`，⭐ 而报告那一列会被读成「这个系统不稳」。
-    """
-    import inspect
-    from importlib import import_module
 
-    src = inspect.getsource(import_module("amb.cli.main").main)
-    assert "except (KeyError, EnvironmentError)" in src
-    assert src.index("except (KeyError, EnvironmentError)") < src.index(
-        "except Exception as exc:  # noqa: BLE001\n                # ⛔ 不只打到 stderr")
+    ⛔ **这条测试本身曾把一个 bug 钉死**：⚠️ 它断言源码里必须有
+    `except (KeyError, EnvironmentError)`——⭐ 而 `EnvironmentError` 就是
+    `OSError` 的别名，于是网络超时被吞成「配置问题」。
+    ⚠️ 测字面就是这个下场：⛔ 它锁住的是**写法**，不是**行为**。
+    ⭐ 改成问：配置错归配置，网络错不归配置。
+    """
+    import re
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[1]
+           / "src/amb/cli/main.py").read_text(encoding="utf-8")
+    m = re.search(r"except \(([^)]*)\) as exc:\n\s+# ⛔ \*\*评测器侧的配置错\*\*",
+                  src, re.S)
+    assert m, "⛔ 找不到配置错那个分支"
+    caught = {n.strip() for n in m.group(1).split(",")}
+    # ⭐ 该抓的
+    assert "KeyError" in caught
+    # ⛔ 不该抓的：⚠️ 网络抖动是**跑的问题**，不是配置的问题
+    for bad in ("EnvironmentError", "OSError", "TimeoutError", "ConnectionError"):
+        assert bad not in caught, f"⛔ {bad} 不该被判成配置问题"
+    # ⚠️ 它仍须排在兜底 except 之前，⛔ 否则永远轮不到它
+    assert m.start() < src.index("except Exception as exc:  # noqa: BLE001")
 
 
 def test_each_finished_arm_is_written_to_disk_immediately(tmp_path) -> None:
@@ -135,3 +150,48 @@ def test_each_finished_arm_is_written_to_disk_immediately(tmp_path) -> None:
     # ⚠️ 存盘失败不该带走这一跑
     ck = inspect.getsource(mod._checkpoint)
     assert "except Exception" in ck and "继续跑" in ck
+
+
+def test_a_network_timeout_is_never_called_a_config_problem() -> None:
+    """⛔ `EnvironmentError` **就是** `OSError` 的别名。
+
+    ⚠️ 于是 `except (KeyError, EnvironmentError)` 会吞掉 `TimeoutError` /
+    `ConnectionError` / `ConnectionResetError`，把它们判成「配置问题」。
+
+    ⭐ 实测代价（2026-09-10 native 真跑）：`bm25` 撞上一次读超时被判
+    「配置问题」直接跳过——⛔ 而它是 n1/n4 三档**唯一的地板臂**，
+    它一跳，那三档整跑没有对照。
+
+    ⚠️ 网络抖动是**跑的问题**不是配置的问题：⭐ 该重试，
+    重试完还不行就如实记 crashed。
+    """
+    import re
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[1]
+           / "src/amb/cli/main.py").read_text(encoding="utf-8")
+    handlers = re.findall(r"except \(([^)]*)\) as exc:", src, re.S)
+    for h in handlers:
+        names = {n.strip() for n in h.split(",")}
+        assert "EnvironmentError" not in names, (
+            "⛔ `EnvironmentError` 是 `OSError` 的别名——"
+            "⚠️ 它会把网络超时吞成配置问题")
+        assert "OSError" not in names, "⛔ 同理，⚠️ OSError 太宽"
+
+
+def test_the_config_handler_only_catches_real_config_errors() -> None:
+    """⭐ 正向：⚠️ 它该抓的是「臂名打错 / 变量没设 / 依赖没装」。"""
+    import re
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[1]
+           / "src/amb/cli/main.py").read_text(encoding="utf-8")
+    m = re.search(r"except \(([^)]*)\) as exc:\n\s+# ⛔ \*\*评测器侧的配置错\*\*",
+                  src, re.S)
+    assert m, "⛔ 找不到配置错那个分支"
+    names = {n.strip() for n in m.group(1).split(",")}
+    assert "KeyError" in names, "⚠️ 必需环境变量没设"
+    assert names & {"ModuleNotFoundError", "ImportError"}, "⚠️ 依赖没装"
+    # ⛔ 而网络那几个必须不在里面
+    assert not (names & {"TimeoutError", "ConnectionError", "OSError",
+                         "EnvironmentError"})

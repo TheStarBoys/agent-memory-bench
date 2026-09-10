@@ -368,17 +368,43 @@ INGEST_S = {"null": 0.0, "bm25": 0.0, "naive_rag": 0.36, "hybrid": 0.40,
             "mem0_raw": 1.39, "mem0": 9.71, "a_mem": 35.0}
 
 
-def estimate(documents: int, arms: tuple[str, ...]) -> dict[str, float]:
+#: 每道题的**探针**耗时（秒）。⚠️ 实测：
+#: 2026-09-07 toy —— `null` 0.54 · `bm25` 0.47 · `naive_rag` 4.35 ·
+#:   `mem0_raw` 2.20 · `mem0` 2.43
+#: 2026-09-10 native —— `null` 1.42 · `host_default` 1.20 · `naive_rag` 5.64
+#: ⭐ 取偏保守值：⛔ 估低了人会按一个错的预算开跑。
+#: ⚠️ 检索臂贵在**每道题一次 query embedding**；⛔ 不检索的臂只花答题那一次 LLM。
+PROBE_S = {"null": 1.5, "host_default": 1.5, "bm25": 1.5,
+           "full_context": 1.5, "recency_window": 1.5,
+           "naive_rag": 5.7, "hybrid": 6.0,
+           "mem0_raw": 2.5, "mem0": 2.8, "a_mem": 4.0}
+
+
+def estimate(documents: int, arms: tuple[str, ...],
+             probes: int = 0) -> dict[str, float]:
     """⭐ 跑之前就说清要多久。⛔ 瓶颈从来是墙钟，不是钱。
 
-    ⛔ 单价表里没有的臂**要说出来**，⚠️ 不静默丢弃——
-    「跑之前就说清要多久」漏掉一条臂，那句话就不成立了。
+    ⛔ **摄入与探针都要算**：⚠️ 早先只算摄入——
+    实测 2026-09-10：native（522 题）按只算摄入报出「~20 分钟」，
+    ⭐ 而 `naive_rag` **一条臂就跑了 67 分钟**（摄入 8 分钟、探针 62 分钟）。
+    ⛔ 一个会低估四倍的预算工具，比没有预算工具更糟——
+    ⚠️ 它正是「跑之前就说清要多久」这句话失效的地方。
+
+    ⭐ 谁是大头会变：⚠️ toy 上摄入占 68%（`mem0` 的 LLM 抽取），
+    ⛔ 而 native 把题量放大之后探针成了大头。**两个都要报**。
+
+    ⛔ 单价表里没有的臂**要说出来**，⚠️ 不静默丢弃。
     """
     out = {a: documents * INGEST_S[a] / 60 for a in arms if a in INGEST_S}
-    unknown = [a for a in arms if a not in INGEST_S]
+    unknown = [a for a in arms if a not in INGEST_S or a not in PROBE_S]
     if unknown:
         out["⚠️ 单价未知"] = float(len(unknown))
     return out
+
+
+def estimate_probe(probes: int, arms: tuple[str, ...]) -> dict[str, float]:
+    """每条臂跑完全部题要多少分钟。⛔ 与摄入分开报——⚠️ 两者的大头会互换。"""
+    return {a: probes * PROBE_S[a] / 60 for a in arms if a in PROBE_S}
 
 
 def check_externals(arms: tuple[str, ...], out: Report) -> None:

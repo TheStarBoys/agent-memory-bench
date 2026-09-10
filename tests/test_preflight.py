@@ -322,3 +322,37 @@ def test_every_registered_arm_has_an_ingest_price() -> None:
 
     missing = sorted(set(_REGISTRY) - set(INGEST_S))
     assert not missing, f"⛔ 这些臂没有摄入单价：{missing}"
+
+
+def test_the_budget_counts_probes_not_just_ingest() -> None:
+    """⛔ 「跑之前就说清要多久」——⚠️ 只算摄入的话那句话是假的。
+
+    ⭐ 实测代价（2026-09-10）：native 522 题，按只算摄入报出「~20 分钟」，
+    ⛔ 而 `naive_rag` **一条臂就跑了 67 分钟**（摄入 8、探针 62）。
+    ⚠️ 一个会低估四倍的预算工具，比没有预算工具更糟——
+    ⭐ 它正是那个错数字的来源。
+    """
+    from amb.runner import build_plan
+    from amb.runner.preflight import inspect
+    from amb.cli.main import _budget
+
+    arms = ("null", "naive_rag")
+    plan, _, _ = build_plan("toy")
+    rep = inspect(plan, arms=arms)
+    _budget(rep, plan, arms)
+    assert "探针分钟" in rep.budget, "⛔ 预算里没有探针"
+    assert rep.budget["探针分钟"]["naive_rag"] > 0
+    # ⭐ 合计必须**同时**含摄入与探针
+    ing = sum(v for k, v in rep.budget["摄入分钟"].items() if not k.startswith("⚠️"))
+    pro = sum(rep.budget["探针分钟"].values())
+    assert abs(rep.budget["合计小时"] - (ing + pro) / 60) < 1e-6
+
+
+def test_every_arm_has_a_probe_price_too() -> None:
+    """⛔ 漏一条臂，它的时间就不进合计——⚠️ 预算又低估。"""
+    from amb.adapters.registry import _REGISTRY
+    from amb.runner.preflight import INGEST_S, PROBE_S
+
+    for table, what in ((INGEST_S, "摄入"), (PROBE_S, "探针")):
+        missing = sorted(set(_REGISTRY) - set(table))
+        assert not missing, f"⛔ 这些臂没有{what}单价：{missing}"
