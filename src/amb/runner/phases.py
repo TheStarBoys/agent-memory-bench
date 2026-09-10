@@ -230,6 +230,11 @@ def run_one(name: str, adapter: Adapter, plan: Plan, root: Path,
     # 「没有」读成「0 次」。
     sub = getattr(adapter, "embed_stats", lambda: {})()
     profile |= {k: v for k, v in sub.items() if v}
+    # ⭐ **窗口丢了多少**：⛔ 截断不许静默——⚠️ 一个截断过的天花板
+    # 不标出来，读者会读成「全都读了还只有这个分」。
+    # ⚠️ 全零也要进（`window_dropped=0` 说明这一跑根本没溢出，
+    # ⛔ 那时这条臂等价于 full_context，而那是**读数的前提**）。
+    profile |= getattr(adapter, "window_stats", lambda: {})()
     result.cost_profile = profile
     return result, guard.expected
 

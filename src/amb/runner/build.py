@@ -33,13 +33,16 @@ def _store_dir(path: Path) -> Path:
 
 
 def build(name: str, *, context_budget: int = 24_000,
-          llm: LLMConfig | None = None, prompt=None) -> Adapter:
+          llm: LLMConfig | None = None, prompt=None,
+          answer_window: int | None = None) -> Adapter:
     """构造参数按名字分派，然后统一挂上 backbone。
 
     ⚠️ 这是唯一一处「认识具体臂」的地方。
     ⛔ backbone 由这里统一挂：所有臂必须是同一个，否则 answer 档不可比。
     """
-    if name == "full_context":
+    if name in ("full_context", "recency_window"):
+        # ⭐ 同一个预算喂给两条臂：⚠️ 它是**受控变量**——
+        # `full_context` 装不下就记 N/A，⛔ `recency_window` 丢最旧的接着答。
         arm = create(name, budget_chars=context_budget)
     elif name in ("naive_rag", "hybrid"):
         # ⛔ **维度要与被测系统一致**：⚠️ mem0 显式请求
@@ -92,6 +95,13 @@ def build(name: str, *, context_budget: int = 24_000,
     attach = getattr(arm, "attach_llm", None)
     if attach is not None:
         attach(llm)
+    # ⭐ **上下文窗口也由这里统一挂**：⚠️ 它是受控变量——
+    # ⛔ 只约束一部分臂的话，测的就成了「谁被限制了」而不是「谁选得准」。
+    # ⚠️ `answer_window` 为 None 时不限（默认，保持旧行为）：
+    # ⭐ 那时窗口不是约束，⛔ 而「记忆有没有用」这件事量不到。
+    attach_window = getattr(arm, "attach_window", None)
+    if attach_window is not None:
+        attach_window(answer_window)
     # ⛔ 答题口径也由这里统一挂：⚠️ 语言跟题库走，
     # 而一次跑里所有臂必须是同一个——否则比的是提示，不是记忆层。
     attach_prompt = getattr(arm, "attach_prompt", None)
@@ -187,7 +197,7 @@ def host_unavailable() -> type[Exception]:
 
 
 def control_arms() -> tuple[str, ...]:
-    """六条对照组的名字。⚠️ 经 runner 转出，cli 不直接依赖 adapters。"""
+    """七条对照组的名字。⚠️ 经 runner 转出，cli 不直接依赖 adapters。"""
     return CONTROL_ARMS
 
 

@@ -120,6 +120,9 @@ class Answer:
     used: list[str] = field(default_factory=list)         # 用到的 Entry.id
     missing: list[str] = field(default_factory=list)      # 未决时缺哪些 claim_id
     confidence: float | None = None                       # N7
+    #: ⭐ 窗口装不下、被裁掉的材料条数。⛔ 静默裁剪会让一条臂的分
+    #: 被读成「材料都给它了还只有这么高」——⚠️ 而那是两回事。
+    dropped: int = 0
 
 
 @dataclass(slots=True)

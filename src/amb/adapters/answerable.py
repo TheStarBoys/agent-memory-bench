@@ -25,6 +25,12 @@ class Answerable:
     #: 类级默认——没挂 backbone 的臂照样能构造、能跑基线档。
     _llm: LLMClient | None = None
 
+    #: ⭐ 上下文窗口（码点）。⛔ **所有臂共用同一个值**——⚠️ 只约束一部分臂
+    #: 的话，测的就成了「谁被限制了」而不是「谁选得准」。
+    #: ⚠️ `None` = 不限（默认，保持旧行为）：⛔ 那时窗口不是约束，
+    #: 而「记忆有没有用」这件事**量不到**——见 `answering.fit_to_window`。
+    _window: int | None = None
+
     #: 答题口径。⛔ 一次跑里所有臂必须是同一个，⚠️ 语言跟题库走。
     _prompt: Prompt = ZH
 
@@ -49,6 +55,12 @@ class Answerable:
         """⛔ 只有 runner 调这个。所有臂必须收到同一份 cfg。"""
         self._llm = LLMClient(cfg) if cfg else None
 
+    def attach_window(self, budget_chars: int | None) -> None:
+        """⛔ 只有 runner 调这个。⚠️ 所有臂必须收到同一个预算——
+        ⭐ 那是这个变量算「受控」的全部要求。
+        """
+        self._window = budget_chars
+
     def _answer_caps(self) -> set[Capability]:
         return {Capability.ANSWER, Capability.ACCOUNTING} if self._llm else set()
 
@@ -59,7 +71,8 @@ class Answerable:
             return Unsupported("未配置 backbone")
         hits = self.search(query, self.answer_k, principal=principal)  # type: ignore[attr-defined]
         return answer_with(self._llm, query, hits,
-                           self._prompt.styled(self._style))
+                           self._prompt.styled(self._style),
+                           budget_chars=self._window)
 
     def usage(self) -> list[Usage] | Unsupported:
         if self._llm is None:

@@ -103,6 +103,49 @@ SYSTEM = ZH.system
 NO_CONTEXT = ZH.no_context
 
 
+def fit_to_window(entries: list[Entry], budget_chars: int | None
+                  ) -> tuple[list[Entry], int]:
+    """把交给模型的材料裁到窗口里。⭐ 返回 (留下的, 被裁掉的条数)。
+
+    ## ⛔ 为什么这必须对**所有臂**一视同仁
+
+    ⚠️ 窗口是**受控变量**：⛔ 只约束 `recency_window` 而放任别的臂
+    随便塞，那扫描就不成立——⭐ 那时测的是「谁被限制了」，
+    不是「谁选得准」。
+
+    ⭐ 而这正是记忆层的价值所在：⚠️ 窗口一小，能塞的材料就少，
+    ⛔ **选得准的臂掉得慢**。窗口不限时人人都能把 top-10 全交出去，
+    那时候「会选」这件事量不到。
+
+    ⚠️ 按**顺序**保留：⛔ 检索臂的第 1 条是它最有把握的那条，
+    ⭐ 裁掉尾巴才是「窗口不够时它会失去什么」。
+
+    ## ⛔ 但它在 library 档**现在不起作用**，这一条要说清楚
+
+    ⚠️ 实测（2026-09-10）：`answer_k=5`，每条 digest 约 25 码点，
+    合计 ~123 码点——⛔ 窗口卡到 120 也只砍掉 1 条，分数纹丝不动。
+
+    ⭐ 成因是结构性的：**library 档从不把全量交给模型**，只交 top-k。
+    ⚠️ 所以那一档没有「装不下」这回事——⛔ 瓶颈是检索质量，不是窗口。
+
+    ⚠️ 那这个函数留着干什么：⭐ 它挡住将来出现的长 digest 臂
+    （摘要型、整篇返回型）在窗口收紧时白占便宜。
+    ⛔ **不要拿它当「我们控制了上下文窗口」的证据**——
+    ⚠️ 真正模拟窗口失效的是 `recency_window` 那条臂。
+    """
+    if budget_chars is None or budget_chars <= 0:
+        return entries, 0
+    kept: list[Entry] = []
+    used = 0
+    for e in entries:
+        size = len(e.digest or "")
+        if kept and used + size > budget_chars:
+            break
+        kept.append(e)
+        used += size
+    return kept, len(entries) - len(kept)
+
+
 def build_prompt(question: str, entries: list[Entry],
                  prompt: Prompt = ZH) -> str:
     if not entries:
@@ -115,9 +158,18 @@ def build_prompt(question: str, entries: list[Entry],
 
 
 def answer_with(client: LLMClient, question: str, entries: list[Entry],
-                prompt: Prompt = ZH) -> Answer:
-    text = client.complete(prompt.system, build_prompt(question, entries, prompt))
-    return Answer(text=text, used=[e.id for e in entries])
+                prompt: Prompt = ZH,
+                budget_chars: int | None = None) -> Answer:
+    """⚠️ `budget_chars`：⛔ 上下文窗口，**所有臂共用同一个值**。
+
+    ⭐ `None` = 不限（默认）：⚠️ 那时窗口不是约束，
+    ⛔ 而「记忆有没有用」这件事量不到——见 `fit_to_window`。
+    """
+    kept, dropped = fit_to_window(entries, budget_chars)
+    text = client.complete(prompt.system, build_prompt(question, kept, prompt))
+    # ⛔ 被裁掉的要记下来：⚠️ 静默裁剪会让一条臂的分被读成
+    # 「材料都给它了还只有这么高」。
+    return Answer(text=text, used=[e.id for e in kept], dropped=dropped)
 
 
 def usage_of(client: LLMClient) -> list[Usage]:

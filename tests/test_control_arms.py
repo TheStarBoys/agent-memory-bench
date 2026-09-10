@@ -16,6 +16,8 @@ OFFLINE = ("null", "host_default", "bm25", "full_context")
 
 _KW: dict[str, dict[str, object]] = {
     "full_context": {"budget_chars": 10_000},
+    # ⭐ 同一个预算：⚠️ 它是受控变量，⛔ 两条臂必须共用一个值
+    "recency_window": {"budget_chars": 10_000},
     "naive_rag": {
         "embedding": EmbeddingConfig(
             model="test", base_url="http://localhost", api_key_env="AMB_TEST_KEY"
@@ -52,6 +54,9 @@ _EXTRA: dict[str, set] = {
     # ⭐ 混合检索的区间也来自切块边界——与 `naive_rag` 一致
     "hybrid": {Capability.PROVENANCE},
     "full_context": {Capability.PROVENANCE},
+    # ⭐ 留在窗口里的那些区间就是原文边界——⚠️ 丢掉的什么都给不出，
+    # ⛔ 而那正是这条臂要暴露的东西
+    "recency_window": {Capability.PROVENANCE},
     "host_default": {Capability.REALITY},
 }
 

@@ -592,6 +592,22 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
     # ——mem0 这一跑就烧了 367 万 token。拿摄入那个模型定价，
     # ⭐ 否则钱那一列永远是空的，而钱是[原则⑥](../../docs/adapters/README.md#p6)的一等维度。
     out += _render_cost(arms, suites, _pricing_model(report.backbone))
+    # ⭐ 窗口截断：⛔ 有臂被挤掉过内容就必须说——⚠️ 不说的话
+    # 那条臂的分会被读成「全都看过了还只有这么高」。
+    win = [a for a in arms if a.cost_profile.get("window_budget_chars")]
+    if win:
+        out += ["", "## ⚠️ 上下文窗口　（⛔ 被挤出去的内容不参与作答）", "",
+                "⭐ 窗口是**受控变量**：⚠️ 所有臂共用同一个预算。"
+                "⛔ `window_dropped=0` 说明这一跑没溢出——"
+                "⚠️ 那时这条臂等价于 `full_context`，**测不到记忆的价值**。", "",
+                "| | 预算(码点) | 窗口里 | 被挤掉 | 丢弃字数 |",
+                "|---|---:|---:|---:|---:|"]
+        for a in win:
+            p_ = a.cost_profile
+            out.append(f"| {a.arm} | {p_.get('window_budget_chars', 0)} | "
+                       f"{p_.get('window_kept', 0)} | {p_.get('window_dropped', 0)} | "
+                       f"{p_.get('window_dropped_chars', 0)} |")
+        out.append("")
     # ⭐ 行为指纹：⛔ 不是分数，是「这一跑正不正常」的凭据。
     # ⚠️ 两次跑同一语料同一臂，指纹应当一致——不一致就先别信分数。
     prints = [(a.arm, a.cost_profile["canary"], a.cost_profile)

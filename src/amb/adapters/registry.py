@@ -33,6 +33,10 @@ CONTROL_ARMS: tuple[str, ...] = (
     # ⭐ 混合检索（BM25 + 向量，RRF 融合）：⚠️ 它是**对照**不是被测——
     # 没有外部系统，全部代码在本仓库里。
     "hybrid",
+    # ⭐ 只有上下文窗口、没有记忆层：⚠️ 装不下就丢最旧的。
+    # ⛔ 它才是记忆层真正要打败的对手——`full_context` 装不下就记 N/A，
+    # 于是最强的对照臂在**最该较量的地方弃权**。
+    "recency_window",
 )
 
 
@@ -67,12 +71,14 @@ def _install_control_arms() -> None:
     from amb.adapters.impl.host_default import HostDefaultAdapter
     from amb.adapters.impl.naive_rag import NaiveRagAdapter
     from amb.adapters.impl.null import NullAdapter
+    from amb.adapters.impl.recency_window import RecencyWindowAdapter
 
     register("null", NullAdapter)
     register("host_default", HostDefaultAdapter)
     register("bm25", BM25Adapter)
     register("naive_rag", NaiveRagAdapter)
     register("full_context", FullContextAdapter)
+    register("recency_window", RecencyWindowAdapter)
     # ⭐ 混合检索：不是「对照组」也不是第三方系统，
     # 是一条用来检验「两种检索各有主场」那个观察的臂。
     from amb.adapters.impl.hybrid import HybridAdapter

@@ -31,7 +31,8 @@ from amb.runner import Plan, backbone, build, run_one
 #: ⭐ `hybrid` 尤其——它此前**一次都没被 `build()` 造过**，
 #: 于是给它多传一个参数就是 TypeError，而 683 个测试照样绿。
 #: ⚠️ `test_architecture` 守着这份名单：⛔ 加了新臂却不加进来，那条守卫会红。
-ARMS = ("null", "bm25", "naive_rag", "hybrid", "host_default", "full_context")
+ARMS = ("null", "bm25", "naive_rag", "hybrid", "host_default",
+        "full_context", "recency_window")
 
 #: ⚠️ 40 篇够跑完全部套件，⛔ 623 篇只是让这一层变慢。
 CORPUS = 40
