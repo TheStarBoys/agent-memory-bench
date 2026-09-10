@@ -104,6 +104,8 @@ def run_one_agent(name: str, spec: HostSpec, plan: AgentPlan, workdir: Path,
 
     guard = WorldGuard(state)
     memory_calls = steps = items = 0
+    #: ⚠️ 先给个值：⛔ probe 里抛异常时下面那段仍要拼得出 cost_profile
+    world_touched = False
     try:
         # ── ingest：⭐ 通过会话喂，评测器不替 agent 决定怎么记 ──────
         with ledger.measure("ingest"):
@@ -148,7 +150,11 @@ def run_one_agent(name: str, spec: HostSpec, plan: AgentPlan, workdir: Path,
         # 被记成了被测系统的错**。⚠️ 而同一个行为落在 ingest 阶段却被
         # 下一行的 rebaseline 抹掉：同一件事，两条臂两种结局。
         # ⭐ 改成记录**它动了什么**，不再判死。
-        result.cost_profile["world_touched"] = not guard.matches()
+        # ⛔ **不能直接写 `result.cost_profile`**：⚠️ 下面那段是整体赋值
+        # （`result.cost_profile = {...}`），⭐ 写在这里会被它抹掉——
+        # 实测：那一大段「改成记录它动了什么」的注释写了，
+        # ⛔ 而那个记录**从来没进过报告**。
+        world_touched = not guard.matches()
     finally:
         host.close()
 
@@ -169,6 +175,9 @@ def run_one_agent(name: str, spec: HostSpec, plan: AgentPlan, workdir: Path,
         # ⭐ agent 档独有：它主动查了几次记忆、走了几步
         "memory_calls": memory_calls,
         "agent_steps": steps,
+        # ⭐ agent 在 probe 期间写文件是**它的工作**，⛔ 不判死——
+        # ⚠️ 但要记下来：读者得看得见它动过世界。
+        "world_touched": world_touched,
     }
     return result, guard.expected
 

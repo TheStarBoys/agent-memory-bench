@@ -13,6 +13,10 @@ Anderson & Schooler (1991) 测出它是幂律，解释 93% 方差，
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class UnfittedCurve(RuntimeError):
@@ -107,7 +111,7 @@ def fit_from_reuse_intervals(intervals: list[float]) -> NeedCurve:
     return NeedCurve(a=math.exp(intercept), b=-slope, source="fitted", r_squared=r2)
 
 
-def load(path: str | "Path") -> NeedCurve:
+def load(path: "str | Path") -> NeedCurve:
     """读一份拟合好的曲线（tools/fit_need_curve.py 产出）。
 
     ⚠️ 它的 provenance 必须进结果报告——换语料就是换了一把尺子。
