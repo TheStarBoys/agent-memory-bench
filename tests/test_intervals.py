@@ -177,93 +177,133 @@ def test_a_metric_with_no_denominator_is_absent_not_zero() -> None:
     assert "编造率" not in m and "正确弃权率" not in m
 
 
-def test_a_slope_is_never_given_a_wilson_interval() -> None:
+# ── ⭐ 种类由算它的那一行声明，⛔ 不再靠名字猜 ────────────────
+#
+# ⚠️ 下面这一组测试原本问的是三张中文子串表（`PROPORTION_HINTS` /
+# `NOT_PROPORTION` / `PROPORTION_NAMES`）。⛔ 那套机制已经删掉——
+# ⭐ 但它们守的**性质**一条都不能丢，只是改用声明来表达。
+
+def _score_of(suite: str, payloads: list) -> "object":
+    from amb.core import Observation, SuiteRun
+    from amb.scoring import score
+
+    run = SuiteRun(suite, "scored")
+    for i, pl in enumerate(payloads):
+        run.observations.append(Observation(f"i{i}", pl))
+    return score(run)
+
+
+def _structure_run(n: int = 112):
+    return _score_of("n6_structure", [
+        {"fan": 2 ** (i % 7), "reached": i % 4, "cues": 3, "precise": i % 3 == 0}
+        for i in range(n)])
+
+
+def test_a_slope_is_declared_a_stat_not_a_rate() -> None:
     """⛔ `扇形退化斜率` 里有个「率」字，⚠️ 但它是**回归斜率**不是比例——
-    早先被当成 24 次伯努利试验套上了 Wilson，⭐ 而同源的 `可达性增益`
-    （没有「率」字）走重抽样：**两个同类量走了两条路**。
+    早先被名字捞成比例、套上 Wilson 当成 24 次伯努利试验，
+    ⭐ 而同源的 `可达性增益`（没有「率」字）走重抽样：**两个同类量两条路**。
     """
-    from amb.scoring.statistics import looks_like_proportion
-
-    for m in ("扇形退化斜率", "可达性增益", "规律强度单调性"):
-        assert not looks_like_proportion(m), f"⛔ {m} 不是比例"
-    for m in ("准确率", "top1", "全对"):
-        assert looks_like_proportion(m)
-
-
-# ── ⛔ 同一组互斥分类必须走同一条路 ─────────────────────────────
-def test_a_mutually_exclusive_family_shares_one_estimator() -> None:
-    """⛔ N8 那四个加起来正好 1.000——⚠️ 它们必须走同一条路。
-
-    ⭐ 实测 2026-09-07：只有 `全对` 撞上了关键词走 Wilson，
-    另外三个走重抽样，于是边界值上没有区间——
-    ⛔ `bm25` 三个全 0.000 无区间而同一行的 `全对=1.000` 有区间。
-    ⚠️ 一张表里两把尺，读者看不出来。
-    """
-    from amb.scoring.statistics import looks_like_proportion
-
-    family = ("全对", "过度修正", "过度泛化", "未归纳")
-    verdicts = {m: looks_like_proportion(m) for m in family}
-    assert len(set(verdicts.values())) == 1, f"⛔ 同组走了两条路：{verdicts}"
+    g = _structure_run()
+    for m in ("扇形退化斜率", "可达性增益"):
+        assert g.kinds[m] == "stat", f"⛔ {m} 被声明成了 {g.kinds[m]}"
+    for m in ("可达性", "精确检索"):
+        assert g.kinds[m] == "rate"
 
 
-def test_the_qa_family_shares_one_estimator() -> None:
-    """⚠️ `qa` 的另外三个都带「率」字，⛔ 只有 `该答却弃权` 漏了。"""
-    from amb.scoring.statistics import looks_like_proportion
-
-    family = ("准确率", "正确弃权率", "编造率", "该答却弃权")
-    verdicts = {m: looks_like_proportion(m) for m in family}
-    assert len(set(verdicts.values())) == 1, f"⛔ 同组走了两条路：{verdicts}"
-
-
-def test_a_stratified_metric_follows_its_own_summary() -> None:
+def test_a_stratified_metric_is_declared_like_its_summary() -> None:
     """⭐ `可达性_fan16` 与 `可达性` 是同一个量在某一档上的值。
 
-    ⛔ 两者走不同的路就会一个有区间一个没有——⚠️ 而它们并排印在同一行里。
+    ⛔ 两者声明不同就会一个有区间一个没有——⚠️ 而它们并排印在同一行里。
     """
-    from amb.scoring.statistics import looks_like_proportion
-
+    g = _structure_run()
     for base in ("可达性", "精确检索"):
-        assert looks_like_proportion(base)
-        for fan in (1, 2, 16, 64):
-            assert looks_like_proportion(f"{base}_fan{fan}"), \
-                f"⛔ {base}_fan{fan} 与它的汇总走了两条路"
+        per_fan = [k for k in g.kinds if k.startswith(f"{base}_fan")]
+        assert per_fan, f"⛔ 没有 {base} 的分档"
+        for k in per_fan:
+            assert g.kinds[k] == g.kinds[base], \
+                f"⛔ {k} 声明 {g.kinds[k]}，而汇总 {base} 声明 {g.kinds[base]}"
 
 
-def test_things_that_are_not_proportions_stay_out() -> None:
-    """⛔ 反向：⚠️ 把非比例塞进 Wilson 是另一个方向的错。
+def test_a_mutually_exclusive_family_shares_one_kind() -> None:
+    """⛔ N8 那四个加起来正好 1.000——⚠️ 它们必须走同一条路。
 
-    ⭐ 秩相关值域 [-1,1]，⛔ 而 Wilson 的下界结构上排除负数——
-    负相关会被静默截断成 0。
+    ⭐ 早先只有 `全对` 撞上了关键词走 Wilson，另外三个走重抽样，
+    ⛔ 于是边界值上没有区间：`bm25` 三个全 0.000 无区间，
+    而同一行的 `全对=1.000` 有区间。⚠️ 一张表里两把尺。
     """
-    from amb.scoring.statistics import looks_like_proportion
+    # ⭐ 四种行为各造几条，⚠️ 让四个格子都非零
+    g = _score_of("n8_induction", [
+        {"generalises": g_, "handles_exception": h, "rule_survives": r,
+         "rate": 0.2 + 0.1 * i, "unparsed": False}
+        for i, (g_, h, r) in enumerate([
+            (True, True, True), (True, True, False),
+            (True, False, True), (False, True, True)] * 3)])
+    fam = {k: v for k, v in g.kinds.items()
+           if k in ("全对", "过度修正", "过度泛化", "未归纳")}
+    assert fam, "⛔ 一个都没产出，⚠️ 这条测试就没在测东西"
+    assert len(set(fam.values())) == 1, f"⛔ 同组走了两条路：{fam}"
 
-    for m in ("扇形退化斜率", "可达性增益", "规律强度单调性",
-              "因子_频率", "因子_间隔", "因子_显著性", "IoU_p50",
-              "保留追踪度", "ECE", "Brier"):
-        assert not looks_like_proportion(m), f"⛔ {m} 不是比例"
 
+def test_a_count_is_never_declared_a_rate() -> None:
+    """⛔ `计数_全对` 里有「全对」二字，⭐ 但它是条数不是比例。
 
-def test_a_count_is_never_mistaken_for_a_proportion() -> None:
-    """⛔ **计数优先于比例**：⚠️ `计数_全对` 里有「全对」二字，
-    ⭐ 但它是条数不是比例——给它配 Wilson 等于把 12 条当成 12 次伯努利试验。
-
-    ⚠️ 早先这两件事由**两张互不相识的表**管：`looks_like_proportion` 说是比例，
-    `_COUNT_HINTS` 说是计数。⛔ 它们不打架只是因为调用方恰好先用了计数那张。
+    ⚠️ 早先它被一张表判成计数、另一张判成比例——⛔ 两者不打架
+    只因为调用方恰好先问了计数那张。
     """
-    from amb.scoring.statistics import COUNT_HINTS, kind_of
+    g = _score_of("n8_induction", [
+        {"generalises": True, "handles_exception": True,
+         "rule_survives": True, "rate": 0.1 * i, "unparsed": False}
+        for i in range(6)])
+    counts = [k for k in g.kinds if k.startswith("计数_")]
+    assert counts, "⛔ 没产出计数"
+    for k in counts:
+        assert g.kinds[k] == "count", f"⛔ {k} 被声明成 {g.kinds[k]}"
+        assert k not in g.intervals, f"⛔ {k} 是计数却拿到了区间"
 
-    for prefix in COUNT_HINTS:
-        for tail in ("全对", "准确率", "命中", "top1", ""):
-            name = f"{prefix}{tail}"
-            assert kind_of(name) == "count", \
-                f"⛔ {name!r} 该是计数——⚠️ 它带着计数前缀 {prefix!r}"
 
+def test_the_name_based_classifier_is_gone() -> None:
+    """⛔ **不能再有第二处分类**。
 
-def test_there_is_exactly_one_classifier() -> None:
-    """⛔ 分类只能有一个入口。⚠️ 两处各判各的就会互相矛盾，
-    ⭐ 而矛盾**不会报错**——它只是让某个指标悄悄走错一条路。
+    ⚠️ 那三张表各自演化，而它们不一致时不会报错——⭐ 只是让某个指标
+    悄悄走错一条路。删干净了才叫根治，留着就会有人再去问它。
     """
+    import amb.scoring.statistics as st
     from amb.scoring import metrics as m
-    from amb.scoring.statistics import COUNT_HINTS
 
-    assert m._COUNT_HINTS is COUNT_HINTS, "⛔ 又分成两张表了"
+    for dead in ("kind_of", "looks_like_proportion", "COUNT_HINTS",
+                 "PROPORTION_HINTS", "PROPORTION_NAMES", "NOT_PROPORTION"):
+        assert not hasattr(st, dead), f"⛔ `statistics.{dead}` 还在"
+        assert not hasattr(m, f"_{dead}"), f"⛔ `metrics._{dead}` 还在"
+
+
+# ── ⛔ 卡口：未声明的指标出不了这个模块 ─────────────────────────
+def test_an_undeclared_metric_cannot_leave_the_scorer() -> None:
+    """⭐ `_finish()` 是 13 个 scorer 的唯一出口。
+
+    ⛔ 直接写 `s.metrics[...]` 而不声明种类 = 当场炸，⚠️ **不回退去猜名字**。
+    ⭐ 这一条是整个根治的支点：没有它，下一个人加指标时照样会漏。
+    """
+    from amb.core import Observation, SuiteRun
+    from amb.scoring.metrics import Score, UndeclaredMetric, _finish
+
+    run = SuiteRun("n6_structure", "scored")
+    run.observations.append(Observation("i0", {}))
+    sc = Score(run.suite, "scored")
+    sc.metrics["偷偷塞进来的"] = 0.5          # ⛔ 绕过声明
+    with pytest.raises(UndeclaredMetric, match="偷偷塞进来的"):
+        _finish(sc, run)
+
+
+def test_a_bogus_kind_is_rejected_too() -> None:
+    """⛔ 声明了但写错种类名，⚠️ 同样出不去——⭐ 不静默变成第四类。"""
+    from amb.core import Observation, SuiteRun
+    from amb.scoring.metrics import Score, UndeclaredMetric, _finish
+
+    run = SuiteRun("qa", "scored")
+    run.observations.append(Observation("i0", {}))
+    sc = Score(run.suite, "scored")
+    sc.metrics["x"] = 0.5
+    sc.kinds["x"] = "proportion"           # ⚠️ 旧词，⛔ 现在叫 rate
+    with pytest.raises(UndeclaredMetric, match="种类名写错"):
+        _finish(sc, run)

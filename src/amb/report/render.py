@@ -144,11 +144,14 @@ def _delta_text(value: float, ci, floor, floor_ci, metric: str = "") -> str:
     return f"**{d:+.3f} ⚠️帮倒忙**" if d <= 0 else f"{d:+.3f}"
 
 
-def _is_count(metric: str) -> bool:
-    """这是**原始计数**还是比例。⚠️ 与 `scoring._COUNT_HINTS` 同一份口径。"""
-    from amb.scoring.metrics import _COUNT_HINTS
+def _is_count(sc, metric: str) -> bool:
+    """这是**原始计数**还是比例。⭐ 问那个分自己，⛔ 不猜名字。
 
-    return any(h in metric for h in _COUNT_HINTS)
+    ⚠️ 这里曾是名字推断的**第三份**拷贝（另两份在 `scoring/`）——
+    ⛔ 三处各自演化，而它们不一致时不会报错，只会让某个数印错格式。
+    ⭐ 现在种类由算它的那一行声明，报告照着念。
+    """
+    return sc.kinds.get(metric) == "count"
 
 
 def _ci_of(arms: list, arm_name: str, suite: str, metric: str):
@@ -475,7 +478,7 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
                     if ci:
                         parts.append(f"{k}={v:.3f}[{ci.low:.2f},{ci.high:.2f}]"
                                      f"n={ci.n}")
-                    elif _is_count(k):
+                    elif _is_count(sc, k):
                         # ⛔ **原始计数不许套比例的格式**：⚠️ 早先
                         # `broken→broken=2.000` 印出来，读者无从分辨那是
                         # **两道题**还是 200%。⭐ 计数就印成整数。

@@ -178,15 +178,13 @@ def test_every_proportion_carries_an_interval(offline_world, tmp_path,
     ⭐ 而那两个值**恰恰最需要区间**：`0/16` 与 `0/1000` 都印成 `0.000`。
     ⛔ `null` 那条臂**每个指标都是 0.000**，所以它是这条检查的主力。
     """
-    from amb.scoring.statistics import looks_like_proportion
-
     r = _run(name, tmp_path)
     missing: list[str] = []
     for suite, v in r.scores.items():
         if v.status != "scored":
             continue
         for k, val in v.metrics.items():
-            if looks_like_proportion(k) and k not in v.intervals:
+            if v.kinds.get(k) == "rate" and k not in v.intervals:
                 missing.append(f"{suite}/{k}={val:.3f}")
     assert not missing, f"⛔ {name} 这些比例没有区间：{missing[:8]}"
 
@@ -202,7 +200,7 @@ def test_this_layer_never_touches_the_real_network(offline_world, tmp_path):
 
 
 # ── ⛔ ⑨ 分类与实际值必须自洽 ───────────────────────────────────
-def _all_metrics(tmp_path) -> list[tuple[str, str, str, float]]:
+def _all_metrics(tmp_path) -> list[tuple[str, str, str, float, str]]:
     """跑遍所有臂，收集**真实产生**的每一个指标值。
 
     ⭐ 不是我想出来的值，是流水线算出来的——⛔ 想出来的值只覆盖我想到的情形。
@@ -212,7 +210,8 @@ def _all_metrics(tmp_path) -> list[tuple[str, str, str, float]]:
         r = _run(name, tmp_path)
         for suite, v in r.scores.items():
             if v.status == "scored":
-                out += [(name, suite, k, val) for k, val in v.metrics.items()]
+                out += [(name, suite, k, val, v.kinds.get(k))
+                        for k, val in v.metrics.items()]
     return out
 
 
@@ -269,11 +268,9 @@ def test_a_metric_classified_a_proportion_is_actually_one(offline_world,
     ⚠️ 实测抓到：`计数_全对`（一个原始条数）被判成比例——
     ⛔ 因为它名字里有「全对」二字，而那是比例关键词。
     """
-    from amb.scoring.statistics import kind_of
-
-    bad = [f"{a}/{s}/{k}={v}" for a, s, k, v in _all_metrics(tmp_path)
-           if kind_of(k) == "proportion" and not 0.0 <= v <= 1.0]
-    assert not bad, f"⛔ 判成比例却不在 [0,1]：{bad[:8]}"
+    bad = [f"{a}/{s}/{k}={v}" for a, s, k, v, kind in _all_metrics(tmp_path)
+           if kind == "rate" and not 0.0 <= v <= 1.0]
+    assert not bad, f"⛔ 声明成比例却不在 [0,1]：{bad[:8]}"
 
 
 def test_a_metric_classified_a_count_is_actually_one(offline_world,
@@ -283,21 +280,38 @@ def test_a_metric_classified_a_count_is_actually_one(offline_world,
     ⭐ 反向的那一半：把比例误判成计数，它就永远拿不到区间——
     ⛔ 而那是静默的，报告照常印出一个没有区间的数。
     """
-    from amb.scoring.statistics import kind_of
-
-    bad = [f"{a}/{s}/{k}={v}" for a, s, k, v in _all_metrics(tmp_path)
-           if kind_of(k) == "count" and float(v) != int(v)]
-    assert not bad, f"⛔ 判成计数却是小数：{bad[:8]}"
+    bad = [f"{a}/{s}/{k}={v}" for a, s, k, v, kind in _all_metrics(tmp_path)
+           if kind == "count" and float(v) != int(v)]
+    assert not bad, f"⛔ 声明成计数却是小数：{bad[:8]}"
 
 
-def test_the_two_classifiers_never_disagree() -> None:
-    """⛔ **只能有一个分类入口**。
+def test_every_produced_metric_declares_a_valid_kind(offline_world,
+                                                     tmp_path) -> None:
+    """⛔ 真跑出来的**每一个**指标都带着合法声明。
 
-    ⚠️ 早先 `looks_like_proportion` 与 `_COUNT_HINTS` 是两张互不相识的表，
-    ⭐ `计数_全对` 被一张判成计数、被另一张判成比例——
-    ⛔ 两者不打架只是因为调用方**恰好先用了计数那张**。那是运气。
+    ⚠️ `_finish()` 已经在卡口上拦了，⭐ 这一条是端到端的复核：
+    6 条臂 × 11 套件真跑一遍，⛔ 确认没有指标从别的门溜出去。
     """
-    from amb.scoring import metrics as m
-    from amb.scoring.statistics import COUNT_HINTS
+    from amb.scoring.metrics import KINDS
 
-    assert m._COUNT_HINTS is COUNT_HINTS, "⛔ 又分成两张表了"
+    bad = [f"{a}/{s}/{k}" for a, s, k, _v, kind in _all_metrics(tmp_path)
+           if kind not in KINDS]
+    assert not bad, f"⛔ 这些指标没有合法声明：{bad[:8]}"
+
+
+def test_a_declared_rate_always_carries_a_denominator(offline_world,
+                                                      tmp_path) -> None:
+    """⛔ 声明成比例就必须有分母——⚠️ 没有分母的比例配不出 Wilson 区间。
+
+    ⭐ 这一条守的是那个老 bug 的反面：分母缺失时区间退回用观测数，
+    ⛔ 被压窄 → 与地板不重叠 → 报告直接印显著差异。
+    """
+    naked = []
+    for name in ARMS:
+        r = _run(name, tmp_path)
+        for suite, v in r.scores.items():
+            if v.status != "scored":
+                continue
+            naked += [f"{name}/{suite}/{k}" for k, kind in v.kinds.items()
+                      if kind == "rate" and k not in v.denominators]
+    assert not naked, f"⛔ 这些比例没有分母：{naked[:8]}"

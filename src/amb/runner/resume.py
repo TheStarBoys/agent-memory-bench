@@ -132,6 +132,10 @@ def restore(report: Any, done: dict) -> set[str]:
                             failed_rate=sc.get("failed_rate", 0.0))
                 got.not_publishable = sc.get("not_publishable", "")
                 got.denominators = dict(sc.get("denominators") or {})
+                # ⛔ 种类也要带回来：⚠️ 缺了它，续跑那几条臂的计数会被
+                # 报告当成比例印成小数——⭐ 而读者分不出 `2` 是两道题还是 200%。
+                got.kinds = dict(sc.get("kinds") or {})
+                got.no_interval = dict(sc.get("no_interval") or {})
                 got.intervals = {k: Interval(**v)
                                  for k, v in (sc.get("intervals") or {}).items()}
                 arm.scores[suite] = got

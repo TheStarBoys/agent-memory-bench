@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from amb.core import SuiteRun
-from amb.scoring.statistics import Interval, bootstrap, looks_like_proportion, wilson
+from amb.scoring.statistics import Interval, bootstrap, wilson
 
 
 @dataclass(slots=True)
@@ -44,6 +44,22 @@ class Score:
     #: ⭐ 实测：`null` 的 `保留追踪度` 印成 0.000 无区间，
     #: 同一列 `bm25` 是 -0.452 有区间——⛔ 当时没有任何东西说明这个差别。
     no_interval: dict[str, str] = field(default_factory=dict)
+    #: ⭐ **每个指标是什么种类**——由算它的那一行**声明**，⛔ 不靠名字猜。
+    #:
+    #: ⚠️ 早先靠三张中文子串表推断（`PROPORTION_HINTS` / `NOT_PROPORTION` /
+    #: `PROPORTION_NAMES`），⛔ 而第三张纯粹是前两张猜错之后的补丁表：
+    #: 上一轮往里加 2 个，再上一轮加 5 个。⭐ 那不是 bug，是 bug 生成器。
+    #: ⚠️ 更糟的是 `计数_全对` 同时匹配「计数_」与「全对」，
+    #: 被两处判成互相矛盾的东西——⛔ 不打架只因为调用方恰好先问了其中一张。
+    #:
+    #: ⭐ 三种，对应三种区间待遇：
+    #:   `rate`  比例，有分母 → Wilson 区间
+    #:   `count` 原始条数或 0/1 标记 → ⛔ 不配区间
+    #:   `stat`  导出统计量（相关、斜率、ECE、中位数）→ 重抽样区间
+    #:
+    #: ⛔ `_finish()` 是 13 个 scorer 的唯一出口，它**拒绝未声明的指标**——
+    #: ⚠️ 所以「算了一个指标却没说它是什么」在结构上出不了这个模块。
+    kinds: dict[str, str] = field(default_factory=dict)
 
     def interval(self, metric: str) -> Interval | None:
         return self.intervals.get(metric)
@@ -52,6 +68,36 @@ class Score:
 #: 某套件的 Failed 率超过它，结果标记为不可信，⛔ 不进对比表。
 #: 一个总是失败的能力声明，和没有这个能力之间的差别只剩下声明本身。
 UNTRUSTED_THRESHOLD = 0.20
+
+
+#: ⭐ 合法的种类。⛔ 写错名字当场炸，⚠️ 不静默变成第四类。
+KINDS = ("rate", "count", "stat")
+
+
+def _count(s: Score, name: str, value: float) -> None:
+    """记一个**原始条数**或 0/1 标记。⛔ 它不是比例，⚠️ 区间无从谈起。
+
+    ⭐ 例：`该留-留了=15`（有 15 条）、`隔离_过滤级=1`（这一档命中了）。
+    ⛔ 给它配 Wilson 等于把 15 条当成 15 次伯努利试验。
+    """
+    s.metrics[name] = float(value)
+    s.kinds[name] = "count"
+
+
+def _counts(s: Score, cell: dict) -> None:
+    """一整格混淆矩阵都是计数。⚠️ 逐个声明太啰嗦，⛔ 但不能不声明。"""
+    for k, v in cell.items():
+        _count(s, k, v)
+
+
+def _stat(s: Score, name: str, value: float) -> None:
+    """记一个**导出统计量**：⚠️ 相关系数、回归斜率、ECE、中位数……
+
+    ⛔ 它们不是比例：⚠️ 秩相关值域是 [-1, 1]，而 Wilson 的下界结构上排除负数——
+    ⭐ 套上去的话，负相关会被**静默截断成 0**。
+    """
+    s.metrics[name] = float(value)
+    s.kinds[name] = "stat"
 
 
 def _rate(s: Score, name: str, num: float, den: int) -> None:
@@ -66,9 +112,28 @@ def _rate(s: Score, name: str, num: float, den: int) -> None:
         return
     s.metrics[name] = num / den
     s.denominators[name] = den
+    s.kinds[name] = "rate"
+
+
+class UndeclaredMetric(RuntimeError):
+    """⛔ 算了一个指标却没说它是什么种类。
+
+    ⚠️ **当场炸，不回退去猜名字**——⭐ 靠名字猜正是这套东西的原病：
+    三张中文子串表，其中一张纯粹是前两张猜错之后的补丁表。
+    ⛔ 一个静默的错误分类不会报错，它只是让某个指标悄悄走错一条路。
+    """
 
 
 def _finish(score: Score, run: SuiteRun) -> Score:
+    # ⛔ **卡口**：13 个 scorer 全从这里出去，⚠️ 未声明的指标出不去。
+    # ⭐ 离线全流水线层 3 秒跑遍 6 条臂 × 11 套件，这个错当场就会被抓到；
+    # ⛔ 而放它过去的代价是一份看上去正常、区间却错配的报告。
+    if undeclared := sorted(set(score.metrics) - set(score.kinds)):
+        raise UndeclaredMetric(
+            f"{score.suite}：{undeclared} 没有声明种类——"
+            f"⚠️ 用 `_rate` / `_count` / `_stat` 记它，⛔ 别直接写 `s.metrics[...]`")
+    if bad := {k: v for k, v in score.kinds.items() if v not in KINDS}:
+        raise UndeclaredMetric(f"{score.suite}：种类名写错了 {bad}，⚠️ 只能是 {KINDS}")
     # ⛔ 一路带到报告：⚠️ 断在这里的话，一个「不得发布」的数会照常进对比表
     score.not_publishable = run.not_publishable
     total = len(run.observations) + run.failed
@@ -92,6 +157,7 @@ def _finish(score: Score, run: SuiteRun) -> Score:
         score.metrics = {}
         score.intervals = {}
         score.denominators = {}
+        score.kinds = {}
     return score
 
 
@@ -149,7 +215,7 @@ def score_provenance(run: SuiteRun) -> Score:
         _rate(s, "精确匹配率", exact, given)
         _rate(s, "越界率", overrun, given)
         _rate(s, "错链率", wrong, given)
-        s.metrics["IoU_p50"] = ious[len(ious) // 2]
+        _stat(s, "IoU_p50", ious[len(ious) // 2])
     return _finish(s, run)
 
 
@@ -175,7 +241,7 @@ def score_reality(run: SuiteRun) -> Score:
     holds_side = sum(cell[f"holds→{r}"] for r in ("holds", "broken", "unknown"))
     broken_side = sum(cell[f"broken→{r}"] for r in ("holds", "broken", "unknown"))
     total = len(run.observations)
-    s.metrics = {k: float(v) for k, v in cell.items()}
+    _counts(s, cell)
     # ⛔ 三个率三个**不同的分母**：⚠️ 检出率只看该 broken 的那一侧，
     # 误报率只看该 holds 的那一侧——按观测数配区间会把两者都压窄。
     _rate(s, "检出率", cell["broken→broken"], broken_side)
@@ -306,9 +372,6 @@ def score_governance(run: SuiteRun) -> Score:
     for obs in run.observations:
         by_group.setdefault(obs.payload["group"], []).append(obs.payload)
 
-    s.metrics = {}
-    metrics = s.metrics
-
     attribution = by_group.get("attribution") or []
     if attribution:
         # ⛔ 分母是**那次检索命中的条数**，⚠️ 与观测数（3 条汇总行）无关
@@ -319,19 +382,22 @@ def score_governance(run: SuiteRun) -> Score:
     if isolation:
         level = isolation[0]["level"]
         # ⚠️ 三级：无隔离 < 过滤级 < 授权级。⛔ 未申报最高只到「过滤级(未验证)」
-        metrics["隔离_无"] = float(level == "none")
-        metrics["隔离_过滤级"] = float(level in ("filter", "filter_unverified"))
-        metrics["隔离_授权级"] = float(level == "authz")
-        metrics["隔离_未验证"] = float(level == "filter_unverified")
+        # ⚠️ 这四个是**一次观测上的 0/1 标记**，⛔ 不是样本上的比例——
+        # ⭐ 所以声明 count：给它配区间等于假装做了 n 次试验。
+        _count(s, "隔离_无", level == "none")
+        _count(s, "隔离_过滤级", level in ("filter", "filter_unverified"))
+        _count(s, "隔离_授权级", level == "authz")
+        _count(s, "隔离_未验证", level == "filter_unverified")
 
     deletion = by_group.get("deletion") or []
     if deletion:
         n = len(deletion)
         for step in _DELETE_STEPS:
-            # ⚠️ 这几个走 `_COUNT_HINTS` 的「删除_」前缀，不配区间；
-            # ⛔ 但分母仍要记对——`彻底删除率` 是从它派生的
-            metrics[f"删除_{step}"] = sum(
-                1 for d in deletion if d["reached"] == step) / n
+            # ⭐ 这是**走到第几步的分布**，分母是删除探针数——⛔ 它是比例。
+            # ⚠️ 早先因为名字带「删除_」前缀被判成计数、不配区间，
+            # ⛔ 于是 n=1 时印出一个光秃秃的 0.000，读起来像「测出来是 0」。
+            _rate(s, f"删除_{step}",
+                  sum(1 for d in deletion if d["reached"] == step), n)
         # ⛔ 只有走完第四步才算彻底删除。⚠️ 分母是**删除探针数**
         _rate(s, "彻底删除率",
               sum(1 for d in deletion if d["reached"] == "gone_from_storage"), n)
@@ -342,18 +408,20 @@ def score_governance(run: SuiteRun) -> Score:
     trail = by_group.get("trail") or []
     if trail and trail[0].get("declared"):
         t = trail[0]
-        metrics["留痕_有删除事件"] = float(t["logged_delete"])
+        _count(s, "留痕_有删除事件", t["logged_delete"])
         # ⛔ 把内容藏进审计日志不算删除——⚠️ 这一格 > 0 时删除组不通过
-        metrics["留痕_日志含正文"] = float(t["content_in_log"] > 0)
+        _count(s, "留痕_日志含正文", t["content_in_log"] > 0)
         if t["delete_events"]:
             # ⚠️ 「谁删的、何时」缺了就只是「记了一笔」，不是审计轨迹
             _rate(s, "留痕_有主体", t["with_principal"], t["delete_events"])
             _rate(s, "留痕_有时间", t["with_time"], t["delete_events"])
-        thorough = metrics.get("彻底删除率")
+        thorough = s.metrics.get("彻底删除率")
         if thorough is not None:
             # ⭐ 四格交叉：⛔ 只有「删干净 且 留了痕 且 日志里没正文」才合格
-            metrics["治理_合格"] = float(
-                thorough >= 1.0 and t["logged_delete"] and not t["content_in_log"])
+            # ⚠️ 它是一个**判定**，不是比例——⛔ 声明 count
+            _count(s, "治理_合格",
+                   thorough >= 1.0 and t["logged_delete"]
+                   and not t["content_in_log"])
 
     return _finish(s, run)
 
@@ -433,7 +501,7 @@ def score_retention(run: SuiteRun) -> Score:
     drop_side = cell["该丢-留了"] + cell["该丢-丢了"]
 
     payloads = [o.payload for o in run.observations]
-    s.metrics = {k: float(v) for k, v in cell.items()}
+    _counts(s, cell)
     # ⛔ 两侧各有各的分母：⚠️ 该留那一侧一条都没有时，
     # 「正确保留率」是**未定义**，不是 0.000
     _rate(s, "正确保留率", cell["该留-留了"], keep_side)
@@ -441,22 +509,20 @@ def score_retention(run: SuiteRun) -> Score:
     _rate(s, "正确遗忘率", cell["该丢-丢了"], drop_side)
     _rate(s, "囤积率", cell["该丢-留了"], drop_side)
     _rate(s, "误删率", cell["该留-丢了"], keep_side)
-    metrics = s.metrics
+    kept = [float(p["retained"]) for p in payloads]
     # 保留行为是否追踪需求概率
-    metrics["保留追踪度"] = _spearman([p["need"] for p in payloads],
-                                       [float(p["retained"]) for p in payloads])
+    _stat(s, "保留追踪度", _spearman([p["need"] for p in payloads], kept))
 
     # ⭐ 三个因子各自的贡献——正交设计就是为了这三行
-    metrics["因子_频率"] = _spearman([float(p["frequency"]) for p in payloads],
-                                     [float(p["retained"]) for p in payloads])
+    _stat(s, "因子_频率",
+          _spearman([float(p["frequency"]) for p in payloads], kept))
     spaced = [p for p in payloads if p["spacing"] in ("massed", "distributed")]
     if spaced:
-        metrics["因子_间隔"] = _spearman(
-            [float(p["spacing"] == "distributed") for p in spaced],
-            [float(p["retained"]) for p in spaced])
-    metrics["因子_显著性"] = _spearman([float(p["salient"]) for p in payloads],
-                                       [float(p["retained"]) for p in payloads])
-    s.metrics = metrics
+        _stat(s, "因子_间隔",
+              _spearman([float(p["spacing"] == "distributed") for p in spaced],
+                        [float(p["retained"]) for p in spaced]))
+    _stat(s, "因子_显著性",
+          _spearman([float(p["salient"]) for p in payloads], kept))
     return _finish(s, run)
 
 
@@ -474,8 +540,6 @@ def score_structure(run: SuiteRun) -> Score:
     for obs in run.observations:
         by_fan.setdefault(obs.payload["fan"], []).append(obs.payload)
 
-    metrics: dict[str, float] = {}
-    denominators: dict[str, int] = {}
     reach_pts: list[tuple[float, float]] = []
     precise_pts: list[tuple[float, float]] = []
     # ⛔ **测不到就不报**：⚠️ agent 档是多轮会话，量不了「指名要这一条时
@@ -486,16 +550,14 @@ def score_structure(run: SuiteRun) -> Score:
     for fan in sorted(by_fan):
         rows = by_fan[fan]
         reach = sum(r["reached"] / max(1, r["cues"]) for r in rows) / len(rows)
-        metrics[f"可达性_fan{fan}"] = reach
-        # ⛔ 记上**这一档自己的**分母：⚠️ 不记的话区间会退回用全部观测数
-        # （112 而不是这一档的 16），⭐ 那把区间压窄了——
-        # 而区间重叠是唯一阻止「声称 A 比 B 好」的闸门。
-        denominators[f"可达性_fan{fan}"] = len(rows)
+        # ⛔ 分母是**这一档自己的**条数：⚠️ 退回用全部观测数（112 而不是
+        # 这一档的 16）会把区间压窄，⭐ 而区间重叠是唯一阻止
+        # 「声称 A 比 B 好」的闸门。
+        _rate(s, f"可达性_fan{fan}", reach * len(rows), len(rows))
         reach_pts.append((math.log(fan), reach))
         if has_precise:
             precise = sum(float(r["precise"]) for r in rows) / len(rows)
-            metrics[f"精确检索_fan{fan}"] = precise
-            denominators[f"精确检索_fan{fan}"] = len(rows)
+            _rate(s, f"精确检索_fan{fan}", precise * len(rows), len(rows))
             precise_pts.append((math.log(fan), precise))
 
     # ⭐ 两条曲线各给一个**跨档汇总**：⚠️ 每档等权，⛔ 不是按题数加权——
@@ -504,8 +566,6 @@ def score_structure(run: SuiteRun) -> Score:
     # 不记分母就拿不到区间，⛔ 而「没有区间就不许声称差异」会让这一档
     # 永远说「分不开」——即便 0.000 与 0.214 是真差别。
     n_probed = len(run.observations)
-    s.metrics = metrics
-    s.denominators = denominators
     _rate(s, "可达性", sum(v for _, v in reach_pts) / len(reach_pts) * n_probed,
           n_probed)
     if precise_pts:
@@ -517,8 +577,8 @@ def score_structure(run: SuiteRun) -> Score:
     # 斜率因此是完美的 0.000——实测它凭这个当上了成本×质量表的地板，
     # 于是四条真臂全被判「没有存在理由」。⭐ 形状只在检索本身站得住时才有意义。
     if precise_pts:
-        metrics["扇形退化斜率"] = _slope(precise_pts)
-    metrics["可达性增益"] = _slope(reach_pts)
+        _stat(s, "扇形退化斜率", _slope(precise_pts))
+    _stat(s, "可达性增益", _slope(reach_pts))
     return _finish(s, run)
 
 
@@ -564,8 +624,11 @@ def score_calibration(run: SuiteRun) -> Score:
         conf = sum(r["confidence"] for r in bucket) / len(bucket)
         acc = sum(float(r["correct"]) for r in bucket) / len(bucket)
         ece += len(bucket) / n * abs(conf - acc)
-        diagram[f"桶{lo:.1f}-{hi:.1f}_置信"] = conf
-        diagram[f"桶{lo:.1f}-{hi:.1f}_准确"] = acc
+        # ⭐ 桶内准确率是**比例**，分母是这个桶的条数；⚠️ 平均置信度是统计量。
+        # ⛔ 早先两个都因为名字带「桶」被判成计数、一律不配区间。
+        diagram[f"桶{lo:.1f}-{hi:.1f}_置信"] = ("stat", conf, 0)
+        diagram[f"桶{lo:.1f}-{hi:.1f}_准确"] = (
+            "rate", sum(float(r["correct"]) for r in bucket), len(bucket))
 
     # ⭐ 区分度：高置信组与低置信组的准确率差
     # ⛔ 置信度全部并列时按排序切一半，得到的是**排序稳定性的产物**，
@@ -578,8 +641,11 @@ def score_calibration(run: SuiteRun) -> Score:
         low = sum(float(r["correct"]) for r in ordered[:half]) / half
         high = sum(float(r["correct"]) for r in ordered[-half:]) / half
 
-    s.metrics = {"ECE": ece, "Brier": brier, "区分度": high - low, **diagram}
-    metrics = s.metrics
+    _stat(s, "ECE", ece)
+    _stat(s, "Brier", brier)
+    _stat(s, "区分度", high - low)
+    for name, (kind, a, b) in diagram.items():
+        _rate(s, name, a, b) if kind == "rate" else _stat(s, name, a)
 
     # ⭐ 显著性子测：自信但不更准 —— 复现了闪光灯记忆那个已知的人类 bug
     salient = [r for r in rows if r["salient"]]
@@ -590,12 +656,13 @@ def score_calibration(run: SuiteRun) -> Score:
               len(salient))
         _rate(s, "普通_准确率", sum(float(r["correct"]) for r in plain),
               len(plain))
-        sa, pa = metrics["显著_准确率"], metrics["普通_准确率"]
+        sa, pa = s.metrics["显著_准确率"], s.metrics["普通_准确率"]
         sc = sum(r["confidence"] for r in salient) / len(salient)
         pc = sum(r["confidence"] for r in plain) / len(plain)
-        metrics |= {"显著_置信度": sc, "普通_置信度": pc,
-                    # ⛔ 这一格 > 0 是失分项：准确率没涨而自信涨了
-                    "自信但不更准": max(0.0, (sc - pc) - (sa - pa))}
+        _stat(s, "显著_置信度", sc)
+        _stat(s, "普通_置信度", pc)
+        # ⛔ 这一格 > 0 是失分项：准确率没涨而自信涨了
+        _stat(s, "自信但不更准", max(0.0, (sc - pc) - (sa - pa)))
     return _finish(s, run)
 
 
@@ -628,13 +695,12 @@ def score_induction(run: SuiteRun) -> Score:
         applied.append(float(p["generalises"]))
 
     n = len(run.observations)
-    s.metrics = {f"计数_{k}": float(v) for k, v in behaviour.items()}
     for k, v in behaviour.items():
+        _count(s, f"计数_{k}", v)
         _rate(s, k, v, n)
-    metrics = s.metrics
     # ⚠️ 判分口径是单调性不是绝对值：
     # 「95% 的规律比 60% 的更常被应用」可判，「60% 该被应用多少次」不可判
-    metrics["规律强度单调性"] = _spearman(rates, applied)
+    _stat(s, "规律强度单调性", _spearman(rates, applied))
     _rate(s, "未解析率",
           sum(1 for o in run.observations if o.payload["unparsed"]), n)
     return _finish(s, run)
@@ -743,7 +809,7 @@ def score_locomo_answer(run: SuiteRun) -> Score:
     #    一个见题就编的系统会比一个诚实弃权的系统好看
     _rate(s, "正确弃权率", abstained_right, unanswerable)
     _rate(s, "编造率", fabricated, unanswerable)
-    s.metrics["题数"] = float(len(rows))
+    _count(s, "题数", len(rows))
     # ⭐ 逐类分开——⛔ 22% 是弃权题，总分会把那一类糊掉
     by_cat: dict[str, list] = {}
     for r in rows:
@@ -759,7 +825,7 @@ def score_locomo_answer(run: SuiteRun) -> Score:
                      if any(_normalize(str(g)) in _normalize(r["text"])
                             for g in r["gold"]))
             _rate(s, f"准确率_{stratum}", ok, len(subset))
-        s.metrics[f"题数_{stratum}"] = float(len(subset))
+        _count(s, f"题数_{stratum}", len(subset))
     return _finish(s, run)
 
 
@@ -784,13 +850,14 @@ def score_locomo_retrieval(run: SuiteRun) -> Score:
     got, want = recall_of(rows)
     _rate(s, "evidence_recall", got, want)
     _rate(s, "命中任一率", sum(1 for r in rows if r["hit"]), n)
-    s.metrics["题数"] = float(n)
+    _count(s, "题数", n)
     # ⛔ **配对指标**：⚠️ `evidence_recall` 单调递增——返回越多分越高，
     # 而早先没有任何一个指标会因为多返回而下降。
     # ⭐ 「每题平均返回几篇」与它同屏，读者才看得出是「捞得准」还是「捞得多」。
     returned = [r.get("returned") for r in rows if r.get("returned") is not None]
     if returned:
-        s.metrics["每题返回篇数"] = sum(returned) / len(returned)
+        # ⚠️ 平均值，⛔ 不是比例：它可以大于 1
+        _stat(s, "每题返回篇数", sum(returned) / len(returned))
     # ⭐ 逐类分开——⛔ 总分会把弃权那一类糊掉
     by_cat: dict[str, list] = {}
     for r in rows:
@@ -799,7 +866,7 @@ def score_locomo_retrieval(run: SuiteRun) -> Score:
         subset = by_cat[stratum]
         sub_got, sub_want = recall_of(subset)
         _rate(s, f"recall_{stratum}", sub_got, sub_want)
-        s.metrics[f"题数_{stratum}"] = float(len(subset))
+        _count(s, f"题数_{stratum}", len(subset))
     return _finish(s, run)
 
 
@@ -847,19 +914,15 @@ _GROUPED_SUITES = frozenset({"n4_governance", "n4_governance_agent"})
 
 #: 计数类指标不配区间——⚠️ 它们是**原始计数**，⛔ 不是被估计的比例。
 #: 给一个计数配「置信区间」会让人以为它是个估计量，那是误导。
-#: ⚠️ 保留这个名字给老调用方，⛔ 但定义只有一处（statistics.kind_of）——
-#: ⭐ 两张表各自演化正是 `计数_全对` 那个矛盾的成因。
-from amb.scoring.statistics import COUNT_HINTS as _COUNT_HINTS
 
 
 def _intervals_for(run: SuiteRun, scorer, got: Score, *,
                    seed: int) -> dict[str, Interval]:
     """比例走 Wilson（小样本更准），其余走重抽样。"""
     n = len(run.observations)
-    from amb.scoring.statistics import kind_of
-
-    # ⭐ 分类只问一个地方：⛔ 计数不配区间，`other` 走重抽样，比例走 Wilson
-    wanted = [m for m in got.metrics if kind_of(m) != "count"]
+    # ⭐ 种类由**算它的那一行**声明：⛔ 计数不配区间，
+    # `stat` 走重抽样，`rate` 走 Wilson。⚠️ 这里不再猜名字。
+    wanted = [m for m in got.metrics if got.kinds.get(m) != "count"]
     if not wanted or n < 2:
         return {}
 
@@ -871,7 +934,7 @@ def _intervals_for(run: SuiteRun, scorer, got: Score, *,
         # `准确率` 的分母是可答题数、`检出率` 是该 broken 的题数……
         # ⭐ 用观测数会把区间压窄，而区间重叠是唯一阻止「声称 A 比 B 好」的闸门。
         den = got.denominators.get(m, n)
-        if looks_like_proportion(m) and 0.0 <= value <= 1.0 and den >= 1:
+        if got.kinds.get(m) == "rate" and 0.0 <= value <= 1.0 and den >= 1:
             out[m] = wilson(value * den, den)
         else:
             boot_needed.append(m)
@@ -900,13 +963,11 @@ def _explain_missing_intervals(run: SuiteRun, got: Score) -> None:
     ⚠️ 这一层不改任何分，⭐ 它只是把**沉默**变成**有署名的沉默**——
     而那正是这个仓库反复栽的地方：一个静默降级的数长得跟正常数一样。
     """
-    from amb.scoring.statistics import kind_of
-
     n = len(run.observations)
     for m in got.metrics:
         if m in got.intervals:
             continue
-        if kind_of(m) == "count":
+        if got.kinds.get(m) == "count":
             got.no_interval[m] = "原始计数——⚠️ 它不是比例，⛔ 区间无从谈起"
         elif n < 2:
             got.no_interval[m] = f"只有 {n} 条观测——⛔ 估不出离散度"
