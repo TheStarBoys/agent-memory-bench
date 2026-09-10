@@ -308,3 +308,17 @@ def test_an_accidental_overlap_still_shouts() -> None:
               if f.check == "query-is-substring" and f.level == "warn"]
     assert any("n1_spontaneous" in d for d in warned), \
         f"⛔ 意外撞上的不报就等于关掉了这条检查：{warned}"
+
+
+def test_every_registered_arm_has_an_ingest_price() -> None:
+    """⛔ 「跑之前就说清要多久」漏掉一条臂，那句话就不成立了。
+
+    ⚠️ 实测踩到：加了 `hybrid` / `recency_window` / `full_context` 之后
+    预算里印出「⚠️ 单价未知: 3.0」——⭐ 报出来了（好），
+    ⛔ 但那三条臂的时间就没进合计，读者按一个偏低的预算开跑。
+    """
+    from amb.adapters.registry import _REGISTRY
+    from amb.runner.preflight import INGEST_S
+
+    missing = sorted(set(_REGISTRY) - set(INGEST_S))
+    assert not missing, f"⛔ 这些臂没有摄入单价：{missing}"

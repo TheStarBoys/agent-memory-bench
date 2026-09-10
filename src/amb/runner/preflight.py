@@ -357,7 +357,14 @@ def check_scoring(plan, out: Report, root: Path) -> None:
 
 
 #: 各条臂**实测**的每条摄入秒数。⛔ 不是估的，⚠️ 但端点会抖，只当量级看。
-INGEST_S = {"null": 0.0, "bm25": 0.0, "naive_rag": 0.36,
+#: 每条摄入几秒。⚠️ 数字是**实测**的，⛔ 不是拍的。
+#: ⭐ 2026-09-07 真跑（toy 623 篇）：`naive_rag` 0.180 · `mem0_raw` 0.718 ·
+#: `mem0` 9.843；⚠️ 表里保留偏保守的旧值（估高不估低——⛔ 估低了人会
+#: 按一个错的预算开跑）。
+#: ⚠️ `hybrid` 0.316（2026-09-10 冒烟跑实测，⭐ 比 naive_rag 略贵：它多一半词法索引）。
+#: ⭐ `recency_window` / `full_context` 摄入**不发任何请求**——只是往列表里塞。
+INGEST_S = {"null": 0.0, "bm25": 0.0, "naive_rag": 0.36, "hybrid": 0.40,
+            "recency_window": 0.0, "full_context": 0.0, "host_default": 0.0,
             "mem0_raw": 1.39, "mem0": 9.71, "a_mem": 35.0}
 
 
