@@ -54,28 +54,34 @@ and the agent loop itself」——所以两件事都能做到。
 - 宿主**钉死版本**，源码不进本仓库（[原则④](../../../docs/adapters/README.md#p4)）。
 - ⛔ **宿主是受控变量，不是被测对象。** 换 DSH 版本等于换尺子，要重跑全部基线。
 
-## ⛔ 已知的洞：agent 档的上下文窗口**控不了**
+## ⭐ 上下文窗口：`AMB_CONTEXT_WINDOW`
 
 ⚠️ 这一档的道理是「记忆插件只有在会话撑爆窗口时才有价值」——
 ⛔ 装得下的话插件就是摆设，那时测的是**模型自己**，不是记忆。
+⭐ 所以窗口是这一档**最要紧的受控变量**。
 
-⭐ 所以窗口是这一档最要紧的受控变量。⛔ 而现在它不受控：
+```sh
+AMB_CONTEXT_WINDOW=4096 python -m amb.cli --lane agent ...
+```
 
-| | 有没有窗口旋钮 |
-|---|---|
-| `HostSpec.max_tokens` | ⚠️ 那是**输出**上限，不是上下文窗口 |
-| `DeepSeekHarnessConfig` | ⛔ 15 个字段里没有窗口相关的 |
-| DSH 的 `settings.yaml` | ⚠️ 我们只写 provider/model，⛔ 未见窗口键 |
+⭐ 它落到 DSH 的 `settings.yaml`，写在模型条目上：
 
-⚠️ 2026-09-10 查过安装的 `deepseek-harness-sdk 0.1.2a3`：
-⛔ 包里 grep 不到 `contextLimit` / `context_window` / `compact` / `truncate`。
+```json
+{"llm-pi-ai": {"providers": {"amb-backbone": {
+    "models": [{"id": "...", "contextWindow": 4096}]}}}}
+```
 
-⭐ **不伪造一个它不认的键**：⚠️ 那会让报告看起来控制了这个变量，
-⛔ 而实际上没有——那比公开承认控不了糟得多。
+⚠️ `contextWindow` 是 DSH 模型条目的合法字段——⭐ 从捆绑运行时里读出的
+schema 是 `{id, name?, contextWindow?, maxTokens?}`，默认 `128e3`。
 
-### ⭐ library 档已经有对手了
+⛔ **不设就是 128k**：⚠️ 那时几十轮的会话整段装得下，
+⭐ 这一档**测不到记忆的价值**，读数前先确认这一点。
 
-⚠️ 那一档不需要宿主配合：⛔ `recency_window` 自己实现滑窗
-（装不下丢最旧的，并如实报告丢了多少）。
-⭐ 所以「窗口扫描」这个实验在 library 档**现在就能做**，
-⚠️ agent 档要等宿主暴露那个旋钮，或者我们自己在 seam 上截。
+### ⚠️ 我先前判断错了一次，记在这里
+
+⛔ 我最初查了 Python SDK（`deepseek_harness`，911 行）grep 不到窗口相关的键，
+就下了「DSH 不支持」的结论。⚠️ **那是查错了地方**：
+⭐ SDK 只是个薄客户端，它 `Popen` 起来的 `deepseek-harness-sdk-runtime`
+（261 MB）才是真身，⛔ 那里面 `contextWindow` 出现 1518 次。
+
+⚠️ 教训：⛔ 「grep 不到」只在**查对了地方**时才算证据。

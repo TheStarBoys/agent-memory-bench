@@ -40,6 +40,14 @@ class HostSpec:
     patches: tuple[str, ...] = ()
     max_tokens: int = 512
     request_timeout_s: float = 180.0
+    #: ⭐ **上下文窗口**（token）。⚠️ 这是 agent 档最要紧的受控变量：
+    #: ⛔ 整段会话装得下的话，记忆插件就是摆设——那时测的是**模型自己**。
+    #:
+    #: ⭐ 把它调小，几十轮就进入压缩/滑窗区间：⚠️ 于是「记忆有没有用」
+    #: 与**会话多长**解耦了，⛔ 而会话长度正是成本的主要驱动。
+    #:
+    #: ⚠️ `None` = 用 DSH 的默认（128k）。⛔ 那时这一档测不到记忆的价值。
+    context_window: int | None = None
 
     @property
     def version(self) -> str:
@@ -62,12 +70,22 @@ class HostSpec:
 
 
 def spec_from_env(patches: tuple[str, ...] = ()) -> HostSpec:
+    """⚠️ `AMB_CONTEXT_WINDOW`：⭐ agent 档的上下文窗口（token）。
+
+    ⛔ 不设就用 DSH 的默认 128k——⚠️ 那时几十轮的会话整段装得下，
+    ⭐ 记忆插件是摆设，这一档测的是**模型自己**。
+    """
+    import os
+
     load_dotenv()
+    raw = os.environ.get("AMB_CONTEXT_WINDOW", "").strip()
     return HostSpec(
         model=require("AMB_LLM_MODEL"),
         base_url=require("AMB_LLM_BASE_URL"),
         api_key_env=require("AMB_LLM_API_KEY_ENV"),
         patches=patches,
+        # ⛔ 空串不是 0：⚠️ `AMB_CONTEXT_WINDOW=` 该当成「没设」
+        context_window=int(raw) if raw else None,
     )
 
 
@@ -110,7 +128,15 @@ class Host:
                         "apiKeyEnv": self._spec.api_key_env,
                         "api": "openai-completions",
                         "baseURL": self._spec.base_url,
-                        "models": [{"id": self._spec.model}],
+                        # ⭐ `contextWindow` 是 DSH 模型条目的合法字段
+                        # （schema: `{id, name?, contextWindow?, maxTokens?}`）。
+                        # ⚠️ 不给就用它的默认 128k——⛔ 那时整段会话装得下，
+                        # 记忆插件是摆设。
+                        "models": [{
+                            "id": self._spec.model,
+                            **({} if self._spec.context_window is None
+                               else {"contextWindow": self._spec.context_window}),
+                        }],
                     }
                 }
             }

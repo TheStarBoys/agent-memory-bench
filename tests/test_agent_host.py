@@ -82,3 +82,57 @@ def test_agent_reads_the_world_we_mounted() -> None:
     assert "新皮层" in turn.text
     # ⭐ agent/* 事件流：每一步都看得到，不需要被测系统配合
     assert len(turn.events) > 0
+
+
+# ── ⭐ agent 档的上下文窗口 ─────────────────────────────────────
+def _settings_of(spec, tmp_path) -> dict:
+    """把 spec 写成 settings.yaml 再读回来。⚠️ 不起真宿主。"""
+    import json
+
+    from amb.agent.host import Host
+
+    h = Host(spec, world_root=tmp_path, home=tmp_path)
+    h._write_settings()
+    return json.loads((tmp_path / "settings.yaml").read_text(encoding="utf-8"))
+
+
+def _spec(**kw):
+    from amb.agent.host import HostSpec
+
+    return HostSpec(model="m", base_url="u", api_key_env="K", **kw)
+
+
+def test_the_context_window_reaches_the_harness(tmp_path) -> None:
+    """⛔ **agent 档最要紧的受控变量**：⚠️ 整段会话装得下的话，
+    记忆插件就是摆设——⭐ 那时测的是模型自己，不是记忆。
+
+    ⚠️ `contextWindow` 是 DSH 模型条目的合法字段
+    （schema: `{id, name?, contextWindow?, maxTokens?}`）。
+    """
+    got = _settings_of(_spec(context_window=4096), tmp_path)
+    models = got["llm-pi-ai"]["providers"]["amb-backbone"]["models"]
+    assert models[0]["contextWindow"] == 4096, f"⛔ 没写进去：{models}"
+
+
+def test_no_window_means_the_harness_default(tmp_path) -> None:
+    """⚠️ 不设就不写这个键——⛔ 让 DSH 用它自己的默认（128k）。
+
+    ⭐ 但那时这一档**测不到记忆的价值**，⚠️ README 里写明了。
+    """
+    got = _settings_of(_spec(), tmp_path)
+    models = got["llm-pi-ai"]["providers"]["amb-backbone"]["models"]
+    assert "contextWindow" not in models[0]
+
+
+def test_an_empty_env_var_is_not_a_zero_window(monkeypatch) -> None:
+    """⛔ `AMB_CONTEXT_WINDOW=`（空串）该当成「没设」——
+    ⚠️ 当成 0 的话窗口是零，那条臂什么都记不住。
+    """
+    from amb.agent.host import spec_from_env
+
+    for k, v in (("AMB_LLM_MODEL", "m"), ("AMB_LLM_BASE_URL", "u"),
+                 ("AMB_LLM_API_KEY_ENV", "K"), ("AMB_CONTEXT_WINDOW", "")):
+        monkeypatch.setenv(k, v)
+    assert spec_from_env().context_window is None
+    monkeypatch.setenv("AMB_CONTEXT_WINDOW", "8192")
+    assert spec_from_env().context_window == 8192
