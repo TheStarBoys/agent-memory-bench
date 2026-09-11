@@ -60,16 +60,24 @@ def test_the_codebase_passes_lint() -> None:
     assert got.returncode == 0, "⛔ lint 不过：\n" + got.stdout[-3000:]
 
 
-def test_the_lint_gate_actually_fails_on_a_violation(tmp_path) -> None:
+def test_the_lint_gate_actually_fails_on_a_violation() -> None:
     """⛔ **反向测试**：⚠️ 种一个违规，确认闸门真的红。
 
-    ⭐ 这一条守的是闸门本身：⚠️ 一份配置可以跑得很欢而什么都不检查
-    （select 写错、路径不匹配、被 per-file-ignores 全盖住）——
+    ⭐ 这一条守的是闸门本身：⚠️ 一份配置可以跑得很欢而什么都不检查——
     ⛔ 而那时它照样打印 `All checks passed`。
+
+    ## ⛔ 违规必须种在**真实的目标目录下**
+
+    ⚠️ 第一版把它种在 `tmp_path` 里——⭐ 实测：把 `per-file-ignores` 改成
+    `"src/**" = ["ALL"]`（闸门对生产代码彻底变瞎）之后，
+    ⛔ 这条测试**照样绿**——因为临时文件不在 `src/**` 底下，不受影响。
+
+    ⚠️ 那验的是「配置能抓临时文件」，⛔ 不是「能抓我们的代码」。
+    ⭐ 现在种进 `src/amb/` 里，跑完删掉。
     """
-    bad = tmp_path / "planted.py"
+    planted = ROOT / "src" / "amb" / "_lint_probe_delete_me.py"
     # ⚠️ 三个不同族各一个，⛔ 免得只验到其中一族
-    bad.write_text(textwrap.dedent("""
+    planted.write_text(textwrap.dedent("""
         import os
         def f():
             try:
@@ -79,10 +87,14 @@ def test_the_lint_gate_actually_fails_on_a_violation(tmp_path) -> None:
         def g():
             undefined_name_here()
     """), encoding="utf-8")
-    got = _ruff("--config", str(ROOT / "pyproject.toml"), str(bad))
-    assert got.returncode != 0, "⛔ 种了违规闸门却是绿的——⚠️ 它什么都没检查"
-    for code in ("F821", "S110", "F401"):
-        assert code in got.stdout, f"⛔ 没抓到 {code}：\n{got.stdout}"
+    try:
+        got = _ruff(*TARGETS)
+        assert got.returncode != 0, (
+            "⛔ 在 src/ 里种了违规，闸门却是绿的——⚠️ 它对生产代码是瞎的")
+        for code in ("F821", "S110", "F401"):
+            assert code in got.stdout, f"⛔ 没抓到 {code}：\n{got.stdout[-1500:]}"
+    finally:
+        planted.unlink(missing_ok=True)
 
 
 def test_no_dead_noqa_comments() -> None:
