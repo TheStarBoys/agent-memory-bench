@@ -127,7 +127,7 @@ def test_death_is_permanent_regardless_of_poll_timing(tmp_path: Path) -> None:
         bridge.call("boom")
 
     # ⚠️ 装作 poll() 还没反应过来
-    bridge._proc.poll = lambda: None            # noqa: SLF001
+    bridge._proc.poll = lambda: None
     with pytest.raises(BridgeError, match="不重启"):
         bridge.call("ping")
 
@@ -144,7 +144,6 @@ def test_the_death_message_says_both_why_and_that_it_wont_restart(
     '''), {})
     with pytest.raises(BridgeError) as got:
         bridge.call("anything")
-    bridge.call.__self__          # 让 linter 闭嘴
     text = str(got.value)
     assert "依赖装错了" in text            # ⭐ 死因
     with pytest.raises(BridgeError, match="不重启"):

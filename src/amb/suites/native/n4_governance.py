@@ -168,7 +168,7 @@ class GovernanceSuite:
             fresh.setup(self._handle())
             still_there = any(p.doc_id in h.doc_ids
                               for h in fresh.search(p.query, 10))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             # ⛔ 分清是谁的错再往上抛：⚠️ 锁冲突是我们造成的，
             # 其余原样抛出——⭐ 不猜、不洗（core/fault.py）。
             raise _ours_if_lock(exc) from exc

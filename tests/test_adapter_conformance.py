@@ -86,7 +86,7 @@ def _ingest_all(arm) -> None:
 def _count(arm) -> int | None:
     try:
         return int(arm.count())
-    except Exception:  # noqa: BLE001 —— ⚠️ 报不出来是 None，⛔ 不拿 0 冒充
+    except Exception:
         return None
 
 
@@ -95,7 +95,7 @@ def _hits(arm, *, principal: str | None = None) -> list:
     for doc in CORPUS:
         try:
             out += arm.search(doc.text[:20], 10, principal=principal)
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
     return out
 
@@ -139,14 +139,14 @@ def test_adapter_honours_the_semantic_contract(name: str) -> None:
     try:
         try:
             arm = build(name)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _skip_only_if_environment(name, exc)
         try:
             bad = _check(arm, name)
         finally:
             try:
                 arm.close()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
     finally:
         for k, v in saved.items():
@@ -261,7 +261,7 @@ def test_records_whether_two_instances_can_coexist(name: str, capsys) -> None:
     try:
         try:
             one = build(name)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _skip_only_if_environment(name, exc)
         one.reset()
         _ingest_all(one)
@@ -276,7 +276,7 @@ def test_records_whether_two_instances_can_coexist(name: str, capsys) -> None:
             # **记录了一个假事实**，那比没有这条测试更糟。
             two.count()
             verdict = "⭐ 可以并存"
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             verdict = (f"⚠️ 不能并存（{type(exc).__name__}: "
                        f"{str(exc).splitlines()[0][:80]}）"
                        f"——⛔ N4 必须先 close 再重开")
@@ -284,7 +284,7 @@ def test_records_whether_two_instances_can_coexist(name: str, capsys) -> None:
             if two is not None:
                 try:
                     two.close()
-                except Exception:  # noqa: BLE001
+                except Exception:
                     pass
             one.close()
         print(f"\n{name}：{verdict}")

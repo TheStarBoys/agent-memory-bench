@@ -132,6 +132,6 @@ class MCPServer:
                     "error": {"code": -32601, "message": f"未实现 {method}"}}
         try:
             return {"jsonrpc": "2.0", "id": rid, "result": handler(request.get("params") or {})}
-        except Exception as exc:  # noqa: BLE001 —— ⛔ 不许让 agent 那头挂死
+        except Exception as exc:
             return {"jsonrpc": "2.0", "id": rid,
                     "error": {"code": -32603, "message": f"{type(exc).__name__}: {exc}"}}

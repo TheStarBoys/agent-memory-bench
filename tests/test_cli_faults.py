@@ -120,7 +120,7 @@ def test_each_arm_is_checkpointed_before_the_next_one_starts(cli, tmp_path) -> N
         if out.exists():
             try:
                 seen.append(len(_arms(json.loads(out.read_text(encoding="utf-8")))))
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
         return orig(h)
 

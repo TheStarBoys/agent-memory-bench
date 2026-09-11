@@ -204,7 +204,7 @@ def test_mem0_pins_temperature_to_zero() -> None:
 
     arm = Mem0Adapter(llm_model="m", llm_base_url="u", embed_model="e",
                       embed_base_url="u", embed_dims=8, storage_dir="/tmp/x")
-    llm_cfg = arm._cfg["llm"]["config"]  # noqa: SLF001
+    llm_cfg = arm._cfg["llm"]["config"]
     assert llm_cfg["temperature"] == 0.0
     assert llm_cfg["top_p"] == 1.0
 

@@ -16,6 +16,8 @@
 
 from __future__ import annotations
 
+import contextlib
+
 from typing import Any
 
 from amb.adapters.answerable import Answerable
@@ -127,10 +129,10 @@ class Mem0Adapter(Answerable, AdapterBase):
         """
         if self._bridge is None:
             return
-        try:
+        # ⚠️ 关的时候对面可能已经没了——⛔ 那不是错误，
+        # ⭐ `suppress` 比 `except: pass` 说得清这是**刻意**的
+        with contextlib.suppress(Exception):
             self._bridge.call("shutdown")
-        except Exception:  # noqa: BLE001 —— 关不上就直接杀进程
-            pass
         self._bridge.close()
         self._bridge = None
 

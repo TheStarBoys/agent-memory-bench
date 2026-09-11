@@ -97,7 +97,7 @@ def _budget(report, plan, arms: tuple[str, ...]) -> None:
 
 def _preflight_cmd(argv: list[str]) -> int:
     """⛔ 零网络调用的跑前自检。⭐ 单独跑一次比跑完再看便宜几个数量级。"""
-    from amb.runner.preflight import estimate, estimate_probe, inspect
+    from amb.runner.preflight import inspect
 
     ap = argparse.ArgumentParser(prog="amb preflight")
     ap.add_argument("--bench", choices=("toy", "native", "locomo", "dialogue"), default="toy")
@@ -328,7 +328,7 @@ def main(argv: list[str] | None = None) -> int:
                     ArmResult(arm=name, is_control=name in control_arms(),
                               harness_fault=why))
                 continue
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 # ⛔ 不只打到 stderr——静默消失会被读成「没参赛」
                 msg = f"{type(exc).__name__}: {exc}"[:200]
                 print(f"✗ [{i}/{len(names)}] {name}: {msg}",
@@ -370,7 +370,7 @@ def _checkpoint(report: Report, args) -> None:
         args.json.write_text(
             json.dumps(report.to_dict(), ensure_ascii=False, indent=2,
                        default=str), encoding="utf-8")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         print(f"⚠️ 中途存盘失败（{type(exc).__name__}: {exc}）——⛔ 继续跑",
               file=sys.stderr, flush=True)
 
@@ -420,7 +420,7 @@ def _run_agent_lane(report: Report, names: list[str], workdir: Path) -> None:
                 ArmResult(arm=name, is_control=name in agent_arms(),
                           harness_fault=why))
             continue
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             msg = f"{type(exc).__name__}: {exc}"[:200]
             print(f"✗ agent/{name}: {msg}", file=sys.stderr)
             report.lanes.setdefault("agent", []).append(

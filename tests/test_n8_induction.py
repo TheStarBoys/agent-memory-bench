@@ -120,7 +120,7 @@ def _arm_with(backbone):
     from amb.runner import build
 
     arm = build("bm25")
-    arm._llm = backbone            # noqa: SLF001 —— 测试替身
+    arm._llm = backbone
     return arm
 
 

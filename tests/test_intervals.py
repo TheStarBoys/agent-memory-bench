@@ -10,7 +10,7 @@ import pytest
 
 from amb.core import Observation, SuiteRun
 from amb.scoring import score
-from amb.scoring.statistics import Interval, detectable_difference, wilson
+from amb.scoring.statistics import detectable_difference, wilson
 
 
 def retrieval_run(n: int, hit_rate: float) -> SuiteRun:

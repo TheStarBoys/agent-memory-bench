@@ -33,9 +33,12 @@ class AgentInductionSuite:
         for reg in self._regs:
             if len(reg.held_out) < 2 or reg.exception is None:
                 continue
-            ask = lambda inst: _yes(TurnRecord.of(  # noqa: E731
-                "", driver.ask(
-                    f"{inst.name} 是{reg.prop}的吗？只回答「是」或「否」。")).text)
+            # ⛔ **显式绑定 `reg.prop`**：⚠️ 这个闭包现在是在循环体内当场
+            # 用完的，所以还不是 bug——⭐ 但只要有人把调用挪出循环，
+            # 它就会捕到**最后一次迭代**的 `reg`。⚠️ 绑定一次，把坑堵死。
+            def ask(inst, prop=reg.prop):
+                return _yes(TurnRecord.of("", driver.ask(
+                    f"{inst.name} 是{prop}的吗？只回答「是」或「否」。")).text)
 
             generalises = ask(reg.held_out[0])
             exception_ok = ask(reg.exception)

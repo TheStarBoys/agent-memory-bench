@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from amb.core import AdapterBase, BASELINE, Capability, Document, Entry
+from amb.core import AdapterBase, BASELINE, Document, Entry
 from amb.scoring import score
 from amb.suites.native.n5_consolidation import (
     ObservedRetentionSuite,

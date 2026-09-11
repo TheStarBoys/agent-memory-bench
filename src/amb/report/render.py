@@ -528,12 +528,10 @@ def _render_lane(lane: str, arms: list, report: Report) -> str:
              if (sc := a.scores.get(suite)) and sc.not_publishable), "")
         # ⛔ 不得发布的档**不给地板线、不给 Δ、不排名**
         floor = best_floor(arms, suite, metric) if not unpublishable else None
-        floor_ci = None
         floor_sc = None
         if floor is not None:
             floor_sc = next((a.scores.get(suite)
                              for a in arms if a.arm == floor.arm), None)
-            floor_ci = floor_sc.interval(metric) if floor_sc else None
         # ⚠️ answer 档含生成器，署名必须写成「<系统> + <backbone>」
         signed = (f"  ——署名 `<系统> + {report.backbone.get('model', '?')}`"
                   if suite == "qa" else "")

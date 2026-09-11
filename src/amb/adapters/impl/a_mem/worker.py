@@ -143,7 +143,7 @@ class Runner:
         for eid in entry_ids:
             try:
                 ok = self.system.delete(eid)
-            except Exception as exc:  # noqa: BLE001 —— 逐条记，⛔ 不整批失败
+            except Exception as exc:
                 refused[eid] = f"{type(exc).__name__}: {exc}"[:200]
                 continue
             if ok:
@@ -168,7 +168,7 @@ def main() -> None:
             if handler is None:
                 raise ValueError(f"不认识的 op：{op}")
             reply = {"ok": True, "result": handler(**msg)}
-        except Exception as exc:  # noqa: BLE001 —— ⛔ 不能让 worker 死掉
+        except Exception as exc:
             import traceback
 
             traceback.print_exc(file=sys.stderr)

@@ -64,7 +64,7 @@ class HostSpec:
             from amb.setup.spec import REGISTRY
 
             pin = REGISTRY["dsh"].pin
-        except Exception:  # noqa: BLE001
+        except Exception:
             return got
         return got if got == pin else f"{got} ⚠️与钉死的 {pin} 不同"
 
@@ -205,7 +205,7 @@ class Host:
             try:
                 result = self._session.run(prompt)
                 break
-            except Exception as exc:  # noqa: BLE001 —— 宿主的异常类型不归我们管
+            except Exception as exc:
                 last = exc
                 if attempt < 2:
                     time.sleep(2 ** attempt)

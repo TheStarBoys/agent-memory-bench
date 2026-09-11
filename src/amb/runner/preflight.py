@@ -154,7 +154,7 @@ def _record(plan) -> _Recorder:
         rec.suite = getattr(suite, "name", type(suite).__name__)
         try:
             run = suite.probe(rec, None)
-        except Exception as exc:  # noqa: BLE001 —— ⚠️ 别拖垮自检
+        except Exception as exc:
             # ⛔ **不吞掉**：⚠️ 早先 `continue` 什么都不留，
             # 于是「某个套件一条查询也没录到」与「这个套件本来就没查询」
             # ⭐ 长得一模一样。
@@ -279,7 +279,7 @@ def check_scoring(plan, out: Report, root: Path) -> None:
     ⚠️ 而 `null` 什么都检索不到、每档 0.000，**退化斜率完美地等于 0**，
     于是它当上了质量轴的地板。
     """
-    from amb.report import ArmResult, Report as RunReport
+    from amb.report import ArmResult
     from amb.report.render import HEADLINE, _render_cost
     from amb.runner.build import build
     from amb.runner.phases import run_one
@@ -288,7 +288,7 @@ def check_scoring(plan, out: Report, root: Path) -> None:
     for name in ("null", "bm25"):
         try:
             res, _ = run_one(name, build(name), plan, root / name, is_control=True)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             out.add("warn", "offline-arm-failed",
                     f"{name} 在自检里跑不起来（{type(exc).__name__}: {exc}）")
             return

@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
@@ -19,7 +18,7 @@ from amb.setup import (
     require_installed,
     status,
 )
-from amb.setup.spec import load_lock, save_lock
+from amb.setup.spec import save_lock
 
 
 def test_every_registered_dependency_is_pinned() -> None:

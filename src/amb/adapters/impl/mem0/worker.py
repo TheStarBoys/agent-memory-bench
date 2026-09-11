@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+import contextlib
+
 import json
 import os
 import sys
@@ -123,7 +125,7 @@ class Runner:
             try:
                 self.memory.delete(eid)
                 deleted.append(eid)
-            except Exception as exc:  # noqa: BLE001 —— 逐条记原因，⛔ 不整批失败
+            except Exception as exc:
                 refused[eid] = f"{type(exc).__name__}: {exc}"[:200]
         return {"deleted": deleted, "refused": refused}
 
@@ -137,7 +139,7 @@ class Runner:
         for eid in self.ids:
             try:
                 history = self.memory.history(eid) or []
-            except Exception:  # noqa: BLE001 —— 删掉的查不到，跳过
+            except Exception:
                 continue
             for i, h in enumerate(history):
                 rows.append({
@@ -164,10 +166,9 @@ class Runner:
                               "client", None)):
             close = getattr(owner, "close", None)
             if callable(close):
-                try:
+                # ⚠️ 关的时候底层可能已经没了——⛔ 那不是错误
+                with contextlib.suppress(Exception):
                     close()
-                except Exception:  # noqa: BLE001 —— ⚠️ 关不上也别拖垮整跑
-                    pass
         self.memory = None
         return {}
 
@@ -223,7 +224,7 @@ def main() -> None:
             if handler is None:
                 raise ValueError(f"不认识的 op：{op}")
             reply = {"ok": True, "result": handler(**msg)}
-        except Exception as exc:  # noqa: BLE001 —— ⛔ 不能让 worker 死掉
+        except Exception as exc:
             import traceback
 
             traceback.print_exc(file=sys.stderr)

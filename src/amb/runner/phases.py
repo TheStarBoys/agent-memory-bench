@@ -406,7 +406,7 @@ def _count_or_none(adapter: Adapter) -> int | None:
     """库里现在有多少条。⛔ 报不出来就是 None，⚠️ 不拿 0 冒充「空的」。"""
     try:
         return int(adapter.count())
-    except Exception:  # noqa: BLE001 —— ⚠️ 不支持 count 的臂不该因此跑挂
+    except Exception:
         return None
 
 
@@ -426,7 +426,7 @@ def _canary(adapter: Adapter, plan: Plan) -> dict:
                 # ⚠️ 同一类潜伏问题：mem0_raw 的原文表也在 store 外面，
                 # 命中快照时 spans 会空掉——⛔ PROVENANCE 静默退化。
                 "with_spans": sum(1 for h in hits if h.spans)}
-    except Exception:  # noqa: BLE001 —— ⚠️ 取不到指纹就不存，⛔ 但别拖垮这一跑
+    except Exception:
         return {}
 
 

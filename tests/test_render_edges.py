@@ -10,7 +10,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from amb.core import Observation, SuiteRun
 from amb.report import ArmResult, Report, render

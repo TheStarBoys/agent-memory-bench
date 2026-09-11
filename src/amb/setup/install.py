@@ -14,11 +14,9 @@ import shutil
 import subprocess
 import os
 import sys
-from pathlib import Path
 
 from amb.setup.spec import (
     EXTERNAL,
-    LOCKFILE,
     Dependency,
     Installed,
     Kind,

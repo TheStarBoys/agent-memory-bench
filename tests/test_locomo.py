@@ -402,7 +402,7 @@ def test_abstention_is_matched_as_a_whole_not_as_a_substring() -> None:
 
 def test_an_empty_answer_is_not_fabrication() -> None:
     """⛔ 「给不出」与「给错」永不相加——⚠️ 这条纪律 n2 执行了，qa 早先没有。"""
-    from amb.scoring.metrics import score_locomo_answer, score_qa
+    from amb.scoring.metrics import score_qa
     from amb.core import Observation, SuiteRun
 
     run = SuiteRun("qa", "scored")

@@ -101,7 +101,7 @@ def build(
         combos.extend((freq, sp, salient) for sp in spacings)
 
     for freq, spacing, salient in combos:
-        for i in range(per_cell):
+        for _ in range(per_cell):
             fid = f"f{len(stream.facts):03d}"
             # ⛔ 载荷全局唯一：⚠️ 撞了就有两条事实共用一个判定标记
             DETAIL[fid] = f"{7000 + len(DETAIL) * 3}"

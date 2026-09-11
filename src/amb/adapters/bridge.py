@@ -144,7 +144,7 @@ class Bridge:
             if proc.stdin is not None:
                 proc.stdin.close()
             proc.wait(timeout=10)
-        except Exception:  # noqa: BLE001 —— 关不掉就杀，⛔ 不能留僵尸
+        except Exception:
             proc.kill()
             proc.wait(timeout=5)
 

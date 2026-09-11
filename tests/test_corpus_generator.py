@@ -126,7 +126,7 @@ def test_asking_for_more_attributes_than_exist_is_refused() -> None:
         _build(seed=1, entities=4, attrs_per_entity=len(_ATTRS) + 1)
 
 
-def test_entity_names_are_padded_to_equal_width() -> None:  # noqa: D401
+def test_entity_names_are_padded_to_equal_width() -> None:
     """⛔ `E10` 是 `E100` 的前缀——⚠️ `topology.py` 已经为同一个坑付过一次
     代价（`E01_1` 是 `E01_10` 的前缀，对照策略在 fan1 上从 1.000 掉到 0.625）。
     """
@@ -180,6 +180,6 @@ def test_the_question_never_contains_the_attribute_word() -> None:
     from amb.world.stream.corpus import _ATTRS
 
     names = [name for name, _, _ in _ATTRS]
-    for name, ask, _ in _ATTRS:
+    for _name, ask, _ in _ATTRS:
         for other in names:
             assert other not in ask, f"⛔ 问句 {ask!r} 里含属性名 {other!r}"

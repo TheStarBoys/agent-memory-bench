@@ -35,7 +35,7 @@
 
 from __future__ import annotations
 
-from amb.core import Claim, Document
+from amb.core import Document
 from amb.suites.native.n1_reality import (
     PromptedRealitySuite,
     SpontaneousRealitySuite,

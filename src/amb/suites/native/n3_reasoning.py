@@ -22,7 +22,7 @@ from amb.core import (
     Unsupported,
 )
 from amb.world import WorldState
-from amb.world.stream.factgraph import Derivation, FactGraph, Triple
+from amb.world.stream.factgraph import FactGraph, Triple
 
 
 @dataclass(frozen=True, slots=True)

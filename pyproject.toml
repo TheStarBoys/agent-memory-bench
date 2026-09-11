@@ -26,3 +26,71 @@ packages = ["src/amb"]
 testpaths = ["tests"]
 # 不装包也能跑测试——CI 与本地一致
 pythonpath = ["src"]
+
+# ── ⭐ Lint：⛔ 只选「违反时会改变行为」的规则 ──────────────────
+#
+# ⚠️ **不用 `select = ["ALL"]`**：Ruff 还没到 1.0，⛔ 小版本会加新规则——
+# ⭐ 一次例行升级就会凭空红一片，而那与代码改动无关。
+# ⚠️ 所以 `required-version` 钉死区间，⛔ select 手工挑。
+#
+# ⛔ **这份配置不引入 formatter**：⚠️ 这个仓库的注释排版（⛔/⚠️/⭐ 对齐、
+# 中文折行）是**刻意**的，⭐ 而 `ruff format` 会把它们全部重排——
+# 那是一个巨大的 diff，换不到任何行为上的改善。
+[tool.ruff]
+required-version = ">=0.16,<0.17"
+line-length = 100
+target-version = "py312"
+src = ["src", "tests", "worlds"]
+
+[tool.ruff.lint]
+select = [
+  # ⭐ 真 bug 类：⚠️ 「执行不到就永远发现不了」的那些
+  # ⛔ 实测抓到过：`agent_native/qa.py` 里 `record` 写成 `rec`——
+  # 行首就会炸的 NameError，⚠️ 而那段代码从没被执行过。
+  "F",          # pyflakes：未定义名、未用 import、未用变量
+  "E4", "E7", "E9",  # pycodestyle 里**非**排版的那部分
+  "W",
+  "B",          # bugbear：可变默认值、循环变量绑定……
+  "PLE",        # pylint 的 error 级
+  "PLC0414",    # 无意义的 import as
+  # ⭐ 静默吞掉错误：⛔ 这一类在本仓库有在案的事故
+  "S110",       # try-except-pass
+  "E722",       # 裸 except
+  "B012",       # finally 里 break/return 吞掉异常
+  "SIM105",     # 该用 contextlib.suppress
+  # ⚠️ 只留 TRY400：⛔ `logging.error` 在 except 里会**丢掉 traceback**，
+  # ⭐ 那是真的信息损失。而 TRY300/TRY301（把 return 挪进 else、
+  # 把 raise 抽成内部函数）是**代码组织建议**——⚠️ 违反它们不改变行为，
+  # ⛔ 而按技能的判据「只重排版的规则」应当拒绝。
+  "TRY400",
+  # ⭐ 逃生舱口：⚠️ 一个不起作用的抑制注释就是装饰
+  "RUF100",     # 死 noqa —— ⛔ 本仓库实测 16 个
+  "PGH",        # 光秃秃的 type/noqa ignore
+  # ⭐ 模块纪律：⚠️ 与 architecture.toml 的分层守卫互补
+  "TID252",     # 相对导入
+  "SLF001",     # 跨模块私有成员访问
+  "E501",
+]
+ignore = [
+  # ⛔ 技能明确列为「不要开」：⚠️ 它们逼着把异常消息拆成常量，
+  # ⭐ 伤可读性多过帮忙——而本仓库的报错话本身就是文档。
+  "TRY003", "EM101", "EM102",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# ⚠️ 这几处长行都是**注释**（中文 + ⛔/⚠️/⭐ 对齐）——⛔ 折行会打断排版，
+# ⭐ 而排版在这个仓库里是有意义的：它标着「这条是硬规矩」还是「这条是陷阱」。
+"src/amb/adapters/llm_cache.py" = ["E501"]
+"src/amb/suites/native/n8_induction.py" = ["E501"]
+"src/amb/world/stream/dialogue.py" = ["E501"]
+"src/amb/world/stream/topology.py" = ["E501"]
+# ⚠️ `__all__` 那几行长：⛔ 折行反而更难读
+"src/amb/*/__init__.py" = ["E501"]
+# ⭐ 测试里断言私有成员、用魔数是**正常**的
+# ⭐ 测试里断言私有成员、用魔数是**正常**的。
+# ⚠️ `S110`/`SIM105`：测试的**清理路径**（`arm.close()` 失败不该带走这条测试）
+# 吞掉异常是对的——⛔ 而在生产代码里不豁免，那里已经全绿。
+"tests/**" = ["S101", "SLF001", "PLR2004", "S110", "SIM105", "E501"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"

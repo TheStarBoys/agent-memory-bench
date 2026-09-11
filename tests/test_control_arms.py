@@ -183,7 +183,7 @@ def test_embedding_client_retries_on_a_truncated_read() -> None:
             raise http.client.IncompleteRead(b"partial")
         return [[0.1] * 4 for _ in texts]
 
-    client._post = flaky  # noqa: SLF001
+    client._post = flaky
     import time as _t
 
     real_sleep, _t.sleep = _t.sleep, lambda _s: None
@@ -206,7 +206,7 @@ def test_embedding_client_gives_up_loudly_not_silently() -> None:
     def always_fails(texts):
         raise http.client.IncompleteRead(b"")
 
-    client._post = always_fails  # noqa: SLF001
+    client._post = always_fails
     import time as _t
 
     real_sleep, _t.sleep = _t.sleep, lambda _s: None
@@ -223,7 +223,7 @@ def test_large_input_is_split_into_batches() -> None:
 
     client = EmbeddingClient(EmbeddingConfig("m", "http://x", "AMB_T", max_batch=4))
     seen: list[int] = []
-    client._post = lambda ts: (seen.append(len(ts)) or  # noqa: SLF001
+    client._post = lambda ts: (seen.append(len(ts)) or
                                [[0.0] for _ in ts])
     client.embed([f"t{i}" for i in range(10)])
     assert seen == [4, 4, 2] and max(seen) <= 4

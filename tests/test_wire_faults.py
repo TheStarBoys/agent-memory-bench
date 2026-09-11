@@ -16,6 +16,7 @@ import os
 
 import pytest
 
+from amb.adapters.llm import LLMError
 from mockllm import MockLLM, env_for
 
 
@@ -65,7 +66,7 @@ def test_a_400_is_never_retried(mock) -> None:
     """⛔ 4xx（除 429）是**请求本身错了**——⚠️ 重试没有意义，
     ⭐ 而重试会把一次配置错拖成三倍的等待。"""
     mock.fail(5, status=400)
-    with pytest.raises(Exception):
+    with pytest.raises(LLMError):
         _llm(mock).complete("s", "u")
     assert len(mock.wire.injected) == 1, f"⛔ 不该重试：{mock.wire.injected}"
 
@@ -94,18 +95,43 @@ def test_a_read_timeout_surfaces_as_a_timeout(mock) -> None:
 
 
 def test_a_malformed_body_is_not_read_as_an_answer(mock) -> None:
-    """⛔ 返回一坨 HTML 时不许当成回答——⚠️ 那会变成一个假答案。"""
+    """⛔ 返回一坨 HTML 时不许当成回答——⚠️ 那会变成一个假答案。
+
+    ⭐ 断言**具体类型**：⛔ 早先这里是 `raises(Exception)`，
+    ⚠️ 于是它被一个裸的 `json.JSONDecodeError` 满足了——**假绿**。
+    ⭐ 是 lint 的 `B017` 把它翻出来的。
+    """
     mock.malformed(99)
-    with pytest.raises(Exception):
+    with pytest.raises(LLMError) as got:
         _llm(mock).complete("s", "u")
+    # ⛔ 错误话要说清**是端点回了什么**：⚠️ 一句 `JSONDecodeError`
+    # 在真跑里查不出是谁的问题。⭐ 重试耗尽后包成 `LLMError`，
+    # 但原因必须透出来（与 embedding 那条路一致）。
+    assert "不是 JSON" in str(got.value), str(got.value)
+
+    # ⭐ 而它是**可重试**的：⚠️ 端点抽一次风不该丢掉一条臂
+    mock.reset()
+    mock.malformed(1)
+    mock.always("好")
+    assert _llm(mock).complete("s", "u") == "好"
 
 
 def test_empty_choices_is_not_an_empty_answer(mock) -> None:
     """⛔ 合法 JSON 但没有 choices：⚠️ 那是端点的问题，
-    ⭐ 不是「这个系统给不出答案」。"""
+    ⭐ 不是「这个系统给不出答案」。
+
+    ⚠️ 早先裸抛 `IndexError: list index out of range`——⛔ 那句话
+    不告诉任何人是端点返回了空，⭐ 真跑里看到它得查半天。
+    """
     mock.empty_choices(99)
-    with pytest.raises(Exception):
+    with pytest.raises(LLMError) as got:
         _llm(mock).complete("s", "u")
+    assert "没有 choices" in str(got.value), str(got.value)
+
+    mock.reset()
+    mock.empty_choices(1)
+    mock.always("好")
+    assert _llm(mock).complete("s", "u") == "好"
 
 
 def test_the_meter_counts_only_what_actually_came_back(mock) -> None:

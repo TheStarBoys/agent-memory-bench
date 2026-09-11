@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 
 from amb.adapters import create
 from amb.core import (
@@ -218,7 +217,7 @@ def test_bm25_deletion_also_clears_the_n1_snapshot(tmp_path: Path) -> None:
     ids = [h.id for h in arm.search("配方", 5)]
     arm.delete(ids)
     assert arm.search("配方", 5) == []
-    assert arm._snapshot == {}, "⛔ 快照没清"  # noqa: SLF001
+    assert arm._snapshot == {}, "⛔ 快照没清"
 
 
 def _reached(run) -> str:

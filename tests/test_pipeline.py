@@ -11,8 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from amb.core import Document
-from amb.report import ArmResult, Report, best_floor, render
+from amb.report import Report, best_floor, render
 from amb.runner import Plan, WorldTampered, build, run_one
 from amb.world import digest
 
@@ -165,7 +164,6 @@ def test_spontaneous_mode_distinguishes_a_prompt_only_system(tmp_path: Path) -> 
     这一档就白设了。
     """
     from amb.adapters.impl.bm25 import BM25Adapter
-    from amb.core import Entry
 
     class PromptOnly(BM25Adapter):
         """被问了才查；平时检索绝口不提自己可能过期了。"""
@@ -219,7 +217,7 @@ class _FakeLLM:
 
 def _arm_with_fake_llm(name: str, reply: str):
     arm = build(name)
-    arm._llm = _FakeLLM(reply)   # noqa: SLF001 —— 测试替身
+    arm._llm = _FakeLLM(reply)
     return arm
 
 

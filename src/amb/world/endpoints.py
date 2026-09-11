@@ -28,7 +28,7 @@ def _handler(state: WorldState):
             self.end_headers()
             self.wfile.write(payload)
 
-        def do_GET(self) -> None:  # noqa: N802
+        def do_GET(self) -> None:
             if self.path == "/clock":
                 self._send(200, {"now": state.now})
             elif self.path.startswith("/facts/"):

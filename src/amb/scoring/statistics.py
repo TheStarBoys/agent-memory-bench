@@ -15,7 +15,6 @@
 
 from __future__ import annotations
 
-import re
 
 import math
 from dataclasses import dataclass
@@ -251,7 +250,7 @@ def bootstrap(observations: list, recompute, metric_names: list[str], *,
         sample_ = [observations[rng.randrange(n)] for _ in range(n)]
         try:
             got = recompute(sample_)
-        except Exception:  # noqa: BLE001 —— 某次重抽退化（比如某类全空）就跳过
+        except Exception:
             continue
         for m in metric_names:
             if isinstance(got.get(m), (int, float)):

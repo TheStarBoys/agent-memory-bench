@@ -43,7 +43,7 @@ def test_settings_never_contain_the_key(tmp_path: Path) -> None:
     try:
         host = Host(spec, tmp_path / "w", tmp_path / "home")
         (tmp_path / "home").mkdir(parents=True, exist_ok=True)
-        host._write_settings()  # noqa: SLF001
+        host._write_settings()
         body = (tmp_path / "home" / "settings.yaml").read_text()
         assert "sk-should-never-be-written" not in body
         assert json.loads(body)["llm-pi-ai"]["providers"]["amb-backbone"][

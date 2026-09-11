@@ -176,7 +176,7 @@ _GLOBAL: LLMCache | None = None
 
 
 def global_cache() -> LLMCache:
-    global _GLOBAL  # noqa: PLW0603
+    global _GLOBAL
     if _GLOBAL is None:
         flag = os.environ.get("AMB_LLM_CACHE", "").lower()
         _GLOBAL = LLMCache(enabled=flag in ("1", "true", "yes", "on"))
@@ -370,7 +370,7 @@ def wrap_openai_client(client: object, *,
         payload["__base_url"] = str(getattr(client, "base_url", "") or "")
         try:
             hit = cache.get(payload)
-        except Exception as exc:  # noqa: BLE001 —— 退回真调用，⛔ 但要说话
+        except Exception as exc:
             warn_once(f"缓存读取失败：{type(exc).__name__}: {exc}")
             hit = None
         if hit is not None:
@@ -385,12 +385,14 @@ def wrap_openai_client(client: object, *,
         try:
             cache.put(payload, got.model_dump(),
                       int((time.perf_counter() - t0) * 1000))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             warn_once(f"缓存写入失败：{type(exc).__name__}: {exc}")
         return got
 
     target.create = cached
-    target._amb_cached = True
+    # ⚠️ `_amb_` 前缀是**我们自己**打的幂等标记——⛔ 不是 openai 的私有成员，
+    # ⭐ 所以 SLF001 在这里是误报（前缀本身就是为了不撞它的命名空间）。
+    target._amb_cached = True  # noqa: SLF001
     return True
 
 
@@ -406,7 +408,7 @@ def _with_retry(call, kwargs: dict):
     for attempt in range(RETRY_MAX + 1):
         try:
             return call(**kwargs)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             if attempt >= RETRY_MAX or not _is_transient(exc):
                 raise
             # ⚠️ 指数退避 + 抖动：TPM 是按分钟的窗口，退到分钟级才有意义
@@ -455,5 +457,5 @@ def wrap_openai_embeddings(client: object) -> bool:
         return got
 
     target.create = wrapped
-    target._amb_wrapped = True
+    target._amb_wrapped = True  # noqa: SLF001
     return True

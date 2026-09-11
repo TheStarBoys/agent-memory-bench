@@ -182,7 +182,7 @@ class MockLLM:
             def log_message(self, *a):      # ⛔ 别刷屏
                 pass
 
-            def do_POST(self):              # noqa: N802
+            def do_POST(self):
                 outer._handle(self)
 
         # ⚠️ 端口给 0：⛔ 固定端口会在并行跑测试时撞车
@@ -205,7 +205,7 @@ class MockLLM:
         raw = h.rfile.read(length)
         try:
             body = json.loads(raw.decode())
-        except Exception:                    # noqa: BLE001
+        except Exception:
             body = {}
         b = self.behaviour
         is_embed = "embeddings" in h.path

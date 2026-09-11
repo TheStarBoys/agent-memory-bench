@@ -241,16 +241,14 @@ def test_build_dispatches_on_every_registered_arm() -> None:
     import offline
     from amb.adapters.registry import _REGISTRY
     from amb.runner.build import build
-    from amb.setup import snapshot
 
-    installed = set(snapshot())
     old = dict(__import__("os").environ)
     try:
         __import__("os").environ.update(offline.ENV)
         for name in sorted(_REGISTRY):
             try:
                 build(name)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 # ⛔ 只放过「没装外部依赖」：⚠️ 兜底 except 会把
                 # **构造 bug** 一起吞掉——那正是 `hybrid` 的 TypeError
                 # 在 `test_adapter_conformance` 里溜过去的方式。

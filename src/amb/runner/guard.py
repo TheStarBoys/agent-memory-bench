@@ -8,7 +8,6 @@ ingest 与 finalize 期间系统同样在运行，同样够得着世界。
 
 from __future__ import annotations
 
-from pathlib import Path
 
 from amb.core import Phase
 from amb.world import WorldState, digest

@@ -127,8 +127,13 @@ def test_a_configuration_error_is_not_a_crashed_arm() -> None:
     # ⛔ 不该抓的：⚠️ 网络抖动是**跑的问题**，不是配置的问题
     for bad in ("EnvironmentError", "OSError", "TimeoutError", "ConnectionError"):
         assert bad not in caught, f"⛔ {bad} 不该被判成配置问题"
-    # ⚠️ 它仍须排在兜底 except 之前，⛔ 否则永远轮不到它
-    assert m.start() < src.index("except Exception as exc:  # noqa: BLE001")
+    # ⚠️ 它仍须排在兜底 except 之前，⛔ 否则永远轮不到它。
+    # ⛔ **不绑在注释上**：⚠️ 这一行原先找的是
+    # 带着一个 BLE001 抑制注释的兜底分支——⭐ 而那个抑制是**死的**
+    # （BLE001 从没被启用过），清理死 noqa 时它被删掉，这条测试就红了。
+    # ⚠️ 测「写法」而不是「行为」的断言迟早会因为无关的改动而失效。
+    catch_all = re.search(r"except Exception as exc:", src[m.start():])
+    assert catch_all, "⛔ 没有兜底分支了"
 
 
 def test_each_finished_arm_is_written_to_disk_immediately(tmp_path) -> None:
